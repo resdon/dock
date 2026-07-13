@@ -390,3 +390,455 @@ DEBUG: Finished reading file, no match found.
 [WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [2, 0, 0, 0] }
 [WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
 [WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "How to Install with Makefile - Google Gemini and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: How to Install with Makefile - Google Gemini and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "dockman/src at master · resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/src at master · resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "dockman/Cargo.toml at master · resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/Cargo.toml at master · resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "dockman/replay.py at master · resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/replay.py at master · resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "How to Install with Makefile - Google Gemini and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: How to Install with Makefile - Google Gemini and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "dockman/replay.py at master · resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/replay.py at master · resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "How to Install with Makefile - Google Gemini and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: How to Install with Makefile - Google Gemini and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "dockman/replay.py at master · resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/replay.py at master · resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "dockman/src at master · resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/src at master · resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "How to Install with Makefile - Google Gemini and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: How to Install with Makefile - Google Gemini and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "dockman/src at master · resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/src at master · resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "dockman/src/services at master · resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/src/services at master · resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "dockman/src at master · resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/src at master · resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "dockman/src/services at master · resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/src/services at master · resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "dockman/src at master · resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/src at master · resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - persistence.rs" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - persistence.rs
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [0, 0, 0, 0, 2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - icon.rs" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - icon.rs
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - Walkthrough" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - Walkthrough
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - icon.rs" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - icon.rs
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - Walkthrough" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - Walkthrough
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - main.rs" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - main.rs
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - render.rs" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - render.rs
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - lib.rs" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - lib.rs
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - context_menu.rs" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - context_menu.rs
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - icon.rs" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - icon.rs
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - persistence.rs" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - persistence.rs
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - world.rs" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - world.rs
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - monitor.rs" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - monitor.rs
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - test.rs" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - test.rs
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - cache.rs" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - cache.rs
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - handlers.rs" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - handlers.rs
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - lib.rs" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - lib.rs
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - main.rs" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - main.rs
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - modules.rs" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - modules.rs
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - render.rs" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - render.rs
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - icon_list.txt" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - icon_list.txt
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - font.ttf" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - font.ttf
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - Cargo.toml" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - Cargo.toml
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - Cargo.lock" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - Cargo.lock
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - launcher.sh" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - launcher.sh
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [0, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "How to Install with Makefile - Google Gemini and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: How to Install with Makefile - Google Gemini and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [0, 0, 0, 0, 2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [0, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [0, 0, 0, 0, 2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [0, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [0, 0, 0, 0, 2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - icon_list.txt" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - icon_list.txt
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [0, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "dockman/src at master · resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/src at master · resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "resdon/dockman and 6 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: resdon/dockman and 6 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "dockman/icon_list.txt at master · resdon/dockman and 6 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/icon_list.txt at master · resdon/dockman and 6 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "dockman/list_icons.sh at master · resdon/dockman and 6 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/list_icons.sh at master · resdon/dockman and 6 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "How to Install with Makefile - Google Gemini and 6 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: How to Install with Makefile - Google Gemini and 6 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "dockman/icon_list.txt at master · resdon/dockman and 6 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/icon_list.txt at master · resdon/dockman and 6 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "raw.githubusercontent.com/resdon/dockman/refs/heads/master/icon_list.txt and 6 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: raw.githubusercontent.com/resdon/dockman/refs/heads/master/icon_list.txt and 6 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "dockman/list_icons.sh at master · resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/list_icons.sh at master · resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "How to Install with Makefile - Google Gemini and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: How to Install with Makefile - Google Gemini and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [0, 0, 0, 0, 2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - list_icons.sh" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - list_icons.sh
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - Makefile" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - Makefile
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - PKGBUILD" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - PKGBUILD
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - Makefile" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - Makefile
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - nohup.out" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - nohup.out
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [0, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "dockman/list_icons.sh at master · resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/list_icons.sh at master · resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "dockman/PKGBUILD at master · resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/PKGBUILD at master · resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "dockman/PKGBUILD at master · resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/PKGBUILD at master · resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "How to Install with Makefile - Google Gemini and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: How to Install with Makefile - Google Gemini and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "dockman/PKGBUILD at master · resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/PKGBUILD at master · resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "dockman/.gitignore at master · resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/.gitignore at master · resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "dockman/src at master · resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/src at master · resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [0, 0, 0, 0, 2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - PKGBUILD" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - PKGBUILD
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - replay.py" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - replay.py
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - nohup.out" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - nohup.out
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - replay.py" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - replay.py
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - .gitignore" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - .gitignore
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - .gitignore●" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - .gitignore●
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - replay.py" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - replay.py
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - .gitignore●" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - .gitignore●
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - Review" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - Review
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - .gitignore●" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - .gitignore●
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - .gitignore (in file) ↔ .gitignore (in Antigravity IDE) - Resolve save conflict (.gitignore)●" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - .gitignore (in file) ↔ .gitignore (in Antigravity IDE) - Resolve save conflict (.gitignore)●
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - .gitignore●" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - .gitignore●
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - .gitignore (in file) ↔ .gitignore (in Antigravity IDE) - Resolve save conflict (.gitignore)" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - .gitignore (in file) ↔ .gitignore (in Antigravity IDE) - Resolve save conflict (.gitignore)
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - .gitignore" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - .gitignore
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - Cargo.lock" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - Cargo.lock
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - .gitignore" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - .gitignore
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - .gitignore●" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - .gitignore●
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - .gitignore" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - .gitignore
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [0, 0, 0, 0, 2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done

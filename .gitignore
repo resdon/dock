@@ -4,3 +4,14 @@
 /src/dockman
 /*.pkg.tar.zst
 /trash
+
+# Runtime output
+nohup.out
+*.log
+
+# Cached icons
+/icon_list.txt
+/.cache
+
+# Dev utilities
+replay.py
