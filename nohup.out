@@ -1,0 +1,392 @@
+[DEBUG] Starting dock...
+[DEBUG] Connected to Wayland.
+[PERSISTENCE] Loading pins from: /home/resdon/.config/dockman/pins.json
+[PERSISTENCE] Loaded: ["org.xfce.mousepad", "pcmanfm-qt", "org.wezfurlong.wezterm", "microsoft-edge", "blueman-manager", "org.pulseaudio.pavucontrol", "steam", "input-remapper-gtk"]
+[DEBUG] Doing roundtrip...
+[INPUT DETECTOR] Mouse Pointer Capability Registered!
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Title { title: "Home / X and 2 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: Home / X and 2 more pages - Personal - Microsoft​ Edge
+[DEBUG] Resolved empty app_id for title 'Home / X and 2 more pages - Personal - Microsoft​ Edge' -> 'micro' via Name match
+[DEBUG] App 'micro' (orig: '') -> Icon Name: 'micro', Path: Some("/usr/share/icons/hicolor/scalable/apps/micro.svg")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: AppId { app_id: "microsoft-edge" }
+[WAYLAND DETECTOR] AppId registered string payload: 'microsoft-edge'
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: OutputEnter { output: WlOutput { id: ObjectId(wl_output@5, 5), version: 4, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } } }
+[WAYLAND] Unmatched event received: OutputEnter { output: WlOutput { id: ObjectId(wl_output@5, 5), version: 4, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } } }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: State { state: [1, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Parent { parent: None }
+[WAYLAND] Unmatched event received: Parent { parent: None }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "How to Install with Makefile - Google Gemini and 4 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: How to Install with Makefile - Google Gemini and 4 more pages - Personal - Microsoft​ Edge
+[DEBUG] Resolved empty app_id for title 'How to Install with Makefile - Google Gemini and 4 more pages - Personal - Microsoft​ Edge' -> 'micro' via Name match
+[DEBUG] App 'micro' (orig: '') -> Icon Name: 'micro', Path: Some("/usr/share/icons/hicolor/scalable/apps/micro.svg")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: AppId { app_id: "microsoft-edge" }
+[WAYLAND DETECTOR] AppId registered string payload: 'microsoft-edge'
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: OutputEnter { output: WlOutput { id: ObjectId(wl_output@5, 5), version: 4, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } } }
+[WAYLAND] Unmatched event received: OutputEnter { output: WlOutput { id: ObjectId(wl_output@5, 5), version: 4, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } } }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Parent { parent: None }
+[WAYLAND] Unmatched event received: Parent { parent: None }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Title { title: "dockman - Antigravity IDE - icon.rs" }
+[WAYLAND DETECTOR] Title changed: dockman - Antigravity IDE - icon.rs
+[DEBUG] Resolved empty app_id for title 'dockman - Antigravity IDE - icon.rs' -> 'antigravity-ide' via Name match
+[DEBUG] App 'antigravity-ide' (orig: '') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: AppId { app_id: "antigravity-ide" }
+[WAYLAND DETECTOR] AppId registered string payload: 'antigravity-ide'
+[DEBUG] App 'antigravity-ide' (orig: 'antigravity-ide') -> Icon Name: 'antigravity-ide', Path: Some("/home/resdon/.local/share/icons/hicolor/256x256/apps/antigravity-ide.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: OutputEnter { output: WlOutput { id: ObjectId(wl_output@5, 5), version: 4, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } } }
+[WAYLAND] Unmatched event received: OutputEnter { output: WlOutput { id: ObjectId(wl_output@5, 5), version: 4, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } } }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Parent { parent: None }
+[WAYLAND] Unmatched event received: Parent { parent: None }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190083, 17), Got event: Title { title: "Bluetooth Devices" }
+[WAYLAND DETECTOR] Title changed: Bluetooth Devices
+[DEBUG] Resolved empty app_id for title 'Bluetooth Devices' -> 'blueman-adapters' via Name match
+DEBUG: Match found for 'blueman-device'! Returning path: "/usr/share/icons/hicolor/16x16/devices/blueman-device.png"
+[DEBUG] App 'blueman-adapters' (orig: '') -> Icon Name: 'blueman-device', Path: Some("/usr/share/icons/hicolor/16x16/devices/blueman-device.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190083, 17), Got event: AppId { app_id: "blueman-manager" }
+[WAYLAND DETECTOR] AppId registered string payload: 'blueman-manager'
+[DEBUG] App 'blueman-manager' (orig: 'blueman-manager') -> Icon Name: 'blueman', Path: Some("/usr/share/icons/hicolor/scalable/apps/blueman.svg")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190083, 17), Got event: OutputEnter { output: WlOutput { id: ObjectId(wl_output@5, 5), version: 4, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } } }
+[WAYLAND] Unmatched event received: OutputEnter { output: WlOutput { id: ObjectId(wl_output@5, 5), version: 4, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } } }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190083, 17), Got event: State { state: [1, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190083, 17), Got event: Parent { parent: None }
+[WAYLAND] Unmatched event received: Parent { parent: None }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190083, 17), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190084, 18), Got event: Title { title: "Steam" }
+[WAYLAND DETECTOR] Title changed: Steam
+[DEBUG] Resolved empty app_id for title 'Steam' -> 'steam' via Name match
+[DEBUG] App 'steam' (orig: '') -> Icon Name: 'steam', Path: Some("/usr/share/icons/hicolor/256x256/apps/steam.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190084, 18), Got event: AppId { app_id: "steamwebhelper" }
+[WAYLAND DETECTOR] AppId registered string payload: 'steamwebhelper'
+[DEBUG] Normalized app_id 'steamwebhelper' -> 'steam' via Exec match
+[DEBUG] App 'steam' (orig: 'steamwebhelper') -> Icon Name: 'steam', Path: Some("/usr/share/icons/hicolor/256x256/apps/steam.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190084, 18), Got event: OutputEnter { output: WlOutput { id: ObjectId(wl_output@5, 5), version: 4, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } } }
+[WAYLAND] Unmatched event received: OutputEnter { output: WlOutput { id: ObjectId(wl_output@5, 5), version: 4, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } } }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190084, 18), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190084, 18), Got event: Parent { parent: None }
+[WAYLAND] Unmatched event received: Parent { parent: None }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190084, 18), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190085, 19), Got event: Title { title: "Counter-Strike 2" }
+[WAYLAND DETECTOR] Title changed: Counter-Strike 2
+[DEBUG] Resolved empty app_id for title 'Counter-Strike 2' -> 'rc.xml' via Name match
+DEBUG: Finished reading file, no match found.
+[DEBUG] App 'rc.xml' (orig: '') -> Icon Name: 'rc.xml', Path: None
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190085, 19), Got event: AppId { app_id: "gamescope" }
+[WAYLAND DETECTOR] AppId registered string payload: 'gamescope'
+DEBUG: Finished reading file, no match found.
+[DEBUG] App 'gamescope' (orig: 'gamescope') -> Icon Name: 'gamescope', Path: None
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190085, 19), Got event: OutputEnter { output: WlOutput { id: ObjectId(wl_output@5, 5), version: 4, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } } }
+[WAYLAND] Unmatched event received: OutputEnter { output: WlOutput { id: ObjectId(wl_output@5, 5), version: 4, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } } }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190085, 19), Got event: State { state: [1, 0, 0, 0, 3, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190085, 19), Got event: Parent { parent: None }
+[WAYLAND] Unmatched event received: Parent { parent: None }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190085, 19), Got event: Done
+DEBUG: Finished reading file, no match found.
+[DEBUG] App 'gamescope' (orig: 'gamescope') -> Icon Name: 'gamescope', Path: None
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190083, 17), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190084, 18), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190085, 19), Got event: Done
+DEBUG: Finished reading file, no match found.
+[DEBUG] App 'gamescope' (orig: 'gamescope') -> Icon Name: 'gamescope', Path: None
+[DEBUG] Roundtrip complete.
+[DEBUG] Active window tracking protocols linked to event loop successfully via direct binding!
+[DEBUG] Starting event loop...
+[DEBUG] Launching app via icon click: 'pcmanfm-qt' (normalized to: 'pcmanfm-qt')
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190083, 17), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190084, 18), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190085, 19), Got event: Done
+DEBUG: Finished reading file, no match found.
+[DEBUG] App 'gamescope' (orig: 'gamescope') -> Icon Name: 'gamescope', Path: None
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190083, 17), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190084, 18), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190085, 19), Got event: Done
+DEBUG: Finished reading file, no match found.
+[DEBUG] App 'gamescope' (orig: 'gamescope') -> Icon Name: 'gamescope', Path: None
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190086, 101), Got event: AppId { app_id: "pcmanfm-qt" }
+[WAYLAND DETECTOR] AppId registered string payload: 'pcmanfm-qt'
+[DEBUG] App 'pcmanfm-qt' (orig: 'pcmanfm-qt') -> Icon Name: 'pcmanfm-qt', Path: Some("/usr/share/icons/hicolor/scalable/apps/pcmanfm-qt.svg")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190086, 101), Got event: Title { title: "dockman" }
+[WAYLAND DETECTOR] Title changed: dockman
+[DEBUG] App 'pcmanfm-qt' (orig: 'pcmanfm-qt') -> Icon Name: 'pcmanfm-qt', Path: Some("/usr/share/icons/hicolor/scalable/apps/pcmanfm-qt.svg")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190086, 101), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190086, 101), Got event: OutputEnter { output: WlOutput { id: ObjectId(wl_output@5, 5), version: 4, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } } }
+[WAYLAND] Unmatched event received: OutputEnter { output: WlOutput { id: ObjectId(wl_output@5, 5), version: 4, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } } }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190086, 101), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190086, 101), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190086, 101), Got event: Closed
+[WAYLAND DETECTOR] Window Closed: ZwlrForeignToplevelHandleV1 { id: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190086, 101), version: 3, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[DEBUG] Launching app via icon click: 'org.xfce.mousepad' (normalized to: 'org.xfce.mousepad')
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190083, 17), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190084, 18), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190085, 19), Got event: Done
+DEBUG: Finished reading file, no match found.
+[DEBUG] App 'gamescope' (orig: 'gamescope') -> Icon Name: 'gamescope', Path: None
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190083, 17), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190084, 18), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190085, 19), Got event: Done
+DEBUG: Finished reading file, no match found.
+[DEBUG] App 'gamescope' (orig: 'gamescope') -> Icon Name: 'gamescope', Path: None
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190087, 178), Got event: AppId { app_id: "org.xfce.mousepad" }
+[WAYLAND DETECTOR] AppId registered string payload: 'org.xfce.mousepad'
+[DEBUG] App 'org.xfce.mousepad' (orig: 'org.xfce.mousepad') -> Icon Name: 'org.xfce.mousepad', Path: Some("/usr/share/icons/hicolor/scalable/apps/org.xfce.mousepad.svg")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190087, 178), Got event: Title { title: "Untitled 1 - Mousepad" }
+[WAYLAND DETECTOR] Title changed: Untitled 1 - Mousepad
+[DEBUG] App 'org.xfce.mousepad' (orig: 'org.xfce.mousepad') -> Icon Name: 'org.xfce.mousepad', Path: Some("/usr/share/icons/hicolor/scalable/apps/org.xfce.mousepad.svg")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190087, 178), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190087, 178), Got event: OutputEnter { output: WlOutput { id: ObjectId(wl_output@5, 5), version: 4, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } } }
+[WAYLAND] Unmatched event received: OutputEnter { output: WlOutput { id: ObjectId(wl_output@5, 5), version: 4, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } } }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190087, 178), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190087, 178), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190087, 178), Got event: Closed
+[WAYLAND DETECTOR] Window Closed: ZwlrForeignToplevelHandleV1 { id: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190087, 178), version: 3, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[PERSISTENCE] Saving pins to: /home/resdon/.config/dockman/pins.json Data: ["org.xfce.mousepad", "pcmanfm-qt", "org.wezfurlong.wezterm", "microsoft-edge", "org.pulseaudio.pavucontrol", "blueman-manager", "steam", "input-remapper-gtk"]
+[PERSISTENCE] Save successful.
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190085, 19), Got event: State { state: [3, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190085, 19), Got event: State { state: [2, 0, 0, 0, 3, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190085, 19), Got event: Done
+DEBUG: Finished reading file, no match found.
+[DEBUG] App 'gamescope' (orig: 'gamescope') -> Icon Name: 'gamescope', Path: None
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190085, 19), Got event: State { state: [3, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190085, 19), Got event: Closed
+[WAYLAND DETECTOR] Window Closed: ZwlrForeignToplevelHandleV1 { id: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190085, 19), version: 3, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[DEBUG] Launching app via icon click: 'org.pulseaudio.pavucontrol' (normalized to: 'org.pulseaudio.pavucontrol')
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190083, 17), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190084, 18), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190083, 17), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190084, 18), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190088, 467), Got event: AppId { app_id: "org.pulseaudio.pavucontrol" }
+[WAYLAND DETECTOR] AppId registered string payload: 'org.pulseaudio.pavucontrol'
+[DEBUG] App 'org.pulseaudio.pavucontrol' (orig: 'org.pulseaudio.pavucontrol') -> Icon Name: 'org.pulseaudio.pavucontrol', Path: Some("/usr/share/icons/hicolor/scalable/apps/org.pulseaudio.pavucontrol.svg")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190088, 467), Got event: Title { title: "Volume Control" }
+[WAYLAND DETECTOR] Title changed: Volume Control
+[DEBUG] App 'org.pulseaudio.pavucontrol' (orig: 'org.pulseaudio.pavucontrol') -> Icon Name: 'org.pulseaudio.pavucontrol', Path: Some("/usr/share/icons/hicolor/scalable/apps/org.pulseaudio.pavucontrol.svg")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190088, 467), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190088, 467), Got event: OutputEnter { output: WlOutput { id: ObjectId(wl_output@5, 5), version: 4, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } } }
+[WAYLAND] Unmatched event received: OutputEnter { output: WlOutput { id: ObjectId(wl_output@5, 5), version: 4, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } } }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190088, 467), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190088, 467), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190088, 467), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190088, 467), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190088, 467), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190088, 467), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190088, 467), Got event: Closed
+[WAYLAND DETECTOR] Window Closed: ZwlrForeignToplevelHandleV1 { id: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190088, 467), version: 3, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190083, 17), Got event: Closed
+[WAYLAND DETECTOR] Window Closed: ZwlrForeignToplevelHandleV1 { id: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190083, 17), version: 3, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } }
+[DEBUG] Launching app via icon click: 'pcmanfm-qt' (normalized to: 'pcmanfm-qt')
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190084, 18), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190084, 18), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190089, 612), Got event: AppId { app_id: "pcmanfm-qt" }
+[WAYLAND DETECTOR] AppId registered string payload: 'pcmanfm-qt'
+[DEBUG] App 'pcmanfm-qt' (orig: 'pcmanfm-qt') -> Icon Name: 'pcmanfm-qt', Path: Some("/usr/share/icons/hicolor/scalable/apps/pcmanfm-qt.svg")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190089, 612), Got event: Title { title: "dockman" }
+[WAYLAND DETECTOR] Title changed: dockman
+[DEBUG] App 'pcmanfm-qt' (orig: 'pcmanfm-qt') -> Icon Name: 'pcmanfm-qt', Path: Some("/usr/share/icons/hicolor/scalable/apps/pcmanfm-qt.svg")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190089, 612), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190089, 612), Got event: OutputEnter { output: WlOutput { id: ObjectId(wl_output@5, 5), version: 4, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } } }
+[WAYLAND] Unmatched event received: OutputEnter { output: WlOutput { id: ObjectId(wl_output@5, 5), version: 4, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } } }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190089, 612), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190089, 612), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190089, 612), Got event: Closed
+[WAYLAND DETECTOR] Window Closed: ZwlrForeignToplevelHandleV1 { id: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190089, 612), version: 3, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Title { title: "New tab and 3 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: New tab and 3 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Title { title: "resdon and 3 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: resdon and 3 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Title { title: "resdon/dockman and 3 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: resdon/dockman and 3 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Title { title: "dockman/src at master · resdon/dockman and 3 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/src at master · resdon/dockman and 3 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Title { title: "resdon/dockman and 3 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: resdon/dockman and 3 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Title { title: "dockman/Cargo.toml at master · resdon/dockman and 3 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/Cargo.toml at master · resdon/dockman and 3 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Title { title: "resdon/dockman and 3 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: resdon/dockman and 3 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190084, 18), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190084, 18), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190090, 713), Got event: AppId { app_id: "" }
+[WAYLAND DETECTOR] AppId registered string payload: ''
+[DEBUG] Resolved empty app_id for title 'Unknown' -> 'rc.xml' via Name match
+DEBUG: Finished reading file, no match found.
+[DEBUG] App 'rc.xml' (orig: '') -> Icon Name: 'rc.xml', Path: None
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190090, 713), Got event: Title { title: "Task Manager" }
+[WAYLAND DETECTOR] Title changed: Task Manager
+DEBUG: Finished reading file, no match found.
+[DEBUG] App 'taskman' (orig: 'rc.xml') -> Icon Name: 'taskman', Path: Some("/home/resdon/.local/share/icons/hicolor/scalable/apps/taskman.svg")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190090, 713), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190090, 713), Got event: OutputEnter { output: WlOutput { id: ObjectId(wl_output@5, 5), version: 4, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } } }
+[WAYLAND] Unmatched event received: OutputEnter { output: WlOutput { id: ObjectId(wl_output@5, 5), version: 4, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } } }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190090, 713), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190090, 713), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190090, 713), Got event: Closed
+[WAYLAND DETECTOR] Window Closed: ZwlrForeignToplevelHandleV1 { id: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190090, 713), version: 3, data: Some(ObjectData { .. }), backend: WeakBackend { inner: WeakInnerBackend { state: (Weak) } } }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Title { title: "dockman/font.ttf at master · resdon/dockman and 3 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/font.ttf at master · resdon/dockman and 3 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Title { title: "resdon/dockman and 3 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: resdon/dockman and 3 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Title { title: "resdon and 3 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: resdon and 3 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Title { title: "resdon/dockman and 3 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: resdon/dockman and 3 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Title { title: "dockman/Cargo.toml at master · resdon/dockman and 3 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/Cargo.toml at master · resdon/dockman and 3 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190080, 14), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "New tab and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: New tab and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "resdon and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: resdon and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "dockman/src at master · resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: dockman/src at master · resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "resdon/dockman and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: resdon/dockman and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Title { title: "How to Install with Makefile - Google Gemini and 5 more pages - Personal - Microsoft\u{200b} Edge" }
+[WAYLAND DETECTOR] Title changed: How to Install with Makefile - Google Gemini and 5 more pages - Personal - Microsoft​ Edge
+[DEBUG] App 'microsoft-edge' (orig: 'microsoft-edge') -> Icon Name: 'microsoft-edge', Path: Some("/usr/share/icons/hicolor/256x256/apps/microsoft-edge.png")
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: State { state: [] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: State { state: [2, 0, 0, 0] }
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190081, 15), Got event: Done
+[WAYLAND TRACKER EVENT ARRIVED] Handle: ObjectId(zwlr_foreign_toplevel_handle_v1@4278190082, 16), Got event: Done

@@ -168,6 +168,15 @@ impl PointerHandler for AppState {
                 PointerEventKind::Enter { .. } | PointerEventKind::Motion { .. } => {
                     self.pointer_x = event.position.0 as usize;
                     self.pointer_y = event.position.1 as usize;
+                    
+                    if self.dragged_app_id.is_some() {
+                        let dx = event.position.0 - self.drag_start_x;
+                        let dy = event.position.1 - self.drag_start_y;
+                        if (dx * dx + dy * dy).sqrt() > 5.0 {
+                            self.is_dragging = true;
+                            layer_changed = true;
+                        }
+                    }
                 }
                 PointerEventKind::Leave { .. } => {
                     // FIX: When the pointer completely leaves the dock window, clear everything 
@@ -220,14 +229,16 @@ impl PointerHandler for AppState {
         let mut new_app_id = None;
         let mut new_x = self.hover_state.x;
 
-        let is_over_icons = self.pointer_y >= dock_top_bound || (current_surface_height == 200 && self.pointer_y <= 60);
+        let is_over_icons = self.pointer_y >= dock_top_bound;
 
         if is_over_icons {
             for (index, app_id) in apps_in_dock.iter().enumerate() {
                 let start_x = start_offset_x + spacing + index * (box_size + spacing);
                 let end_x = start_x + box_size;
+                let hit_start_x = start_x.saturating_sub(spacing / 2);
+                let hit_end_x = end_x + (spacing / 2);
                 
-                if self.pointer_x >= start_x && self.pointer_x <= end_x {
+                if self.pointer_x >= hit_start_x && self.pointer_x <= hit_end_x {
                     should_be_visible = true;
                     new_x = start_x + box_size / 2;
                     new_app_id = Some(app_id.clone());
@@ -306,6 +317,51 @@ impl PointerHandler for AppState {
             if let PointerEventKind::Press { button, .. } = event.kind { 
                 if button == 272 { // Left Click
                     
+
+
+                    // C. Dock Icon Click Handling (Initiate Drag)
+                    if is_over_icons {
+                        for (index, app_id) in apps_in_dock.iter().enumerate() {
+                            let start_x = start_offset_x + spacing + index * (box_size + spacing); 
+                            let end_x = start_x + box_size; 
+                            let hit_start_x = start_x.saturating_sub(spacing / 2);
+                            let hit_end_x = end_x + (spacing / 2);
+                            if self.pointer_x >= hit_start_x && self.pointer_x <= hit_end_x { 
+                                self.dragged_app_id = Some(app_id.clone());
+                                self.drag_start_x = self.pointer_x as f64;
+                                self.drag_start_y = self.pointer_y as f64;
+                                self.is_dragging = false;
+                                break;
+                            }
+                        }
+                    }
+                } else if button == 273 { // Right Click
+                    if is_over_icons {
+                        for (index, app_id) in apps_in_dock.iter().enumerate() {
+                            let start_x = start_offset_x + spacing + index * (box_size + spacing); 
+                            let end_x = start_x + box_size; 
+                            let hit_start_x = start_x.saturating_sub(spacing / 2);
+                            let hit_end_x = end_x + (spacing / 2);
+                            if self.pointer_x >= hit_start_x && self.pointer_x <= hit_end_x { 
+                                println!("[DEBUG] Right-clicked index {}, app_id: '{}'", index, app_id);
+                                self.menu_state.is_open = true; 
+                                self.menu_state.x = self.pointer_x; 
+                                self.menu_state.y = self.pointer_y; 
+                                self.menu_state.target_app_id = Some(app_id.clone()); 
+                                let windows = running_by_app.get(app_id).map(|v| v.clone()).unwrap_or_default(); 
+                                println!("[DEBUG] Windows for app '{}': {:?}", app_id, windows);
+                                self.menu_state.target_window = windows.iter()
+                                    .find(|id| self.open_windows.get(id).map(|w| w.is_activated).unwrap_or(false)) 
+                                    .cloned() 
+                                    .or_else(|| windows.first().cloned()); 
+                                layer_changed = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            } else if let PointerEventKind::Release { button, .. } = event.kind {
+                if button == 272 { // Left Click Release
                     // A. Context Menu Handling
                     if self.menu_state.is_open { 
                         let menu_width = MENU_WIDTH as usize; 
@@ -365,11 +421,11 @@ impl PointerHandler for AppState {
                                         println!("[DEBUG] Pin toggle request for normalized app_id: '{}'", app_id);
 									    if pinned.contains(&app_id) { 
                                             println!("[DEBUG] Removing app from pins: '{}'", app_id);
-									        pinned.remove(&app_id); 
+									        pinned.retain(|x| x != &app_id); 
 									        // Optional: you can delete the .raw file here if you want clean-up on unpin
 									    } else { 
                                             println!("[DEBUG] Adding app to pins: '{}'", app_id);
-									        pinned.insert(app_id.clone()); 
+									        pinned.push(app_id.clone()); 
 									        
 									        // INTERCEPT & CACHE IMAGE PERMANENTLY
 									        // First check our temporary dynamic icon cache
@@ -389,7 +445,7 @@ impl PointerHandler for AppState {
 									        }
 									    } 
 									    crate::modules::persistence::save_pinned_apps(&pinned); 
-									    self.pinned_apps = pinned.into_iter().collect(); 
+									    self.pinned_apps = pinned; 
 									},
                                     _ => {}
                                 }
@@ -418,8 +474,20 @@ impl PointerHandler for AppState {
                                    self.pointer_y >= menu_y && self.pointer_y <= menu_y + menu_height { 
                                     let idx = (self.pointer_y - menu_y) / item_h; 
                                     if let Some(handle_id) = windows.get(idx) { 
-                                        if let Some(win) = self.open_windows.get_mut(handle_id) { 
-                                            if let Some(seat) = &self.wl_seat { win.handle.activate(seat); } 
+                                        let sq_x = menu_x + menu_width - 25;
+                                        let sq_y = menu_y + idx * item_h + 5;
+                                        
+                                        if self.pointer_x >= sq_x && self.pointer_x <= sq_x + 20 &&
+                                           self.pointer_y >= sq_y && self.pointer_y <= sq_y + 20 {
+                                            // Close button clicked
+                                            if let Some(win) = self.open_windows.get_mut(handle_id) {
+                                                win.handle.close();
+                                            }
+                                        } else {
+                                            // Normal row clicked (activate)
+                                            if let Some(win) = self.open_windows.get_mut(handle_id) { 
+                                                if let Some(seat) = &self.wl_seat { win.handle.activate(seat); } 
+                                            }
                                         }
                                     }
                                     self.hover_state.is_visible = false; 
@@ -430,64 +498,105 @@ impl PointerHandler for AppState {
                         }
                     }
 
-                    // C. Dock Icon Click Handling
-                    if is_over_icons {
-                        for (index, app_id) in apps_in_dock.iter().enumerate() {
-                            let start_x = start_offset_x + spacing + index * (box_size + spacing); 
-                            let end_x = start_x + box_size; 
-                            if self.pointer_x >= start_x && self.pointer_x <= end_x { 
-                                if let Some(windows) = running_by_app.get(app_id) { 
-                                    if let Some(handle_id) = windows.first() { 
-                                        let was_active = self.open_windows.get(handle_id).map(|w| w.is_activated).unwrap_or(false); 
-                                        if let Some(win) = self.open_windows.get_mut(handle_id) { 
-                                            if was_active { win.handle.set_minimized(); } 
-                                            else { if let Some(seat) = &self.wl_seat { win.handle.activate(seat); } } 
-                                        }
+                    let mut was_dragging = false;
+                    if self.is_dragging {
+                        was_dragging = true;
+                        // Handle Drop (Reorder/Pin/Unpin)
+                        if let Some(dragged_id) = &self.dragged_app_id {
+                            if is_over_icons {
+                                let mut dropped_idx = None;
+                                for (index, _) in apps_in_dock.iter().enumerate() {
+                                    let start_x = start_offset_x + spacing + index * (box_size + spacing);
+                                    let hit_start_x = start_x.saturating_sub(spacing / 2);
+                                    let hit_end_x = start_x + box_size + (spacing / 2);
+                                    if self.pointer_x >= hit_start_x && self.pointer_x <= hit_end_x {
+                                        dropped_idx = Some(index);
+                                        break;
                                     }
-                                } else {
-                                    let launcher_path = if std::path::Path::new("./launcher.sh").exists() { "./launcher.sh".to_string() }
-                                                        else { "/usr/share/dockman/launcher.sh".to_string() };
-                                    
-                                    // NORMALIZE ID BEFORE LAUNCHING
-                                    let mut normalized_app_id = app_id.clone();
-                                    if let Some(idx) = normalized_app_id.rfind('_') {
-                                        if normalized_app_id[idx+1..].chars().all(|c| c.is_numeric()) {
-                                            normalized_app_id = normalized_app_id[..idx].to_string();
-                                        }
-                                    }
-                                    if normalized_app_id.to_lowercase().contains("transmission") {
-                                        normalized_app_id = "transmission-gtk".to_string();
-                                    }
-
-                                    println!("[DEBUG] Launching app via icon click: '{}' (normalized to: '{}')", app_id, normalized_app_id);
-                                    let _ = std::process::Command::new("sh").arg(launcher_path).arg(normalized_app_id).spawn();
                                 }
-                                break;
+                                if dropped_idx.is_none() && self.pointer_x >= start_offset_x {
+                                    dropped_idx = Some(apps_in_dock.len().saturating_sub(1));
+                                }
+                                
+                                if let Some(target_idx) = dropped_idx {
+                                    if let Some(target_app_id) = apps_in_dock.get(target_idx) {
+                                        let old_idx_opt = self.pinned_apps.iter().position(|x| x == dragged_id);
+                                        let new_idx_opt = self.pinned_apps.iter().position(|x| x == target_app_id);
+                                        
+                                        match (old_idx_opt, new_idx_opt) {
+                                            (Some(old_idx), Some(new_idx)) => {
+                                                let app = self.pinned_apps.remove(old_idx);
+                                                self.pinned_apps.insert(new_idx, app);
+                                            },
+                                            (None, Some(new_idx)) => {
+                                                self.pinned_apps.insert(new_idx, dragged_id.clone());
+                                            },
+                                            (Some(old_idx), None) => {
+                                                let app = self.pinned_apps.remove(old_idx);
+                                                self.pinned_apps.push(app);
+                                            },
+                                            (None, None) => {
+                                                self.pinned_apps.push(dragged_id.clone());
+                                            }
+                                        }
+                                        crate::modules::persistence::save_pinned_apps(&self.pinned_apps.iter().cloned().collect());
+                                        layer_changed = true;
+                                    }
+                                }
+                            } else {
+                                // Dropped outside the dock! Unpin it!
+                                if let Some(old_idx) = self.pinned_apps.iter().position(|x| x == dragged_id) {
+                                    self.pinned_apps.remove(old_idx);
+                                    crate::modules::persistence::save_pinned_apps(&self.pinned_apps.iter().cloned().collect());
+                                    layer_changed = true;
+                                }
                             }
                         }
                     }
-                } else if button == 273 { // Right Click
-                    if is_over_icons {
-                        for (index, app_id) in apps_in_dock.iter().enumerate() {
-                            let start_x = start_offset_x + spacing + index * (box_size + spacing); 
-                            let end_x = start_x + box_size; 
-                            if self.pointer_x >= start_x && self.pointer_x <= end_x { 
-                                println!("[DEBUG] Right-clicked index {}, app_id: '{}'", index, app_id);
-                                self.menu_state.is_open = true; 
-                                self.menu_state.x = self.pointer_x; 
-                                self.menu_state.y = self.pointer_y; 
-                                self.menu_state.target_app_id = Some(app_id.clone()); 
-                                let windows = running_by_app.get(app_id).map(|v| v.clone()).unwrap_or_default(); 
-                                println!("[DEBUG] Windows for app '{}': {:?}", app_id, windows);
-                                self.menu_state.target_window = windows.iter()
-                                    .find(|id| self.open_windows.get(id).map(|w| w.is_activated).unwrap_or(false)) 
-                                    .cloned() 
-                                    .or_else(|| windows.first().cloned()); 
-                                layer_changed = true;
-                                break;
+
+                    if !was_dragging {
+                        // C. Dock Icon Click Handling (Execute Launch/Focus)
+                        if is_over_icons {
+                            for (index, app_id) in apps_in_dock.iter().enumerate() {
+                                let start_x = start_offset_x + spacing + index * (box_size + spacing); 
+                                let end_x = start_x + box_size; 
+                                let hit_start_x = start_x.saturating_sub(spacing / 2);
+                                let hit_end_x = end_x + (spacing / 2);
+                                if self.pointer_x >= hit_start_x && self.pointer_x <= hit_end_x { 
+                                    if let Some(windows) = running_by_app.get(app_id) { 
+                                        if let Some(handle_id) = windows.first() { 
+                                            let was_active = self.open_windows.get(handle_id).map(|w| w.is_activated).unwrap_or(false); 
+                                            if let Some(win) = self.open_windows.get_mut(handle_id) { 
+                                                if was_active { win.handle.set_minimized(); } 
+                                                else { if let Some(seat) = &self.wl_seat { win.handle.activate(seat); } } 
+                                            }
+                                        }
+                                    } else {
+                                        let launcher_path = if std::path::Path::new("./launcher.sh").exists() { "./launcher.sh".to_string() }
+                                                            else { "/usr/share/dockman/launcher.sh".to_string() };
+                                        
+                                        // NORMALIZE ID BEFORE LAUNCHING
+                                        let mut normalized_app_id = app_id.clone();
+                                        if let Some(idx) = normalized_app_id.rfind('_') {
+                                            if normalized_app_id[idx+1..].chars().all(|c| c.is_numeric()) {
+                                                normalized_app_id = normalized_app_id[..idx].to_string();
+                                            }
+                                        }
+                                        if normalized_app_id.to_lowercase().contains("transmission") {
+                                            normalized_app_id = "transmission-gtk".to_string();
+                                        }
+
+                                        println!("[DEBUG] Launching app via icon click: '{}' (normalized to: '{}')", app_id, normalized_app_id);
+                                        let _ = std::process::Command::new("sh").arg(launcher_path).arg(normalized_app_id).spawn();
+                                    }
+                                    break;
+                                }
                             }
                         }
                     }
+                    
+                    self.is_dragging = false;
+                    self.dragged_app_id = None;
                 }
             }
         }
@@ -563,6 +672,7 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for AppState {
                 println!("[WAYLAND DETECTOR] Title changed: {}", title);
                 if let Some(window) = state.open_windows.get_mut(&handle.id()) {
                     window.title = title;
+                    window.icon_resolved = false;
                 }
                 state.update_window_icon(handle.id());
                 state.draw(qh);
@@ -572,6 +682,7 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for AppState {
 				if let Some(window) = state.open_windows.get_mut(&handle.id()) {
 				    window.app_id = app_id.clone();
 				    window.app_name = app_id.clone();
+				    window.icon_resolved = false;
 				}
                 state.update_window_icon(handle.id());
 				state.draw(qh);

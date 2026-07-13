@@ -7,7 +7,7 @@ pub fn draw_text(
     canvas: &mut [u8],
     canvas_width: u32,
     canvas_height: u32,
-    font: &fontdue::Font,
+    font_manager: &FontManager,
     text: &str,
     size: f32,
     start_x: usize,
@@ -16,6 +16,7 @@ pub fn draw_text(
 ) {
     let mut x_offset = start_x;
     for c in text.chars() {
+        let font = font_manager.get_font(c);
         let (metrics, bitmap) = font.rasterize(c, size);
         for y in 0..metrics.height {
             for x in 0..metrics.width {
@@ -36,6 +37,32 @@ pub fn draw_text(
         }
         x_offset += metrics.advance_width as usize;
     }
+}
+
+fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
+    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+    let m = l - c / 2.0;
+
+    let (r, g, b) = if h < 60.0 {
+        (c, x, 0.0)
+    } else if h < 120.0 {
+        (x, c, 0.0)
+    } else if h < 180.0 {
+        (0.0, c, x)
+    } else if h < 240.0 {
+        (0.0, x, c)
+    } else if h < 300.0 {
+        (x, 0.0, c)
+    } else {
+        (c, 0.0, x)
+    };
+
+    (
+        ((r + m) * 255.0) as u8,
+        ((g + m) * 255.0) as u8,
+        ((b + m) * 255.0) as u8,
+    )
 }
 
 // Standalone function cleanly exposed to your crate root
@@ -136,6 +163,61 @@ pub fn render_windows(
                     }
                 }
             }
+        } else {
+            // Draw a beautiful fallback rounded rect tile with a gradient and centered letter
+            let radius = 10.0;
+            let size_f = box_size as f64;
+            let is_inside_rounded_rect = |px: usize, py: usize| -> bool {
+                let x = px as f64;
+                let y = py as f64;
+                if x < radius && y < radius {
+                    (x - radius).powi(2) + (y - radius).powi(2) <= radius.powi(2)
+                } else if x > size_f - radius && y < radius {
+                    (x - (size_f - radius)).powi(2) + (y - radius).powi(2) <= radius.powi(2)
+                } else if x < radius && y > size_f - radius {
+                    (x - radius).powi(2) + (y - (size_f - radius)).powi(2) <= radius.powi(2)
+                } else if x > size_f - radius && y > size_f - radius {
+                    (x - (size_f - radius)).powi(2) + (y - (size_f - radius)).powi(2) <= radius.powi(2)
+                } else {
+                    true
+                }
+            };
+
+            let hash = app_id.bytes().fold(0u32, |acc, b| acc.wrapping_add(b as u32));
+            let hue = (hash % 360) as f32;
+            let base_color = hsl_to_rgb(hue, 0.6, 0.55);
+            let grad_color = hsl_to_rgb(hue, 0.6, 0.40);
+
+            for y in 0..box_size {
+                for x in 0..box_size {
+                    let canvas_x = start_x + x;
+                    let canvas_y = start_y + y;
+                    if canvas_x < width as usize && canvas_y < height as usize {
+                        if is_inside_rounded_rect(x, y) {
+                            let canvas_idx = (canvas_y * (width as usize) + canvas_x) * 4;
+                            let t = y as f32 / box_size as f32;
+                            let dim = if is_running { 1.0 } else { 0.5 };
+                            let r = (base_color.0 as f32 * (1.0 - t) + grad_color.0 as f32 * t) * dim;
+                            let g = (base_color.1 as f32 * (1.0 - t) + grad_color.1 as f32 * t) * dim;
+                            let b = (base_color.2 as f32 * (1.0 - t) + grad_color.2 as f32 * t) * dim;
+                            
+                            canvas[canvas_idx] = r as u8;
+                            canvas[canvas_idx + 1] = g as u8;
+                            canvas[canvas_idx + 2] = b as u8;
+                            canvas[canvas_idx + 3] = 255;
+                        }
+                    }
+                }
+            }
+
+            // Capitalized first letter
+            let letter = app_id.chars().next()
+                .unwrap_or('?')
+                .to_uppercase()
+                .to_string();
+
+            // Render letter centered
+            draw_text(canvas, width, height, font_manager, &letter, 24.0, start_x + 16, start_y + 11, (255, 255, 255));
         }
 
         // Render tracking indicator dash
@@ -183,7 +265,7 @@ use crate::modules::context_menu::{MENU_WIDTH, MENU_HEIGHT, MENU_ITEM_HEIGHT, ge
         let actions = ["Focus", "Open new", "Minimize", "Close", if is_pinned { "Unpin" } else { "Pin" }];
 
         for (i, label) in actions.iter().enumerate() {
-            draw_text(canvas, width, height, &font_manager.font, label, 14.0, menu_x + 10, menu_y + 5 + i * item_h, (255, 255, 255));
+            draw_text(canvas, width, height, font_manager, label, 14.0, menu_x + 10, menu_y + 5 + i * item_h, (255, 255, 255));
             if i > 0 {
                 let line_y = menu_y + i * item_h;
                 for x in 0..menu_width {
@@ -223,7 +305,48 @@ use crate::modules::context_menu::{MENU_WIDTH, MENU_HEIGHT, MENU_ITEM_HEIGHT, ge
                     } else { 
                         w.title.clone() 
                     };
-                    draw_text(canvas, width, height, &font_manager.font, &title, 14.0, menu_x + 5, menu_y + i * item_h + 5, (255, 255, 255));
+                    draw_text(canvas, width, height, font_manager, &title, 14.0, menu_x + 5, menu_y + i * item_h + 5, (255, 255, 255));
+
+                    // Draw Red Close Square
+                    let sq_size = 20;
+                    let sq_x = menu_x + menu_width - sq_size - 5;
+                    let sq_y = menu_y + i * item_h + 5;
+                    
+                    for dy in 0..sq_size {
+                        for dx in 0..sq_size {
+                            let cx = sq_x + dx;
+                            let cy = sq_y + dy;
+                            if cx < width as usize && cy < height as usize {
+                                let idx = (cy * width as usize + cx) * 4;
+                                canvas[idx] = 0xE0;     // R
+                                canvas[idx + 1] = 0x30; // G
+                                canvas[idx + 2] = 0x30; // B
+                                canvas[idx + 3] = 0xFF; // A
+                            }
+                        }
+                    }
+                    
+                    // Draw white cross inside the red square
+                    let cross_margin = 5;
+                    let cross_size = sq_size - 2 * cross_margin;
+                    for t in 0..cross_size {
+                        for w in 0..2 { // 2px thickness
+                            // \ diagonal
+                            let px1 = sq_x + cross_margin + t + w;
+                            let py1 = sq_y + cross_margin + t;
+                            if px1 < width as usize && py1 < height as usize {
+                                let idx = (py1 * width as usize + px1) * 4;
+                                canvas[idx] = 0xFF; canvas[idx+1] = 0xFF; canvas[idx+2] = 0xFF; canvas[idx+3] = 0xFF;
+                            }
+                            // / diagonal
+                            let px2 = sq_x + cross_margin + t + w;
+                            let py2 = sq_y + sq_size - cross_margin - t - 1;
+                            if px2 < width as usize && py2 < height as usize {
+                                let idx = (py2 * width as usize + px2) * 4;
+                                canvas[idx] = 0xFF; canvas[idx+1] = 0xFF; canvas[idx+2] = 0xFF; canvas[idx+3] = 0xFF;
+                            }
+                        }
+                    }
 
                     if i > 0 {
                         let line_y = menu_y + i * item_h;

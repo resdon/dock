@@ -38,12 +38,43 @@ use modules::persistence;
 
 // 2. Mock FontManager structure to fix E0425 and E0433
 pub struct FontManager {
-    pub font: fontdue::Font,
+    pub fonts: Vec<fontdue::Font>,
 }
 impl FontManager {
     pub fn new(bytes: &[u8]) -> Self { 
-        let font = fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default()).unwrap();
-        FontManager { font } 
+        let mut fonts = Vec::new();
+        if let Ok(font) = fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default()) {
+            fonts.push(font);
+        } else {
+            let fallback = fontdue::Font::from_bytes(vec![0; 100].as_slice(), fontdue::FontSettings::default()).unwrap();
+            fonts.push(fallback);
+        }
+        
+        let fallback_paths = [
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+        ];
+        for path in fallback_paths.iter() {
+            if let Ok(bytes) = std::fs::read(path) {
+                if let Ok(font) = fontdue::Font::from_bytes(bytes.as_slice(), fontdue::FontSettings::default()) {
+                    fonts.push(font);
+                    break;
+                }
+            }
+        }
+        
+        FontManager { fonts } 
+    }
+    
+    pub fn get_font(&self, c: char) -> &fontdue::Font {
+        for font in &self.fonts {
+            if font.lookup_glyph_index(c) > 0 {
+                return font;
+            }
+        }
+        self.fonts.first().unwrap()
     }
 }
 
@@ -89,11 +120,19 @@ pub struct AppState {
     pub last_interact_time: std::time::Instant,
     pub needs_redraw: bool,
     pub last_mouse_pos: Option<(f64, f64)>,
+    pub is_dragging: bool,
+    pub drag_start_x: f64,
+    pub drag_start_y: f64,
+    pub dragged_app_id: Option<String>,
 }
 
 impl AppState {
     pub fn update_window_icon(&mut self, window_id: ObjectId) {
         if let Some(window) = self.open_windows.get_mut(&window_id) {
+            if window.icon_resolved {
+                return;
+            }
+            
             let mut search_id = window.app_id.trim().to_string();
             
             // 0. Proactive cleaning: strip suffixes like _1234 (common for dynamic app_ids)
@@ -132,6 +171,18 @@ impl AppState {
                  search_id = "transmission-gtk".to_string();
             }
 
+            // App-specific overrides for apps with known identifiers
+            let title_lower = window.title.to_lowercase();
+            let id_lower = search_id.to_lowercase();
+            if (id_lower.contains("taskman") || title_lower.contains("task manager")) && crate::get_icon_path(&search_id).is_none() {
+                search_id = "taskman".to_string();
+                window.app_id = search_id.clone();
+            }
+            if id_lower.contains("antigravity") && crate::get_icon_path(&search_id).is_none() {
+                search_id = "antigravity-ide".to_string();
+                window.app_id = search_id.clone();
+            }
+
             if !search_id.is_empty() {
                 let icon_name = crate::icon_utils::extract_icon_name(&search_id);
                 let icon_path = crate::get_icon_path(&search_id);
@@ -149,8 +200,12 @@ impl AppState {
                     }
                 }
                 window.icon_name = icon_name;
-                window.icon_rgba = raw_pixels;
+                window.icon_rgba = raw_pixels.clone();
                 window.icon_size = target_size;
+                // Only mark resolved if we actually found an icon
+                if raw_pixels.is_some() {
+                    window.icon_resolved = true;
+                }
             } else {
                 println!("[DEBUG] Could not resolve any ID for window with title '{}'", window.title);
             }
@@ -191,9 +246,49 @@ impl AppState {
             surface.set_size(self.width, self.height);
             let compositor = self.compositor_state.wl_compositor();
             let region = compositor.create_region(qh, ());
-            region.add(0, 0, self.width as i32, self.height as i32);
+            
+            // 1. The dock itself (bottom 60px of the surface)
+            let dock_y = (self.height as i32).saturating_sub(60);
+            region.add(0, dock_y, self.width as i32, 60);
+
+            // 2. If hover preview is visible, add its bounds to the input region
+            if self.hover_state.is_visible {
+                if let Some(ref app_id) = self.hover_state.app_id {
+                    let count = self.open_windows.values()
+                        .filter(|w| {
+                            let id = if !w.app_id.is_empty() { w.app_id.as_str() }
+                                     else if !w.title.is_empty() { w.title.as_str() }
+                                     else { "Unknown" };
+                            id == app_id.as_str()
+                        })
+                        .count();
+                    if count > 0 {
+                        let (menu_x, menu_y, menu_width, menu_height) = crate::modules::context_menu::get_hover_menu_bounds(
+                            self.hover_state.x, self.width, self.height, count
+                        );
+                        region.add(menu_x as i32, menu_y as i32, menu_width as i32, menu_height as i32);
+                        
+                        let gap_y = (menu_y + menu_height) as i32;
+                        let dock_top = (self.height as i32).saturating_sub(60);
+                        if gap_y < dock_top {
+                            region.add(menu_x as i32, gap_y, menu_width as i32, dock_top - gap_y);
+                        }
+                    }
+                }
+            }
+
+            // 3. If context menu is open, add its bounds to the input region
+            if self.menu_state.is_open {
+                let menu_width = crate::modules::context_menu::MENU_WIDTH as i32;
+                let menu_height = crate::modules::context_menu::MENU_HEIGHT as i32;
+                let menu_x = (self.menu_state.x as i32).min((self.width as i32).saturating_sub(menu_width));
+                let menu_y = (self.menu_state.y as i32).saturating_sub(menu_height);
+                region.add(menu_x, menu_y, menu_width, menu_height);
+            }
+
             surface.wl_surface().set_input_region(Some(&region));
-            surface.wl_surface().commit();
+            // NOTE: Do NOT commit here — we commit below after attaching the buffer.
+            // An early commit with no buffer causes the compositor to show blank.
         }
 
         // 4. Create buffer and draw
@@ -216,7 +311,7 @@ impl AppState {
             &self.font_manager
         );
 
-        // 5. Commit the buffer
+        // 5. Commit the buffer (single commit after both input region and buffer are set)
         if let Some(ref surface) = self.layer_surface {
             buffer.attach_to(surface.wl_surface()).expect("Buffer attach failed");
             surface.wl_surface().damage_buffer(0, 0, self.width as i32, self.height as i32);
@@ -300,7 +395,7 @@ fn main() {
         pointer_x: 0,
         pointer_y: 0,
         open_windows: HashMap::new(),
-        pinned_apps: pinned_vector.into_iter().collect(), // Looked up safely now!
+        pinned_apps: pinned_vector, // Already a Vec<String>
         icon_cache: permanent_icon_cache,                 // Found in scope now!
         menu_state: MenuState {
             x: 0,
@@ -318,6 +413,10 @@ fn main() {
         last_interact_time: std::time::Instant::now(),
         needs_redraw: false,
         last_mouse_pos: None,
+        is_dragging: false,
+        drag_start_x: 0.0,
+        drag_start_y: 0.0,
+        dragged_app_id: None,
     };
 
     // =========================================================================

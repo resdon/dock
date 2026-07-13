@@ -39,6 +39,7 @@ pub mod models {
 	    pub handle: ZwlrForeignToplevelHandleV1,
 	    pub last_state: LastState,
 	    pub is_pending: bool,
+	    pub icon_resolved: bool,
 	}
 
 	impl WindowDiagnostics {
@@ -57,6 +58,7 @@ pub mod models {
 	            handle, // Initialize with the passed handle
 	            last_state: LastState::None,
 	            is_pending: false,
+	            icon_resolved: false,
 	        }
 	    }
 	}
@@ -323,18 +325,31 @@ use std::path::PathBuf;
 // Main icon puller
 pub fn get_icon_path(app_id: &str) -> Option<PathBuf> {
     let name = icon_utils::extract_icon_name(app_id);
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
     
-    // 1. Try hicolor scalable
-    if let Some(path) = icon_utils::find_icon_path("/usr/share/icons/hicolor/scalable/apps", &name) {
-        return Some(path);
+    let search_paths = [
+        // User local hicolor only (exact theme, not a flat scan of all themes)
+        format!("{}/.local/share/icons/hicolor/scalable/apps", home),
+        format!("{}/.local/share/icons/hicolor/256x256/apps", home),
+        format!("{}/.local/share/icons/hicolor/128x128/apps", home),
+        format!("{}/.local/share/icons/hicolor/48x48/apps", home),
+        // System hicolor
+        "/usr/share/icons/hicolor/scalable/apps".to_string(),
+        "/usr/share/icons/hicolor/256x256/apps".to_string(),
+        "/usr/share/icons/hicolor/128x128/apps".to_string(),
+        "/usr/share/icons/hicolor/64x64/apps".to_string(),
+        "/usr/share/icons/hicolor/48x48/apps".to_string(),
+        // Pixmaps
+        "/usr/share/pixmaps".to_string(),
+    ];
+
+    for path in &search_paths {
+        if let Some(found) = icon_utils::find_icon_path(path, &name) {
+            return Some(found);
+        }
     }
     
-    // 2. Try hicolor 64x64
-    if let Some(path) = icon_utils::find_icon_path("/usr/share/icons/hicolor/64/apps", &name) {
-        return Some(path);
-    }
-    
-    // 3. Fallback to exhaustive search in icon_list.txt
+    // Final fallback: exhaustive search in icon_list.txt
     icon_utils::search_in_icon_list(&name)
 }
 

@@ -4,15 +4,40 @@ use std::path::PathBuf;
 /// Searches for an icon path using the Freedesktop specification.
 /// 'theme_name' is typically retrieved from your system settings (e.g., "Adwaita").
 pub fn get_icon_path(icon_name: &str, size: u32, theme_name: &str) -> Option<PathBuf> {
-    // 1. linicon handles the directory search order ($HOME/.icons, /usr/share/icons, etc.)
-    // 2. lookup_icon searches for the base name
-    // 3. from_theme ensures we respect user configuration
-    lookup_icon(icon_name)
+    // 1. Strict match
+    if let Some(res) = lookup_icon(icon_name)
         .from_theme(theme_name)
         .with_size(size as u16)
         .next()
         .and_then(|result| result.ok())
-        .map(|icon| icon.path)
+    {
+        return Some(res.path);
+    }
+    
+    // 2. Fallback to hicolor without size constraints
+    if let Some(res) = lookup_icon(icon_name)
+        .from_theme("hicolor")
+        .next()
+        .and_then(|result| result.ok())
+    {
+        return Some(res.path);
+    }
+
+    // 3. Fallback to any theme without size constraints
+    if let Some(res) = lookup_icon(icon_name)
+        .next()
+        .and_then(|result| result.ok())
+    {
+        return Some(res.path);
+    }
+
+    // 4. Hardcoded pixmaps check
+    let pixmap = PathBuf::from(format!("/usr/share/pixmaps/{}.png", icon_name));
+    if pixmap.exists() {
+        return Some(pixmap);
+    }
+
+    None
 }
 
 pub fn main() {
