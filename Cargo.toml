@@ -1,6 +1,6 @@
 [package]
 name = "dockman"
-version = "1.2.0"
+version = "1.2.1"
 edition = "2021"
 default-run = "dockman"
 
@@ -11,6 +11,14 @@ path = "src/services/test.rs"
 [[bin]]
 name = "monitor"
 path = "src/services/monitor.rs"
+
+[[bin]]
+name = "monitor2"
+path = "src/services/monitor2.rs"
+
+[[bin]]
+name = "monitor3"
+path = "src/services/monitor3.rs"
 
 [lib]
 name = "dockman_lib"
