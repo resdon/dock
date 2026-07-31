@@ -5,6 +5,8 @@ use std::io::{BufRead, BufReader};
 use walkdir::WalkDir;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 // Add this to the top of src/models.rs
+
+use wayland_client::protocol::wl_output::WlOutput;
 use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1;
 
 pub use self::models::WindowDiagnostics;
@@ -16,6 +18,7 @@ pub use self::terminal_graphics::load_image_raw_rgba;
 
 pub mod models {
 	use super::ZwlrForeignToplevelHandleV1;
+    use super::*;
 
 	#[derive(PartialEq, Clone, Copy, Debug)]
 	pub enum LastState {
@@ -40,6 +43,7 @@ pub mod models {
 	    pub last_state: LastState,
 	    pub is_pending: bool,
 	    pub icon_resolved: bool,
+        pub outputs: Vec<WlOutput>, // Track active outputs for multi-monitor scoping
 	}
 
 	impl WindowDiagnostics {
@@ -59,6 +63,7 @@ pub mod models {
 	            last_state: LastState::None,
 	            is_pending: false,
 	            icon_resolved: false,
+                outputs: Vec::new(),
 	        }
 	    }
 	}
@@ -72,10 +77,10 @@ use std::fs;
 use std::path::PathBuf;
 
 	pub fn find_desktop_file_by_name(search_name: &str) -> Option<String> {
-	    let dirs = vec![
-	        PathBuf::from("/usr/share/applications"),
-	        PathBuf::from("/home/resdon/.local/share/applications"),
-	    ];
+        let mut dirs = vec![PathBuf::from("/usr/share/applications")];
+        if let Ok(home) = std::env::var("HOME") {
+            dirs.push(PathBuf::from(home).join(".local/share/applications"));
+        }
 
 	    for dir in dirs {
 	        if let Ok(entries) = fs::read_dir(dir) {
@@ -112,10 +117,10 @@ use std::path::PathBuf;
 	}
 
 	pub fn find_desktop_file_by_exec(app_id: &str) -> Option<String> {
-	    let dirs = vec![
-	        PathBuf::from("/usr/share/applications"),
-	        PathBuf::from("/home/resdon/.local/share/applications"),
-	    ];
+        let mut dirs = vec![PathBuf::from("/usr/share/applications")];
+        if let Ok(home) = std::env::var("HOME") {
+            dirs.push(PathBuf::from(home).join(".local/share/applications"));
+        }
 	    
 	    // Clean up app_id: many compositors append PIDs or random strings (e.g. app_1234)
 	    let app_id_clean = app_id.split('_').next().unwrap_or(app_id).to_lowercase();
@@ -150,10 +155,10 @@ use std::path::PathBuf;
 	}
 
 	pub fn find_icon_by_name(search_name: &str) -> Option<String> {
-	    let dirs = vec![
-	        PathBuf::from("/usr/share/applications"),
-	        PathBuf::from("/home/resdon/.local/share/applications"),
-	    ];
+        let mut dirs = vec![PathBuf::from("/usr/share/applications")];
+        if let Ok(home) = std::env::var("HOME") {
+            dirs.push(PathBuf::from(home).join(".local/share/applications"));
+        }
 
 	    for dir in dirs {
 	        if let Ok(entries) = fs::read_dir(dir) {
