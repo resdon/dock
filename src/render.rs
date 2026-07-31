@@ -159,9 +159,9 @@ pub fn render_windows(
                         let alpha = icon_pixels[src_idx + 3] as f32 / 255.0;
                         if alpha > 0.0 {
                             let dim = if is_running { 1.0 } else { 0.5 };
-                            canvas[canvas_idx] = ((icon_pixels[src_idx] as f32 * alpha * dim) + (canvas[canvas_idx] as f32 * (1.0 - alpha))) as u8;
-                            canvas[canvas_idx + 1] = ((icon_pixels[src_idx + 1] as f32 * alpha * dim) + (canvas[canvas_idx + 1] as f32 * (1.0 - alpha))) as u8;
-                            canvas[canvas_idx + 2] = ((icon_pixels[src_idx + 2] as f32 * alpha * dim) + (canvas[canvas_idx + 2] as f32 * (1.0 - alpha))) as u8;
+                            canvas[canvas_idx]     = ((icon_pixels[src_idx + 2] as f32 * alpha * dim) + (canvas[canvas_idx] as f32 * (1.0 - alpha))) as u8; // Blue
+                            canvas[canvas_idx + 1] = ((icon_pixels[src_idx + 1] as f32 * alpha * dim) + (canvas[canvas_idx + 1] as f32 * (1.0 - alpha))) as u8; // Green
+                            canvas[canvas_idx + 2] = ((icon_pixels[src_idx]     as f32 * alpha * dim) + (canvas[canvas_idx + 2] as f32 * (1.0 - alpha))) as u8; // Red
                             canvas[canvas_idx + 3] = 255;
                         }
                     }

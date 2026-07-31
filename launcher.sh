@@ -8,7 +8,15 @@ if [ -z "$APP_ID" ]; then
     exit 1
 fi
 
-# 0. Check if this is a Steam AppID (e.g. steam_icon_730 or steam_app_730)
+# 0. Special handler for custom local binaries like taskman
+if [ "$APP_ID" = "taskman" ]; then
+    if [ -x "./taskman" ]; then
+        ./taskman >/dev/null 2>&1 &
+        exit 0
+    fi
+fi
+
+# 0b. Check if this is a Steam AppID (e.g. steam_icon_730 or steam_app_730)
 if [[ "$APP_ID" =~ ^steam_(icon|app)_([0-9]+)$ ]]; then
     APPID="${BASH_REMATCH[2]}"
     steam "steam://rungameid/${APPID}" >/dev/null 2>&1 &

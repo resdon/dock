@@ -464,6 +464,9 @@ impl PointerHandler for AppState {
                                     _ => {}
                                 }
                             }
+                            self.is_dragging = false;
+                            self.dragged_app_id = None;
+                            
                             self.menu_state.is_open = false; 
                             self.draw(qh); 
                             return;

@@ -385,8 +385,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "dockman"
-version = "1.2.1"
+name = "dock"
+version = "1.2.2"
 dependencies = [
  "base64",
  "dirs",
@@ -395,6 +395,7 @@ dependencies = [
  "image",
  "lazy_static",
  "linicon",
+ "memmap2 0.9.10",
  "once_cell",
  "resvg",
  "serde",

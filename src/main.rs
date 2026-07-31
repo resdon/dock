@@ -26,6 +26,7 @@ use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_m
 use wayland_client::backend::ObjectId;
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 // 1. Mount the files as local root modules
 pub mod handlers;
@@ -35,48 +36,7 @@ pub mod modules;
 
 // ...
 use modules::persistence;
-
-// 2. Mock FontManager structure to fix E0425 and E0433
-pub struct FontManager {
-    pub fonts: Vec<fontdue::Font>,
-}
-impl FontManager {
-    pub fn new(bytes: &[u8]) -> Self { 
-        let mut fonts = Vec::new();
-        if let Ok(font) = fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default()) {
-            fonts.push(font);
-        } else {
-            let fallback = fontdue::Font::from_bytes(vec![0; 100].as_slice(), fontdue::FontSettings::default()).unwrap();
-            fonts.push(fallback);
-        }
-        
-        let fallback_paths = [
-            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/noto/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-            "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
-        ];
-        for path in fallback_paths.iter() {
-            if let Ok(bytes) = std::fs::read(path) {
-                if let Ok(font) = fontdue::Font::from_bytes(bytes.as_slice(), fontdue::FontSettings::default()) {
-                    fonts.push(font);
-                    break;
-                }
-            }
-        }
-        
-        FontManager { fonts } 
-    }
-    
-    pub fn get_font(&self, c: char) -> &fontdue::Font {
-        for font in &self.fonts {
-            if font.lookup_glyph_index(c) > 0 {
-                return font;
-            }
-        }
-        self.fonts.first().unwrap()
-    }
-}
+use crate::modules::world::FontManager;
 
 pub struct MenuState {
     pub x: usize,
@@ -135,7 +95,17 @@ impl AppState {
                 return;
             }
             
-            let mut search_id = window.app_id.trim().to_string();
+            let mut search_id = if !window.app_id.trim().is_empty() {
+                window.app_id.trim().to_string()
+            } else {
+                window.title.trim().to_string()
+            };
+
+            // Normalize taskman / Task Manager title or ID
+            let lower_id = search_id.to_lowercase();
+            if lower_id.contains("task manager") || lower_id == "taskman" {
+                search_id = "taskman".to_string();
+            }
             
             // 0. Proactive cleaning: strip suffixes like _1234 (common for dynamic app_ids), preserving steam_icon_<appid>
             if !search_id.starts_with("steam_icon_") {
@@ -184,11 +154,11 @@ impl AppState {
                 }
             }
 
-            // Match against pinned apps immediately (e.g. if raw app_id is "wezterm-dropdown" and pinned is "org.wezfurlong.wezterm")
+            // Match against pinned apps strictly by exact match
             for pinned_id in &self.pinned_apps {
                 let p_lower = pinned_id.to_lowercase();
                 let s_lower = search_id.to_lowercase();
-                if (p_lower.contains(&s_lower) || s_lower.contains(&p_lower)) 
+                if p_lower == s_lower 
                     && !p_lower.starts_with("steam_icon_") && !s_lower.starts_with("steam_icon_") 
                 {
                     search_id = pinned_id.clone();
@@ -196,7 +166,6 @@ impl AppState {
                     break;
                 }
             }
-
             // 1. Try to normalize app_id to a stable .desktop ID if it isn't one already
             if !search_id.is_empty() {
                 // If it doesn't look like a standard ID, try to find the desktop file it belongs to
@@ -387,9 +356,15 @@ fn main() {
 
     let seat_state = SeatState::new(&globals, &qh);
     
-	let font_bytes = std::fs::read("font.ttf")
-        .or_else(|_| std::fs::read("/usr/share/dockman/font.ttf"))
-        .unwrap_or_else(|_| vec![0; 100]);
+    // Load font for fontmanager
+    let font_path = [
+        PathBuf::from("font.ttf"),
+        PathBuf::from("/usr/share/dockman/font.ttf"),
+        PathBuf::from("/usr/share/fonts/TTF/DejaVuSans.ttf"),
+    ]
+    .into_iter()
+    .find(|p| p.exists())
+    .expect("No valid font file found on system!");
 
     // =========================================================================
     // 1. CREATE THE VARIABLES RIGHT BEFORE APPSTATE USES THEM
@@ -419,7 +394,7 @@ fn main() {
         width: 100, 
         height: 60,
         toplevel_manager: None, // This gets bound right below this block
-        font_manager: FontManager::new(&font_bytes),
+        font_manager: FontManager::from_file(&font_path).expect("Failed to memory-map font file"),
         wl_seat: None,
         wl_pointer: None,
         pointer_x: 0,
