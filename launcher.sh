@@ -1,5 +1,5 @@
 #!/bin/bash
-# dockman-launcher.sh - Robustly launch applications by AppId or command name
+# launcher.sh - Robustly launch applications by AppId or command name
 
 APP_ID="$1"
 

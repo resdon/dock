@@ -21,7 +21,7 @@ fn get_cache_dir() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
     let mut path = PathBuf::from(home);
     path.push(".config");
-    path.push("dockman");
+    path.push("dock");
     path.push("cached_icons");
     let _ = fs::create_dir_all(&path);
     path

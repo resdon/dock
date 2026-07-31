@@ -359,7 +359,7 @@ fn main() {
     // Load font for fontmanager
     let font_path = [
         PathBuf::from("font.ttf"),
-        PathBuf::from("/usr/share/dockman/font.ttf"),
+        PathBuf::from("/usr/share/dock/font.ttf"),
         PathBuf::from("/usr/share/fonts/TTF/DejaVuSans.ttf"),
     ]
     .into_iter()

@@ -2,7 +2,7 @@ use std::fs;
 
 fn get_config_dir() -> String {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    format!("{}/.config/dockman", home)
+    format!("{}/.config/dock", home)
 }
 
 fn get_config_path() -> String {

@@ -399,7 +399,7 @@ impl PointerHandler for AppState {
                                     },
                                     1 => {
                                         let launcher_path = if std::path::Path::new("./launcher.sh").exists() { "./launcher.sh".to_string() }
-                                                            else { "/usr/share/dockman/launcher.sh".to_string() };
+                                                            else { "/usr/share/dock/launcher.sh".to_string() };
                                         println!("[DEBUG] Launching app via context menu: '{}'", app_id);
                                         let _ = std::process::Command::new("sh").arg(launcher_path).arg(app_id).spawn();
                                     },
@@ -595,7 +595,7 @@ impl PointerHandler for AppState {
                                         }
                                     } else {
                                         let launcher_path = if std::path::Path::new("./launcher.sh").exists() { "./launcher.sh".to_string() }
-                                                            else { "/usr/share/dockman/launcher.sh".to_string() };
+                                                            else { "/usr/share/dock/launcher.sh".to_string() };
                                         
                                         // NORMALIZE ID BEFORE LAUNCHING
                                         let mut normalized_app_id = app_id.clone();

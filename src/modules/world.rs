@@ -28,7 +28,7 @@ impl FontManager {
 
         let cache_dir = dirs::cache_dir()
             .unwrap_or_else(|| PathBuf::from("/tmp"))
-            .join("dockman/glyphs");
+            .join("dock/glyphs");
         let _ = fs::create_dir_all(&cache_dir);
 
         eprintln!("[FontManager] Initialized with cache dir: {:?}", cache_dir);
@@ -46,7 +46,7 @@ impl FontManager {
         let font = Font::from_bytes(font_data, FontSettings::default()).expect("Invalid font data");
         let cache_dir = dirs::cache_dir()
             .unwrap_or_else(|| PathBuf::from("/tmp"))
-            .join("dockman/glyphs");
+            .join("dock/glyphs");
         let _ = fs::create_dir_all(&cache_dir);
 
         eprintln!("[FontManager] Initialized (raw bytes) with cache dir: {:?}", cache_dir);

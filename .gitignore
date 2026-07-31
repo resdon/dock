@@ -1,7 +1,7 @@
 /target
-/dockman
+/dock
 /pkg
-/src/dockman
+/src/dock
 /*.pkg.tar.zst
 /trash
 
