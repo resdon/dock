@@ -174,8 +174,20 @@ impl PointerHandler for AppState {
                         let dy = event.position.1 - self.drag_start_y;
                         if (dx * dx + dy * dy).sqrt() > 5.0 {
                             self.is_dragging = true;
-                            layer_changed = true;
                         }
+                        if self.is_dragging {
+                            // Draw immediately in the handler — blocking_dispatch already
+                            // read the latest socket data so this is the freshest position.
+                            // Rate-limit to ~4ms (240fps) to avoid overwhelming the compositor.
+                            let now = std::time::Instant::now();
+                            if now.duration_since(self.last_drag_draw).as_millis() >= 4 {
+                                self.last_drag_draw = now;
+                                self.draw(qh);
+                                let _ = self.connection.flush();
+                            }
+                        }
+                    } else {
+                        layer_changed = true; // normal hover updates
                     }
                 }
                 PointerEventKind::Leave { .. } => {
@@ -408,9 +420,11 @@ impl PointerHandler for AppState {
 									4 => {
                                         // NORMALIZE ID BEFORE PINNING
                                         let mut app_id = app_id;
-                                        if let Some(idx) = app_id.rfind('_') {
-                                            if app_id[idx+1..].chars().all(|c| c.is_numeric()) {
-                                                app_id = app_id[..idx].to_string();
+                                        if !app_id.starts_with("steam_icon_") {
+                                            if let Some(idx) = app_id.rfind('_') {
+                                                if app_id[idx+1..].chars().all(|c| c.is_numeric()) {
+                                                    app_id = app_id[..idx].to_string();
+                                                }
                                             }
                                         }
                                         if app_id.to_lowercase().contains("transmission") {
@@ -525,24 +539,29 @@ impl PointerHandler for AppState {
                                         
                                         match (old_idx_opt, new_idx_opt) {
                                             (Some(old_idx), Some(new_idx)) => {
-                                                let app = self.pinned_apps.remove(old_idx);
-                                                self.pinned_apps.insert(new_idx, app);
+                                                if old_idx != new_idx {
+                                                    let app = self.pinned_apps.remove(old_idx);
+                                                    self.pinned_apps.insert(new_idx, app);
+                                                    layer_changed = true;
+                                                }
                                             },
                                             (None, Some(new_idx)) => {
                                                 self.pinned_apps.insert(new_idx, dragged_id.clone());
+                                                layer_changed = true;
                                             },
                                             (Some(old_idx), None) => {
                                                 let app = self.pinned_apps.remove(old_idx);
                                                 self.pinned_apps.push(app);
+                                                layer_changed = true;
                                             },
                                             (None, None) => {
                                                 self.pinned_apps.push(dragged_id.clone());
+                                                layer_changed = true;
                                             }
                                         }
-                                        crate::modules::persistence::save_pinned_apps(&self.pinned_apps.iter().cloned().collect());
-                                        layer_changed = true;
                                     }
                                 }
+                                crate::modules::persistence::save_pinned_apps(&self.pinned_apps.iter().cloned().collect());
                             } else {
                                 // Dropped outside the dock! Unpin it!
                                 if let Some(old_idx) = self.pinned_apps.iter().position(|x| x == dragged_id) {
@@ -577,9 +596,11 @@ impl PointerHandler for AppState {
                                         
                                         // NORMALIZE ID BEFORE LAUNCHING
                                         let mut normalized_app_id = app_id.clone();
-                                        if let Some(idx) = normalized_app_id.rfind('_') {
-                                            if normalized_app_id[idx+1..].chars().all(|c| c.is_numeric()) {
-                                                normalized_app_id = normalized_app_id[..idx].to_string();
+                                        if !normalized_app_id.starts_with("steam_icon_") {
+                                            if let Some(idx) = normalized_app_id.rfind('_') {
+                                                if normalized_app_id[idx+1..].chars().all(|c| c.is_numeric()) {
+                                                    normalized_app_id = normalized_app_id[..idx].to_string();
+                                                }
                                             }
                                         }
                                         if normalized_app_id.to_lowercase().contains("transmission") {
@@ -608,7 +629,7 @@ impl PointerHandler for AppState {
 
         if self.needs_redraw {
             self.draw(qh);
-            self.needs_redraw = false; 
+            self.needs_redraw = false;
             let _ = self.connection.flush();
         }
     }
@@ -631,7 +652,6 @@ impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for AppState {
             state.open_windows.entry(toplevel.id()).or_insert_with(|| {
                 WindowDiagnostics::new(toplevel.clone())
             });
-            state.draw(qh);
         }
     }
 

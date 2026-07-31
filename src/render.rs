@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use crate::models::WindowDiagnostics;
-
+use crate::modules::context_menu::DOCK_HEIGHT;
 use crate::{MenuState, HoverState, FontManager};
 
 pub fn draw_text(
@@ -76,6 +76,10 @@ pub fn render_windows(
     menu_state: &MenuState,
     hover_state: &HoverState,
     font_manager: &FontManager,
+    is_dragging: bool,
+    dragged_app_id: Option<&String>,
+    pointer_x: usize,
+    pointer_y: usize,
 ) {
     // 1. Clear background
     let dock_height = DOCK_HEIGHT as usize;
@@ -238,14 +242,10 @@ pub fn render_windows(
         }
     }
 
-use crate::modules::context_menu::{MENU_WIDTH, MENU_HEIGHT, MENU_ITEM_HEIGHT, get_hover_menu_bounds, HOVER_ITEM_HEIGHT, DOCK_HEIGHT};
-// ... rest of imports
-
-// ... inside render_windows, section 5
     // 4. Render Context Menu
     if menu_state.is_open {
-        let menu_width = MENU_WIDTH as usize;
-        let menu_height = MENU_HEIGHT as usize;
+        let menu_width = crate::modules::context_menu::MENU_WIDTH as usize;
+        let menu_height = crate::modules::context_menu::MENU_HEIGHT as usize;
         let menu_x = menu_state.x.min((width as usize).saturating_sub(menu_width));
         let menu_y = menu_state.y.saturating_sub(menu_height);
 
@@ -259,8 +259,7 @@ use crate::modules::context_menu::{MENU_WIDTH, MENU_HEIGHT, MENU_ITEM_HEIGHT, ge
                 }
             }
         }
-        // Draw items
-        let item_h = MENU_ITEM_HEIGHT as usize;
+        let item_h = crate::modules::context_menu::MENU_ITEM_HEIGHT as usize;
         let is_pinned = menu_state.target_app_id.as_ref().map(|id| pinned_apps.contains(id)).unwrap_or(false);
         let actions = ["Focus", "Open new", "Minimize", "Close", if is_pinned { "Unpin" } else { "Pin" }];
 
@@ -280,10 +279,10 @@ use crate::modules::context_menu::{MENU_WIDTH, MENU_HEIGHT, MENU_ITEM_HEIGHT, ge
     }
 
     // 5. Render Hover Preview Menu
-    if hover_state.is_visible && !menu_state.is_open {
+    if hover_state.is_visible && !menu_state.is_open && !is_dragging {
         if let Some(ref app_id) = hover_state.app_id {
             if let Some(windows) = running_by_app.get(app_id) {
-                let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
+                let (menu_x, menu_y, menu_width, menu_height) = crate::modules::context_menu::get_hover_menu_bounds(
                     hover_state.x, width, height, windows.len()
                 );
 
@@ -298,7 +297,7 @@ use crate::modules::context_menu::{MENU_WIDTH, MENU_HEIGHT, MENU_ITEM_HEIGHT, ge
                     }
                 }
 
-                let item_h = HOVER_ITEM_HEIGHT as usize;
+                let item_h = crate::modules::context_menu::HOVER_ITEM_HEIGHT as usize;
                 for (i, w) in windows.iter().enumerate() {
                     let title = if w.title.chars().count() > 20 { 
                         format!("{}...", w.title.chars().take(17).collect::<String>()) 
@@ -307,7 +306,6 @@ use crate::modules::context_menu::{MENU_WIDTH, MENU_HEIGHT, MENU_ITEM_HEIGHT, ge
                     };
                     draw_text(canvas, width, height, font_manager, &title, 14.0, menu_x + 5, menu_y + i * item_h + 5, (255, 255, 255));
 
-                    // Draw Red Close Square
                     let sq_size = 20;
                     let sq_x = menu_x + menu_width - sq_size - 5;
                     let sq_y = menu_y + i * item_h + 5;
@@ -318,27 +316,21 @@ use crate::modules::context_menu::{MENU_WIDTH, MENU_HEIGHT, MENU_ITEM_HEIGHT, ge
                             let cy = sq_y + dy;
                             if cx < width as usize && cy < height as usize {
                                 let idx = (cy * width as usize + cx) * 4;
-                                canvas[idx] = 0xE0;     // R
-                                canvas[idx + 1] = 0x30; // G
-                                canvas[idx + 2] = 0x30; // B
-                                canvas[idx + 3] = 0xFF; // A
+                                canvas[idx] = 0xE0; canvas[idx + 1] = 0x30; canvas[idx + 2] = 0x30; canvas[idx + 3] = 0xFF;
                             }
                         }
                     }
                     
-                    // Draw white cross inside the red square
                     let cross_margin = 5;
                     let cross_size = sq_size - 2 * cross_margin;
                     for t in 0..cross_size {
-                        for w in 0..2 { // 2px thickness
-                            // \ diagonal
+                        for w in 0..2 {
                             let px1 = sq_x + cross_margin + t + w;
                             let py1 = sq_y + cross_margin + t;
                             if px1 < width as usize && py1 < height as usize {
                                 let idx = (py1 * width as usize + px1) * 4;
                                 canvas[idx] = 0xFF; canvas[idx+1] = 0xFF; canvas[idx+2] = 0xFF; canvas[idx+3] = 0xFF;
                             }
-                            // / diagonal
                             let px2 = sq_x + cross_margin + t + w;
                             let py2 = sq_y + sq_size - cross_margin - t - 1;
                             if px2 < width as usize && py2 < height as usize {
@@ -359,6 +351,94 @@ use crate::modules::context_menu::{MENU_WIDTH, MENU_HEIGHT, MENU_ITEM_HEIGHT, ge
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // 6. Render Floating Dragged Icon under mouse cursor
+    if is_dragging {
+        if let Some(drag_id) = dragged_app_id {
+            let windows = running_by_app.get(drag_id);
+            let is_running = windows.is_some();
+            let icon = windows.and_then(|v| v.first().and_then(|w| w.icon_rgba.as_ref().map(|rgba| (rgba.as_slice(), w.icon_size))))
+                        .or_else(|| icon_cache.get(drag_id).map(|(v, s)| (v.as_slice(), *s)));
+
+            let drag_start_x = pointer_x.saturating_sub(box_size / 2);
+            let drag_start_y = pointer_y.saturating_sub(box_size / 2);
+
+            if let Some((icon_pixels, img_size_u32)) = icon {
+                let img_size = img_size_u32 as usize;
+                for y in 0..box_size {
+                    for x in 0..box_size {
+                        let canvas_x = drag_start_x + x;
+                        let canvas_y = drag_start_y + y;
+                        let src_x = (x * img_size) / box_size;
+                        let src_y = (y * img_size) / box_size;
+                        let src_idx = (src_y * img_size + src_x) * 4;
+
+                        if src_idx + 3 < icon_pixels.len() && canvas_x < width as usize && canvas_y < height as usize {
+                            let canvas_idx = (canvas_y * (width as usize) + canvas_x) * 4;
+                            let alpha = (icon_pixels[src_idx + 3] as f32 / 255.0) * 0.85; // slightly translucent drag preview
+                            if alpha > 0.0 {
+                                canvas[canvas_idx] = ((icon_pixels[src_idx] as f32 * alpha) + (canvas[canvas_idx] as f32 * (1.0 - alpha))) as u8;
+                                canvas[canvas_idx + 1] = ((icon_pixels[src_idx + 1] as f32 * alpha) + (canvas[canvas_idx + 1] as f32 * (1.0 - alpha))) as u8;
+                                canvas[canvas_idx + 2] = ((icon_pixels[src_idx + 2] as f32 * alpha) + (canvas[canvas_idx + 2] as f32 * (1.0 - alpha))) as u8;
+                                canvas[canvas_idx + 3] = 255;
+                            }
+                        }
+                    }
+                }
+            } else {
+                let radius = 10.0;
+                let size_f = box_size as f64;
+                let is_inside_rounded_rect = |px: usize, py: usize| -> bool {
+                    let x = px as f64;
+                    let y = py as f64;
+                    if x < radius && y < radius {
+                        (x - radius).powi(2) + (y - radius).powi(2) <= radius.powi(2)
+                    } else if x > size_f - radius && y < radius {
+                        (x - (size_f - radius)).powi(2) + (y - radius).powi(2) <= radius.powi(2)
+                    } else if x < radius && y > size_f - radius {
+                        (x - radius).powi(2) + (y - (size_f - radius)).powi(2) <= radius.powi(2)
+                    } else if x > size_f - radius && y > size_f - radius {
+                        (x - (size_f - radius)).powi(2) + (y - (size_f - radius)).powi(2) <= radius.powi(2)
+                    } else {
+                        true
+                    }
+                };
+
+                let hash = drag_id.bytes().fold(0u32, |acc, b| acc.wrapping_add(b as u32));
+                let hue = (hash % 360) as f32;
+                let base_color = hsl_to_rgb(hue, 0.6, 0.55);
+                let grad_color = hsl_to_rgb(hue, 0.6, 0.40);
+
+                for y in 0..box_size {
+                    for x in 0..box_size {
+                        let canvas_x = drag_start_x + x;
+                        let canvas_y = drag_start_y + y;
+                        if canvas_x < width as usize && canvas_y < height as usize {
+                            if is_inside_rounded_rect(x, y) {
+                                let canvas_idx = (canvas_y * (width as usize) + canvas_x) * 4;
+                                let t = y as f32 / box_size as f32;
+                                let r = base_color.0 as f32 * (1.0 - t) + grad_color.0 as f32 * t;
+                                let g = base_color.1 as f32 * (1.0 - t) + grad_color.1 as f32 * t;
+                                let b = base_color.2 as f32 * (1.0 - t) + grad_color.2 as f32 * t;
+                                
+                                canvas[canvas_idx] = r as u8;
+                                canvas[canvas_idx + 1] = g as u8;
+                                canvas[canvas_idx + 2] = b as u8;
+                                canvas[canvas_idx + 3] = 255;
+                            }
+                        }
+                    }
+                }
+
+                let letter = drag_id.chars().next()
+                    .unwrap_or('?')
+                    .to_uppercase()
+                    .to_string();
+
+                draw_text(canvas, width, height, font_manager, &letter, 24.0, drag_start_x + 16, drag_start_y + 11, (255, 255, 255));
             }
         }
     }

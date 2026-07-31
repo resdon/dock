@@ -124,6 +124,8 @@ pub struct AppState {
     pub drag_start_x: f64,
     pub drag_start_y: f64,
     pub dragged_app_id: Option<String>,
+    pub last_drag_draw: std::time::Instant,
+    pub sys_scanner: sysinfo::System,
 }
 
 impl AppState {
@@ -135,14 +137,66 @@ impl AppState {
             
             let mut search_id = window.app_id.trim().to_string();
             
-            // 0. Proactive cleaning: strip suffixes like _1234 (common for dynamic app_ids)
-            if let Some(idx) = search_id.rfind('_') {
-                if search_id[idx+1..].chars().all(|c| c.is_numeric()) {
-                    search_id = search_id[..idx].to_string();
+            // 0. Proactive cleaning: strip suffixes like _1234 (common for dynamic app_ids), preserving steam_icon_<appid>
+            if !search_id.starts_with("steam_icon_") {
+                if let Some(idx) = search_id.rfind('_') {
+                    if search_id[idx+1..].chars().all(|c| c.is_numeric()) {
+                        search_id = search_id[..idx].to_string();
+                    }
                 }
             }
             let original_app_id = window.app_id.clone();
-            
+
+            // Refresh process scanner
+            self.sys_scanner.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+
+            // Match PID for window if not already matched
+            if window.matched_pid.is_none() {
+                let target_app = search_id.to_lowercase();
+                if let Some((pid, _)) = self.sys_scanner.processes().iter().find(|(_, p)| {
+                    let proc_name = p.name().to_string_lossy().to_lowercase();
+                    proc_name.contains(&target_app) || target_app.contains(&proc_name)
+                }) {
+                    window.matched_pid = Some(pid.as_u32());
+                }
+            }
+
+            let pid_opt = window.matched_pid.map(sysinfo::Pid::from_u32);
+
+            // Priority 1: Check dynamic Steam/Gamescope game details FIRST
+            // This prevents gamescope/steam windows from temporarily normalizing to "steam" via Exec match
+            if let Some((appid, steam_name, steam_icon_path)) = dockman_lib::resolve_steam_game_details(&search_id, &window.title, &self.sys_scanner, pid_opt) {
+                let target_size = 48;
+                if let Some((_, _, rgba_data)) = crate::terminal_graphics::load_image_raw_rgba(&steam_icon_path, target_size) {
+                    let icon_key = format!("steam_icon_{}", appid);
+                    window.app_name = steam_name.clone();
+                    window.app_id = icon_key.clone();
+                    window.icon_name = icon_key.clone();
+                    window.icon_rgba = Some(rgba_data.clone());
+                    window.icon_size = target_size;
+                    window.icon_resolved = true;
+                    self.icon_cache.insert(icon_key.clone(), (rgba_data.clone(), target_size));
+                    if self.pinned_apps.contains(&icon_key) {
+                        crate::cache::save_cached_icon(&icon_key, target_size, target_size, &rgba_data);
+                    }
+                    println!("[DEBUG] Resolved Steam Game '{}' AppID: {} -> Icon Path: {:?}", steam_name, appid, steam_icon_path);
+                    return;
+                }
+            }
+
+            // Match against pinned apps immediately (e.g. if raw app_id is "wezterm-dropdown" and pinned is "org.wezfurlong.wezterm")
+            for pinned_id in &self.pinned_apps {
+                let p_lower = pinned_id.to_lowercase();
+                let s_lower = search_id.to_lowercase();
+                if (p_lower.contains(&s_lower) || s_lower.contains(&p_lower)) 
+                    && !p_lower.starts_with("steam_icon_") && !s_lower.starts_with("steam_icon_") 
+                {
+                    search_id = pinned_id.clone();
+                    window.app_id = search_id.clone();
+                    break;
+                }
+            }
+
             // 1. Try to normalize app_id to a stable .desktop ID if it isn't one already
             if !search_id.is_empty() {
                 // If it doesn't look like a standard ID, try to find the desktop file it belongs to
@@ -153,34 +207,6 @@ impl AppState {
                         window.app_id = search_id.clone();
                     }
                 }
-            }
-
-            // 2. Fallback if app_id is still empty: try to resolve it from the window title
-            if search_id.is_empty() && !window.title.is_empty() {
-                if let Some(desktop_id) = crate::icon_utils::find_desktop_file_by_name(&window.title) {
-                    println!("[DEBUG] Resolved empty app_id for title '{}' -> '{}' via Name match", window.title, desktop_id);
-                    search_id = desktop_id;
-                    // We successfully derived a stable ID from the title!
-                    window.app_id = search_id.clone();
-                }
-            }
-
-            // HACK: Force icon for transmission if resolution failed
-            if search_id.to_lowercase().contains("transmission") && crate::get_icon_path(&search_id).is_none() {
-                 println!("[DEBUG] Transmission detected but icon lookup failed, forcing 'transmission-gtk'");
-                 search_id = "transmission-gtk".to_string();
-            }
-
-            // App-specific overrides for apps with known identifiers
-            let title_lower = window.title.to_lowercase();
-            let id_lower = search_id.to_lowercase();
-            if (id_lower.contains("taskman") || title_lower.contains("task manager")) && crate::get_icon_path(&search_id).is_none() {
-                search_id = "taskman".to_string();
-                window.app_id = search_id.clone();
-            }
-            if id_lower.contains("antigravity") && crate::get_icon_path(&search_id).is_none() {
-                search_id = "antigravity-ide".to_string();
-                window.app_id = search_id.clone();
             }
 
             if !search_id.is_empty() {
@@ -308,7 +334,11 @@ impl AppState {
             &self.icon_cache,
             &self.menu_state,
             &self.hover_state,
-            &self.font_manager
+            &self.font_manager,
+            self.is_dragging,
+            self.dragged_app_id.as_ref(),
+            self.pointer_x,
+            self.pointer_y,
         );
 
         // 5. Commit the buffer (single commit after both input region and buffer are set)
@@ -319,7 +349,7 @@ impl AppState {
         }
 
         self.current_buffer = Some(buffer);
-        self.connection.flush().expect("Flush failed");
+        // Flush is handled by the caller (event loop or handler), not here.
     }
 }
 
@@ -417,6 +447,10 @@ fn main() {
         drag_start_x: 0.0,
         drag_start_y: 0.0,
         dragged_app_id: None,
+        last_drag_draw: std::time::Instant::now(),
+        sys_scanner: sysinfo::System::new_with_specifics(
+            sysinfo::RefreshKind::nothing().with_processes(sysinfo::ProcessRefreshKind::everything()),
+        ),
     };
 
     // =========================================================================
@@ -461,6 +495,9 @@ fn main() {
 
     println!("[DEBUG] Starting event loop...");
     loop {
-        event_queue.blocking_dispatch(&mut state).unwrap();
+        if let Err(e) = event_queue.blocking_dispatch(&mut state) {
+            eprintln!("[WARN] Dispatch error: {}", e);
+            break;
+        }
     }
 }

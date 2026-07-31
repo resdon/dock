@@ -20,6 +20,10 @@ path = "src/services/monitor2.rs"
 name = "monitor3"
 path = "src/services/monitor3.rs"
 
+[[bin]]
+name = "monitor4"
+path = "src/services/monitor4.rs"
+
 [lib]
 name = "dockman_lib"
 path = "src/lib.rs"

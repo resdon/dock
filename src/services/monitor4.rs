@@ -34,64 +34,147 @@ struct WindowDiagnostics {
     terminal_icon_code: String,
 }
 
-fn extract_icon_name_from_desktop_file(app_id: &str) -> String {
-    if app_id.is_empty() { return "unknown-icon".to_string(); }
+// Purely dynamic .desktop file inspection: finds name and icon by matching app_id or StartupWMClass
+fn query_desktop_file_metadata(app_id: &str) -> (Option<String>, Option<String>) {
+    if app_id.is_empty() {
+        return (None, None);
+    }
+
     let xdg_data_dirs = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".to_string());
     let mut search_paths: Vec<PathBuf> = xdg_data_dirs.split(':').map(|s| Path::new(s).join("applications")).collect();
-    if let Ok(home) = std::env::var("HOME") { search_paths.insert(0, Path::new(&home).join(".local/share/applications")); }
+    if let Ok(home) = std::env::var("HOME") {
+        search_paths.insert(0, Path::new(&home).join(".local/share/applications"));
+    }
 
-    let candidates = [
+    let app_lower = app_id.to_lowercase();
+    let target_files = vec![
         format!("{}.desktop", app_id),
-        format!("{}.desktop", app_id.to_lowercase()),
-        format!("org.gnome.{}.desktop", app_id),
-        format!("org.kde.{}.desktop", app_id),
+        format!("{}.desktop", app_lower),
     ];
 
-    for path in search_paths {
-        for candidate in &candidates {
-            let desktop_path = path.join(candidate);
+    let mut found_name = None;
+    let mut found_icon = None;
+
+    // 1. Direct filename match
+    for path in &search_paths {
+        for filename in &target_files {
+            let desktop_path = path.join(filename);
             if desktop_path.exists() {
-                if let Ok(file) = File::open(desktop_path) {
+                if let Ok(file) = File::open(&desktop_path) {
                     let reader = BufReader::new(file);
                     for line in reader.lines().flatten() {
-                        if line.starts_with("Icon=") {
-                            return line["Icon=".len()..].trim().to_string();
+                        let trimmed = line.trim();
+                        if trimmed.starts_with("Name=") && found_name.is_none() {
+                            found_name = Some(trimmed["Name=".len()..].trim().to_string());
+                        } else if trimmed.starts_with("Icon=") && found_icon.is_none() {
+                            found_icon = Some(trimmed["Icon=".len()..].trim().to_string());
+                        }
+                    }
+                }
+            }
+        }
+        if found_name.is_some() && found_icon.is_some() {
+            break;
+        }
+    }
+
+    // 2. Scan all desktop files for StartupWMClass or matching executable/content if not found
+    if found_name.is_none() || found_icon.is_none() {
+        for path in search_paths {
+            if !path.exists() {
+                continue;
+            }
+            for entry in WalkDir::new(path).max_depth(2).into_iter().filter_map(|e| e.ok()) {
+                let p = entry.path();
+                if p.extension().and_then(|s| s.to_str()) == Some("desktop") {
+                    if let Ok(file) = File::open(p) {
+                        let reader = BufReader::new(file);
+                        let mut current_name = None;
+                        let mut current_icon = None;
+                        let mut matches = false;
+
+                        for line in reader.lines().flatten() {
+                            let trimmed = line.trim();
+                            if trimmed.starts_with("Name=") && current_name.is_none() {
+                                current_name = Some(trimmed["Name=".len()..].trim().to_string());
+                            } else if trimmed.starts_with("Icon=") && current_icon.is_none() {
+                                current_icon = Some(trimmed["Icon=".len()..].trim().to_string());
+                            } else if trimmed.starts_with("StartupWMClass=") {
+                                let wm_class = trimmed["StartupWMClass=".len()..].trim().to_lowercase();
+                                if wm_class == app_lower {
+                                    matches = true;
+                                }
+                            }
+                        }
+
+                        if let Some(file_name) = p.file_name().and_then(|n| n.to_str()) {
+                            if file_name.to_lowercase().contains(&app_lower) {
+                                matches = true;
+                            }
+                        }
+
+                        if matches {
+                            if found_name.is_none() {
+                                found_name = current_name;
+                            }
+                            if found_icon.is_none() {
+                                found_icon = current_icon;
+                            }
+                            if found_name.is_some() && found_icon.is_some() {
+                                break;
+                            }
                         }
                     }
                 }
             }
         }
     }
-    app_id.to_string()
+
+    (found_name, found_icon)
 }
 
+// Purely dynamic icon path location via linicon and filesystem traversal
 fn locate_actual_icon_path(icon_name: &str, app_id: &str) -> Option<PathBuf> {
-    if let Some(icon) = lookup_icon(icon_name).from_theme("hicolor").next().and_then(|res| res.ok()) {
-        return Some(icon.path);
+    if !icon_name.is_empty() {
+        if let Some(icon) = lookup_icon(icon_name).from_theme("hicolor").next().and_then(|res| res.ok()) {
+            return Some(icon.path);
+        }
     }
-    if let Some(icon) = lookup_icon(app_id).from_theme("hicolor").next().and_then(|res| res.ok()) {
-        return Some(icon.path);
+    if !app_id.is_empty() {
+        if let Some(icon) = lookup_icon(app_id).from_theme("hicolor").next().and_then(|res| res.ok()) {
+            return Some(icon.path);
+        }
     }
 
-    let mut search_roots = vec![PathBuf::from("/usr/share/icons"), PathBuf::from("/usr/share/pixmaps")];
+    let mut search_roots = vec![
+        PathBuf::from("/usr/share/icons"),
+        PathBuf::from("/usr/share/pixmaps"),
+    ];
     if let Ok(home) = std::env::var("HOME") {
-        search_roots.push(Path::new(&home).join(".icons"));
-        search_roots.push(Path::new(&home).join(".local/share/icons"));
+        let home_path = PathBuf::from(home);
+        search_roots.push(home_path.join(".icons"));
+        search_roots.push(home_path.join(".local/share/icons"));
+        search_roots.push(home_path.join(".local/share/Steam"));
+        search_roots.push(home_path.join(".steam/steam"));
     }
 
     let target_lower = icon_name.to_lowercase();
     let app_lower = app_id.to_lowercase();
 
     for root in search_roots {
-        if !root.exists() { continue; }
-        for entry in WalkDir::new(root).follow_links(false).into_iter().filter_map(|e| e.ok()) {
+        if !root.exists() {
+            continue;
+        }
+        for entry in WalkDir::new(root).max_depth(6).into_iter().filter_map(|e| e.ok()) {
             let path = entry.path();
             if path.is_file() {
                 if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
-                    if ext == "png" || ext == "svg" {
+                    if ext == "png" || ext == "svg" || ext == "xpm" {
                         if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
                             let name_lower = file_name.to_lowercase();
-                            if name_lower.contains(&target_lower) || name_lower.contains(&app_lower) {
+                            if (!target_lower.is_empty() && name_lower.contains(&target_lower))
+                                || (!app_lower.is_empty() && name_lower.contains(&app_lower))
+                            {
                                 return Some(path.to_path_buf());
                             }
                         }
@@ -103,11 +186,10 @@ fn locate_actual_icon_path(icon_name: &str, app_id: &str) -> Option<PathBuf> {
     None
 }
 
-// Purely dynamic, alias-free Steam metadata and icon resolution
+// Purely dynamic Steam metadata discovery via environment/cmdline and .acf manifests
 fn resolve_steam_game_details(target_app: &str, window_title: &str, sys_scanner: &System, entry_pid: sysinfo::Pid) -> Option<(String, String, PathBuf)> {
     let mut steam_appid = None;
 
-    // 1. Inspect process tree environment variables and cmdline dynamically
     for (c_pid, c_proc) in sys_scanner.processes() {
         let mut current = c_proc.parent();
         let mut is_descendant = c_pid == &entry_pid;
@@ -164,11 +246,12 @@ fn resolve_steam_game_details(target_app: &str, window_title: &str, sys_scanner:
     let target_lower = target_app.to_lowercase();
     let title_lower = window_title.to_lowercase();
 
-    // 2. If no environment AppID was caught, dynamically scan .acf manifests and match names
     if steam_appid.is_none() {
         for root in &steam_roots {
             let steamapps = root.join("steamapps");
-            if !steamapps.exists() { continue; }
+            if !steamapps.exists() {
+                continue;
+            }
 
             if let Ok(entries) = std::fs::read_dir(&steamapps) {
                 for entry in entries.flatten() {
@@ -203,13 +286,14 @@ fn resolve_steam_game_details(target_app: &str, window_title: &str, sys_scanner:
                     }
                 }
             }
-            if steam_appid.is_some() { break; }
+            if steam_appid.is_some() {
+                break;
+            }
         }
     }
 
     let appid = steam_appid?;
 
-    // 3. Read official game name directly from the matched AppID's manifest file
     let mut game_name = None;
     for root in &steam_roots {
         let manifest_path = root.join(format!("steamapps/appmanifest_{}.acf", appid));
@@ -225,12 +309,13 @@ fn resolve_steam_game_details(target_app: &str, window_title: &str, sys_scanner:
                 }
             }
         }
-        if game_name.is_some() { break; }
+        if game_name.is_some() {
+            break;
+        }
     }
 
     let final_name = game_name.unwrap_or_else(|| window_title.to_string());
 
-    // 4. Locate icon from library cache or hicolor themes using the discovered AppID
     let mut icon_path = None;
     for root in &steam_roots {
         let cache_dir = root.join("appcache/librarycache");
@@ -248,7 +333,9 @@ fn resolve_steam_game_details(target_app: &str, window_title: &str, sys_scanner:
                 }
             }
         }
-        if icon_path.is_some() { break; }
+        if icon_path.is_some() {
+            break;
+        }
     }
 
     if icon_path.is_none() {
@@ -258,7 +345,9 @@ fn resolve_steam_game_details(target_app: &str, window_title: &str, sys_scanner:
         ];
         let target_icon_key = format!("steam_icon_{}", appid);
         for theme_dir in theme_dirs {
-            if !theme_dir.exists() { continue; }
+            if !theme_dir.exists() {
+                continue;
+            }
             for entry in WalkDir::new(&theme_dir).max_depth(6).into_iter().filter_map(|e| e.ok()) {
                 let path = entry.path();
                 if path.is_file() {
@@ -270,7 +359,9 @@ fn resolve_steam_game_details(target_app: &str, window_title: &str, sys_scanner:
                     }
                 }
             }
-            if icon_path.is_some() { break; }
+            if icon_path.is_some() {
+                break;
+            }
         }
     }
 
@@ -336,8 +427,25 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for RealtimeTrackerApp {
 
         match event {
             HandleEvent::AppId { app_id } => {
-                entry.app_name = if app_id.is_empty() { "taskman".to_string() } else { app_id };
-                entry.icon_name = extract_icon_name_from_desktop_file(&entry.app_name);
+                entry.app_name = if app_id.is_empty() { "taskman".to_string() } else { app_id.clone() };
+                
+                // Dynamically query desktop file metadata for user-facing name and icon
+                let (desktop_name, desktop_icon) = query_desktop_file_metadata(&app_id);
+                if let Some(name) = desktop_name {
+                    entry.app_name = name;
+                }
+                entry.icon_name = desktop_icon.unwrap_or_else(|| app_id.clone());
+
+                if let Some(icon_path) = locate_actual_icon_path(&entry.icon_name, &app_id) {
+                    if let Some((w, h, raw_bytes)) = load_image_raw_rgba(&icon_path, 32) {
+                        let b64_data = STANDARD.encode(&raw_bytes);
+                        entry.terminal_icon_code = format!("\x1b_Ga=T,f=32,s={},v={};{}\x1b\\", w, h, b64_data);
+                    } else {
+                        entry.terminal_icon_code = "📁 [Rasterize Error]".to_string();
+                    }
+                } else {
+                    entry.terminal_icon_code = "📁 [No Icon Found]".to_string();
+                }
             }
             HandleEvent::Title { title } => entry.title = if title.is_empty() { "[Untitled]".to_string() } else { title },
             HandleEvent::Done => {
@@ -350,6 +458,7 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for RealtimeTrackerApp {
                 }) {
                     entry.matched_pid = Some(pid.as_u32());
 
+                    // Dynamic Steam lookup if applicable
                     if let Some((appid, steam_name, steam_icon_path)) = resolve_steam_game_details(&entry.app_name, &entry.title, &state.sys_scanner, *pid) {
                         entry.app_name = steam_name;
                         entry.icon_name = format!("steam_icon_{}", appid);
@@ -358,18 +467,6 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for RealtimeTrackerApp {
                             entry.terminal_icon_code = format!("\x1b_Ga=T,f=32,s={},v={};{}\x1b\\", w, h, b64_data);
                         } else {
                             entry.terminal_icon_code = "📁 [Rasterize Error]".to_string();
-                        }
-                    } else {
-                        let icon_path = locate_actual_icon_path(&entry.icon_name, &entry.app_name);
-                        if let Some(path) = icon_path {
-                            if let Some((w, h, raw_bytes)) = load_image_raw_rgba(&path, 32) {
-                                let b64_data = STANDARD.encode(&raw_bytes);
-                                entry.terminal_icon_code = format!("\x1b_Ga=T,f=32,s={},v={};{}\x1b\\", w, h, b64_data);
-                            } else {
-                                entry.terminal_icon_code = "📁 [Rasterize Error]".to_string();
-                            }
-                        } else {
-                            entry.terminal_icon_code = "📁 [No Icon Found]".to_string();
                         }
                     }
 

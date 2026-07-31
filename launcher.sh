@@ -8,6 +8,13 @@ if [ -z "$APP_ID" ]; then
     exit 1
 fi
 
+# 0. Check if this is a Steam AppID (e.g. steam_icon_730 or steam_app_730)
+if [[ "$APP_ID" =~ ^steam_(icon|app)_([0-9]+)$ ]]; then
+    APPID="${BASH_REMATCH[2]}"
+    steam "steam://rungameid/${APPID}" >/dev/null 2>&1 &
+    exit 0
+fi
+
 # 1. Try gtk-launch (best for AppIds/Desktop IDs)
 if command -v gtk-launch >/dev/null 2>&1; then
     if gtk-launch "$APP_ID" >/dev/null 2>&1; then
