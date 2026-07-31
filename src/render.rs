@@ -228,18 +228,45 @@ pub fn render_windows(
             draw_text(canvas, phys_width, phys_height, font_manager, &letter, font_size, start_x + offset_x, start_y + offset_y, (255, 255, 255));
         }
 
-        // Render tracking indicator dash
+        // Render tracking indicator dash(es)
         if is_running {
             let indicator_y = start_y + box_size + (4.0 * scale_factor).round() as usize;
             if indicator_y < phys_height as usize {
-                let indicator_width = if is_activated { (32.0 * scale_factor).round() as usize } else { (8.0 * scale_factor).round() as usize };
-                let indicator_offset = (box_size - indicator_width) / 2;
-                for x in 0..indicator_width {
-                    let canvas_x = start_x + indicator_offset + x;
-                    if canvas_x < phys_width as usize {
-                        let canvas_idx = (indicator_y * (phys_width as usize) + canvas_x) * 4;
-                        let brightness = if is_activated { 0xFF } else { 0x66 };
-                        canvas[canvas_idx] = brightness; canvas[canvas_idx + 1] = brightness; canvas[canvas_idx + 2] = brightness; canvas[canvas_idx + 3] = 0xFF;
+                let running_count = windows.map_or(1, |v| v.len());
+                let max_dashes = 5;
+                let num_dashes = running_count.min(max_dashes);
+                
+                let total_line_width = 32.0 * scale_factor;
+                let spacing = (2.0 * scale_factor).round();
+                let total_spacing = spacing * (num_dashes as f64 - 1.0).max(0.0);
+                let dash_width = ((total_line_width - total_spacing) / num_dashes as f64).max(1.0);
+                
+                let indicator_start_x = start_x as f64 + (box_size as f64 - total_line_width) / 2.0;
+
+                for i in 0..num_dashes {
+                    let dash_start_x = indicator_start_x + (i as f64 * (dash_width + spacing));
+                    let dash_end_x = dash_start_x + dash_width;
+                    
+                    let x_start = dash_start_x.round() as usize;
+                    let x_end = dash_end_x.round() as usize;
+
+                    for canvas_x in x_start..x_end {
+                        if canvas_x < phys_width as usize {
+                            let canvas_idx = (indicator_y * (phys_width as usize) + canvas_x) * 4;
+                            if is_activated {
+                                // Yellow in BGRA format: Blue = 0x00, Green = 0xFF, Red = 0xFF
+                                canvas[canvas_idx]     = 0x00; 
+                                canvas[canvas_idx + 1] = 0xFF; 
+                                canvas[canvas_idx + 2] = 0xFF; 
+                            } else {
+                                // Inactive open windows: subtle dim gray/white
+                                let brightness = 0x66;
+                                canvas[canvas_idx]     = brightness;
+                                canvas[canvas_idx + 1] = brightness;
+                                canvas[canvas_idx + 2] = brightness;
+                            }
+                            canvas[canvas_idx + 3] = 0xFF;
+                        }
                     }
                 }
             }
