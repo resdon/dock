@@ -1,0 +1,7 @@
+busctl --user emit \
+  /com/canonical/unity/launcherentry/mpv \
+  com.canonical.Unity.LauncherEntry \
+  Update \
+  "sa{sv}" \
+  "application://mpv" \
+  4 "count" "x" 1 "count-visible" "b" true "progress" "d" 0.75 "progress-visible" "b" true

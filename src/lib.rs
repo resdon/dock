@@ -158,42 +158,49 @@ use std::path::PathBuf;
 	    None
 	}
 
-	pub fn find_icon_by_name(search_name: &str) -> Option<String> {
+    pub fn find_icon_by_name(search_name: &str) -> Option<String> {
         let mut dirs = vec![PathBuf::from("/usr/share/applications")];
         if let Ok(home) = std::env::var("HOME") {
             dirs.push(PathBuf::from(home).join(".local/share/applications"));
         }
 
-	    for dir in dirs {
-	        if let Ok(entries) = fs::read_dir(dir) {
-	            for entry in entries.flatten() {
-	                let path = entry.path();
-	                // Only process .desktop files
-	                if path.extension().and_then(|s| s.to_str()) == Some("desktop") {
-	                    if let Ok(file) = File::open(&path) {
-	                        let reader = BufReader::new(file);
-	                        let mut current_name = String::new();
-	                        let mut current_icon = String::new();
+        for dir in dirs {
+            if let Ok(entries) = fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().and_then(|s| s.to_str()) == Some("desktop") {
+                        if let Ok(file) = File::open(&path) {
+                            let reader = BufReader::new(file);
+                            let mut current_section = String::new();
+                            let mut current_name = String::new();
+                            let mut current_icon = String::new();
 
-	                        for line in reader.lines().flatten() {
-	                            if line.starts_with("Name=") {
-	                                current_name = line["Name=".len()..].trim().to_string();
-	                            }
-	                            if line.starts_with("Icon=") {
-	                                current_icon = line["Icon=".len()..].trim().to_string();
-	                            }
-	                            // If we found the right app, return the icon immediately
-	                            if current_name.eq_ignore_ascii_case(search_name) && !current_icon.is_empty() {
-	                                return Some(current_icon);
-	                            }
-	                        }
-	                    }
-	                }
-	            }
-	        }
-	    }
-	    None
-	}
+                            for line in reader.lines().flatten() {
+                                let trimmed = line.trim();
+                                if trimmed.starts_with('[') && trimmed.ends_with(']') {
+                                    current_section = trimmed[1..trimmed.len() - 1].to_string();
+                                    continue;
+                                }
+
+                                if current_section == "Desktop Entry" {
+                                    if trimmed.starts_with("Name=") {
+                                        current_name = trimmed["Name=".len()..].trim().to_string();
+                                    } else if trimmed.starts_with("Icon=") {
+                                        current_icon = trimmed["Icon=".len()..].trim().to_string();
+                                    }
+
+                                    if current_name.eq_ignore_ascii_case(search_name) && !current_icon.is_empty() {
+                                        return Some(current_icon);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
 
 	pub fn get_icon_from_desktop(desktop_id: &str) -> Option<String> {
 	    let xdg_data_dirs = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".to_string());

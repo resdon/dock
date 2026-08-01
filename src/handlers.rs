@@ -372,19 +372,26 @@ impl OutputHandler for AppState {
 impl LayerShellHandler for AppState {
     fn closed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &LayerSurface) {}
 
-    fn configure(&mut self, _: &Connection, qh: &QueueHandle<Self>, layer: &LayerSurface, configure: LayerSurfaceConfigure, _: u32) {
+    fn configure(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        layer: &LayerSurface,
+        configure: LayerSurfaceConfigure,
+        _: u32,
+    ) {
         // Capture the structural allocations chosen by sctk/compositor
         self.width = configure.new_size.0.max(100);
         
         // Dynamically track what our height should be based on UI overlays
         let target_height = if self.menu_state.is_open || self.hover_state.is_visible { 200 } else { 60 };
         self.height = target_height;
-
+        
         layer.set_size(self.width, self.height);
         layer.set_anchor(Anchor::BOTTOM);
-
-        // Render the buffer configuration cleanly inside the correct dimensions
-        self.draw(qh);
+        
+        // Flag for redraw instead of calling draw(qh) directly to prevent borrow checker conflicts
+        self.needs_redraw = true;
     }
 }
 impl ShmHandler for AppState {
@@ -488,12 +495,11 @@ impl PointerHandler for AppState {
 
         // --- STEP 2: Unified Layout Metrics ---
         // Get scale factor from the first dock (all docks should have same scale)
-        let scale_factor = self.docks.first().map(|d| d.scale_factor).unwrap_or(1.0);
-        
         // Scale layout constants to physical pixels
-        let dock_height = (60.0 * scale_factor).round() as usize;
-        let box_size = (48.0 * scale_factor).round() as usize;
-        let spacing = (12.0 * scale_factor).round() as usize;
+        let scale_factor = self.docks.first().map(|d| d.scale_factor).unwrap_or(1.0);
+        let dock_height = 60_usize;
+        let box_size = 48_usize;
+        let spacing = 12_usize;
         
         // Scale context menu dimensions to match the rendered surface bounds
         let _menu_width = (180.0 * scale_factor).round() as usize;
@@ -680,8 +686,11 @@ impl PointerHandler for AppState {
                                     scale_factor,
                                 );
 
-                                if (self.pointer_x as f64) >= menu_x && (self.pointer_x as f64) <= menu_x + menu_width &&
-                                   (self.pointer_y as f64) >= menu_y && (self.pointer_y as f64) <= menu_y + menu_height {
+                                let ptr_x = (self.pointer_x as f64) * scale_factor;
+                                let ptr_y = (self.pointer_y as f64) * scale_factor;
+
+                                if ptr_x >= menu_x && ptr_x <= menu_x + menu_width &&
+                                ptr_y >= menu_y && ptr_y <= menu_y + menu_height {
                                     target_app = Some(app_id.clone());
                                 }
                             }
@@ -805,10 +814,13 @@ impl PointerHandler for AppState {
                                     scale_factor,
                                 );
 
-                                if (self.pointer_x as f64) >= menu_x && (self.pointer_x as f64) <= menu_x + menu_width &&
-                                   (self.pointer_y as f64) >= menu_y && (self.pointer_y as f64) <= menu_y + menu_height {
-                                    let item_h = 30;
-                                    let idx = (((self.pointer_y as f64) - menu_y) as usize) / item_h;
+                                let ptr_x = (self.pointer_x as f64) * scale_factor;
+                                let ptr_y = (self.pointer_y as f64) * scale_factor;
+                                let item_h = (30.0 * scale_factor).round() as usize;
+
+                                if ptr_x >= menu_x && ptr_x <= menu_x + menu_width &&
+                                ptr_y >= menu_y && ptr_y <= menu_y + menu_height {
+                                    let idx = ((ptr_y - menu_y) as usize) / item_h;
                                     if let Some(handle_id) = windows.get(idx) {
                                         if let Some(win) = self.open_windows.get_mut(handle_id) {
                                             win.handle.close();
@@ -968,16 +980,21 @@ impl PointerHandler for AppState {
                                     windows.len(),
                                     scale_factor,
                                 );
-                                if (self.pointer_x as f64) >= menu_x && (self.pointer_x as f64) <= menu_x + menu_width &&
-                                   (self.pointer_y as f64) >= menu_y && (self.pointer_y as f64) <= menu_y + menu_height { 
-                                    let item_h = 30;
-                                    let idx = (((self.pointer_y as f64) - menu_y) as usize) / item_h; 
+
+                                let ptr_x = (self.pointer_x as f64) * scale_factor;
+                                let ptr_y = (self.pointer_y as f64) * scale_factor;
+                                let item_h = (30.0 * scale_factor).round() as usize;
+
+                                if ptr_x >= menu_x && ptr_x <= menu_x + menu_width &&
+                                ptr_y >= menu_y && ptr_y <= menu_y + menu_height { 
+                                    let idx = ((ptr_y - menu_y) as usize) / item_h; 
                                     if let Some(handle_id) = windows.get(idx) { 
-                                        let sq_x = (menu_x as f64) + (menu_width as f64) - 25.0;
-                                        let sq_y = (menu_y as f64) + ((idx * item_h) as f64) + 5.0;
+                                        let sq_x = menu_x + menu_width - (25.0 * scale_factor);
+                                        let sq_y = menu_y + (idx * item_h) as f64 + (5.0 * scale_factor);
+                                        let sq_size = 20.0 * scale_factor;
                                         
-                                        if (self.pointer_x as f64) >= sq_x && (self.pointer_x as f64) <= sq_x + 20.0 &&
-                                           (self.pointer_y as f64) >= sq_y && (self.pointer_y as f64) <= sq_y + 20.0 {
+                                        if ptr_x >= sq_x && ptr_x <= sq_x + sq_size &&
+                                        ptr_y >= sq_y && ptr_y <= sq_y + sq_size {
                                             if let Some(win) = self.open_windows.get_mut(handle_id) {
                                                 win.handle.close();
                                             }
@@ -1043,11 +1060,11 @@ impl PointerHandler for AppState {
                                         }
                                     }
                                 }
-                                crate::modules::persistence::save_pinned_apps(&self.pinned_apps.iter().cloned().collect());
+                                crate::modules::persistence::save_pinned_apps(&self.pinned_apps);
                             } else {
                                 if let Some(old_idx) = self.pinned_apps.iter().position(|x| x == dragged_id) {
                                     self.pinned_apps.remove(old_idx);
-                                    crate::modules::persistence::save_pinned_apps(&self.pinned_apps.iter().cloned().collect());
+                                    crate::modules::persistence::save_pinned_apps(&self.pinned_apps);
                                     layer_changed = true;
                                 }
                             }

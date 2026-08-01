@@ -8,6 +8,7 @@ pub use dockman_lib::get_icon_path;
 
 use crate::models::WindowDiagnostics;
 use crate::modules::context_menu::{get_hover_menu_bounds, get_context_menu_bounds};
+use crate::modules::dbus_unity::BadgeUpdate;
 
 use smithay_client_toolkit::shell::WaylandSurface;
 use smithay_client_toolkit::{
@@ -161,25 +162,24 @@ pub struct AppState {
     pub dnd_state: DndState,
     pub data_device_manager: Option<WlDataDeviceManager>,
     pub data_device: Option<WlDataDevice>,
+    // dbus
+    pub badges: HashMap<String, BadgeUpdate>,
 }
 
 impl AppState {
     // Find which icon resides under (drop_x, drop_y) and launch the target process with the extracted path arguments:
     /// Maps surface logical/physical coordinates to an app ID in the dock layout
     pub fn get_app_id_at_location(&self, x: f64, y: f64) -> Option<String> {
-        let scale_factor = self.docks.first().map(|d| d.scale_factor).unwrap_or(1.0);
-        let box_size = (48.0 * scale_factor).round() as usize;
-        let spacing = (12.0 * scale_factor).round() as usize;
-        let dock_height = (60.0 * scale_factor).round() as usize;
+        let box_size = 48.0;
+        let spacing = 12.0;
+        let dock_height = 60.0;
 
-        let phys_surface_height = (self.height as f64 * scale_factor).round() as usize;
-        let dock_top_bound = phys_surface_height.saturating_sub(dock_height);
+        let dock_top_bound = (self.height as f64) - dock_height;
 
-        if (y * scale_factor) < dock_top_bound as f64 {
+        if y < dock_top_bound {
             return None;
         }
 
-        // Build list of active apps matching the layout in pointer_frame
         let mut apps_in_dock: Vec<String> = self.pinned_apps.clone();
         for window in self.open_windows.values() {
             let id = if !window.app_id.is_empty() {
@@ -195,22 +195,29 @@ impl AppState {
         }
 
         let total_items = apps_in_dock.len();
-        let content_width = if total_items > 0 { total_items * box_size + (total_items + 1) * spacing } else { 0 };
-        let start_offset_x = if (self.width as usize) > content_width { (self.width as usize - content_width) / 2 } else { 0 };
+        let content_width = if total_items > 0 { 
+            total_items as f64 * box_size + (total_items + 1) as f64 * spacing
+        } else { 
+            0.0 
+        };
+        
+        let start_offset_x = if (self.width as f64) > content_width { 
+            ((self.width as f64) - content_width) / 2.0 
+        } else { 
+            0.0 
+        };
 
-        let px = x * scale_factor;
         for (index, app_id) in apps_in_dock.iter().enumerate() {
-            let start_x = start_offset_x + spacing + index * (box_size + spacing);
-            let hit_start_x = start_x.saturating_sub(spacing / 2) as f64;
-            let hit_end_x = (start_x + box_size + (spacing / 2)) as f64;
+            let start_x = start_offset_x + spacing + index as f64 * (box_size + spacing);
+            let hit_start_x = start_x - (spacing / 2.0);
+            let hit_end_x = start_x + box_size + (spacing / 2.0);
 
-            if px >= hit_start_x && px <= hit_end_x {
+            if x >= hit_start_x && x <= hit_end_x {
                 return Some(app_id.clone());
             }
         }
         None
     }
-
     pub fn update_dnd_hover_target(&mut self, x: f64, y: f64) {
         let new_app = self.get_app_id_at_location(x, y);
         let new_index = new_app.as_ref().map(|_| 0); // Triggers visual update
@@ -266,7 +273,7 @@ impl AppState {
         }
     }
     // -------
-    pub fn get_context_menu_bounds(&self, phys_width: usize, phys_height: usize, scale_factor: f64) -> (usize, usize, usize, usize) {
+    pub fn get_context_menu_bounds(&self, _phys_width: usize, _phys_height: usize, scale_factor: f64) -> (usize, usize, usize, usize) {
         let (x, y, w, h) = crate::modules::context_menu::get_context_menu_bounds(
             self.menu_state.x,
             self.menu_state.y,
@@ -597,13 +604,16 @@ impl AppState {
                             id == app_id.as_str()
                         })
                         .count();
+                    
+                    let dock_scale = dock.scale_factor;
+
                     if count > 0 {
                         let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
                             self.hover_state.x,
                             dock_width as usize,
                             dock_height as usize,
                             count,
-                            self.scale_factor,
+                            dock_scale,
                         );
                         region.add(menu_x as i32, menu_y as i32, menu_width as i32, menu_height as i32);
 
@@ -677,6 +687,7 @@ impl AppState {
                 self.pointer_x,
                 self.pointer_y,
                 &self.fallback_anim,
+                &self.badges,
             );
 
             surface.wl_surface().set_buffer_scale(1);
@@ -706,7 +717,16 @@ impl Dispatch<wayland_client::protocol::wl_region::WlRegion, ()> for AppState {
 // =========================================================================
 // Replace the `impl AppState` block inside src/main.rs with this:
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // 1. Setup DBus Channel
+    let (badge_tx, mut badge_rx) = tokio::sync::mpsc::unbounded_channel();
+    
+    // 2. Spawn async DBus listener
+    let runtime = tokio::runtime::Runtime::new()?;
+    runtime.spawn(async move {
+        let _ = modules::dbus_unity::start_unity_dbus_listener(badge_tx).await;
+    });
+    // ------
 
     println!("[DEBUG] Starting dock...");
     let conn = Connection::connect_to_env().expect("Failed to connect to Wayland display");
@@ -835,6 +855,8 @@ fn main() {
         dnd_state: DndState::default(),
         data_device_manager: None,
         data_device: None,
+        // dbus
+        badges: HashMap::new(),
     };
 
     // =========================================================================
@@ -938,7 +960,17 @@ fn main() {
                 let _ = guard.read();
             }
         }
+        // Drain incoming DBus badge updates
+        while let Ok(update) = badge_rx.try_recv() {
+            let clean_id = update.desktop_id
+                .trim_start_matches("application://")
+                .trim_end_matches(".desktop")
+                .to_lowercase();
 
+            state.badges.insert(clean_id, update);
+            state.needs_redraw = true;
+        }
+        // -----
         if let Err(e) = event_queue.dispatch_pending(&mut state) {
             eprintln!("[WARN] Dispatch error: {}", e);
             break;
@@ -950,4 +982,5 @@ fn main() {
             state.needs_redraw = false;
         }
     }
+    Ok (())
 }
