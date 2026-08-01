@@ -29,6 +29,7 @@ pub mod models {
 
 	#[derive(Clone, Debug)] // Removed Default
 	pub struct WindowDiagnostics {
+		pub id: u64,
 	    pub app_name: String,
 	    pub title: String,
 	    pub matched_pid: Option<u32>,
@@ -47,8 +48,9 @@ pub mod models {
 	}
 
 	impl WindowDiagnostics {
-	    pub fn new(handle: ZwlrForeignToplevelHandleV1) -> Self {
+	    pub fn new(id: u64, handle: ZwlrForeignToplevelHandleV1) -> Self {
 	        Self {
+	        	id,
 	            app_name: "Unknown".to_string(),
 	            title: "Unknown".to_string(),
 	            matched_pid: None,

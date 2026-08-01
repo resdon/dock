@@ -106,9 +106,14 @@ pub fn render_windows(
     }
 
     // Then add running apps not in pinned
-    let mut sorted_windows: Vec<&WindowDiagnostics> = open_windows.values().collect();
-    sorted_windows.sort_by_key(|w| &w.app_name);
-    
+	let mut sorted_windows: Vec<&WindowDiagnostics> = open_windows.values().collect();
+	// Sort by app_name first, then fall back to title (or a unique window ID) for stability
+	sorted_windows.sort_by(|a, b| {
+	    a.app_name.cmp(&b.app_name)
+	        .then_with(|| a.title.cmp(&b.title))
+	        .then_with(|| std::ptr::from_ref(*a).cmp(&std::ptr::from_ref(*b)))
+	});
+	    
     for w in sorted_windows {
         let app_id = if !w.app_id.is_empty() {
             w.app_id.clone()

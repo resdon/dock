@@ -292,6 +292,16 @@ impl PointerHandler for AppState {
             };
             running_by_app.entry(app_id).or_default().push(id.clone());
         }
+        // ✅ FIX: Sort each app's window vector so click index matches render index
+        for windows in running_by_app.values_mut() {
+            windows.sort_by(|a, b| {
+                let win_a = self.open_windows.get(a);
+                let win_b = self.open_windows.get(b);
+                let title_a = win_a.map(|w| w.title.as_str()).unwrap_or("");
+                let title_b = win_b.map(|w| w.title.as_str()).unwrap_or("");
+                title_a.cmp(title_b)
+            });
+        }
 
         // Gather and sort active windows across all outputs
         let mut sorted_windows: Vec<&WindowDiagnostics> = self.open_windows.values().collect();
@@ -813,17 +823,14 @@ impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for AppState {
         _qh: &QueueHandle<Self>,
     ) {
         if let zwlr_foreign_toplevel_manager_v1::Event::Toplevel { toplevel } = event {
+            let window_id = toplevel.id().protocol_id() as u64;
             state.open_windows.entry(toplevel.id()).or_insert_with(|| {
-                WindowDiagnostics::new(toplevel.clone())
+                WindowDiagnostics::new(window_id, toplevel.clone())
             });
         }
     }
 
-	// Use the macro here instead of a manual function
     event_created_child!(AppState, ZwlrForeignToplevelManagerV1, [
-        // You must find the opcode in the protocol documentation or by looking at the generated code
-        // For ToplevelManager, the "toplevel" event is what creates the child.
-        // It is typically index 0 in the protocol definition.
         0 => (ZwlrForeignToplevelHandleV1, ()),
     ]);
 }
@@ -839,8 +846,9 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for AppState {
         _conn: &Connection,
         qh: &QueueHandle<Self>,
     ) {
+        let window_id = handle.id().protocol_id() as u64;
         state.open_windows.entry(handle.id()).or_insert_with(|| {
-            WindowDiagnostics::new(handle.clone())
+            WindowDiagnostics::new(window_id, handle.clone())
         });
 
         match event {
