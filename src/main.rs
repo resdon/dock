@@ -7,8 +7,7 @@ pub use dockman_lib::terminal_graphics;
 pub use dockman_lib::get_icon_path;
 
 use crate::models::WindowDiagnostics;
-
-use crate::modules::context_menu::get_hover_menu_bounds;
+use crate::modules::context_menu::{get_hover_menu_bounds, get_context_menu_bounds};
 
 use smithay_client_toolkit::shell::WaylandSurface;
 use smithay_client_toolkit::{
@@ -21,10 +20,15 @@ use smithay_client_toolkit::{
     shm::Shm,
 };
 use wayland_client::globals::registry_queue_init;
+
 use wayland_client::protocol::wl_output::WlOutput;
 use wayland_client::protocol::wl_pointer::WlPointer;
 use wayland_client::protocol::wl_seat::WlSeat;
 use wayland_client::protocol::wl_shm;
+use wayland_client::protocol::{wl_data_offer::WlDataOffer};
+use wayland_client::protocol::wl_data_device_manager::WlDataDeviceManager;
+use wayland_client::protocol::wl_data_device::WlDataDevice;
+
 use wayland_client::backend::ObjectId;
 use wayland_client::{Connection, Dispatch};
 
@@ -36,6 +40,7 @@ use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_m
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::process::Command;
 
 use libc; // for loop and animation
 
@@ -61,6 +66,20 @@ pub struct DockInstance {
     pub scale_factor: f64,
 }
 // -----
+
+// Drag and drop
+#[derive(Default)]
+pub struct DndState {
+    /// Currently active data offer being dragged over our surface
+    pub current_offer: Option<WlDataOffer>,
+    /// MIME types supported by the current offer
+    pub mime_types: Vec<String>,
+    /// Current pointer position during drag
+    pub drag_x: f64,
+    pub drag_y: f64,
+    /// Index of dock item currently hovered during drag
+    pub hovered_dock_index: Option<usize>,
+}
 // Context Menu
 #[derive(Clone, Debug, PartialEq)]
 pub enum MenuItemType {
@@ -138,26 +157,125 @@ pub struct AppState {
     // Animation state for missing icon fallback
     // Pre-rendered frame-based icon animation controller
     pub fallback_anim: dockman_lib::animations::IconAnimation,
+    // Drag and drop
+    pub dnd_state: DndState,
+    pub data_device_manager: Option<WlDataDeviceManager>,
+    pub data_device: Option<WlDataDevice>,
 }
 
 impl AppState {
+    // Find which icon resides under (drop_x, drop_y) and launch the target process with the extracted path arguments:
+    /// Maps surface logical/physical coordinates to an app ID in the dock layout
+    pub fn get_app_id_at_location(&self, x: f64, y: f64) -> Option<String> {
+        let scale_factor = self.docks.first().map(|d| d.scale_factor).unwrap_or(1.0);
+        let box_size = (48.0 * scale_factor).round() as usize;
+        let spacing = (12.0 * scale_factor).round() as usize;
+        let dock_height = (60.0 * scale_factor).round() as usize;
+
+        let phys_surface_height = (self.height as f64 * scale_factor).round() as usize;
+        let dock_top_bound = phys_surface_height.saturating_sub(dock_height);
+
+        if (y * scale_factor) < dock_top_bound as f64 {
+            return None;
+        }
+
+        // Build list of active apps matching the layout in pointer_frame
+        let mut apps_in_dock: Vec<String> = self.pinned_apps.clone();
+        for window in self.open_windows.values() {
+            let id = if !window.app_id.is_empty() {
+                window.app_id.clone()
+            } else if !window.title.is_empty() {
+                window.title.clone()
+            } else {
+                "Unknown".to_string()
+            };
+            if !apps_in_dock.contains(&id) {
+                apps_in_dock.push(id);
+            }
+        }
+
+        let total_items = apps_in_dock.len();
+        let content_width = if total_items > 0 { total_items * box_size + (total_items + 1) * spacing } else { 0 };
+        let start_offset_x = if (self.width as usize) > content_width { (self.width as usize - content_width) / 2 } else { 0 };
+
+        let px = x * scale_factor;
+        for (index, app_id) in apps_in_dock.iter().enumerate() {
+            let start_x = start_offset_x + spacing + index * (box_size + spacing);
+            let hit_start_x = start_x.saturating_sub(spacing / 2) as f64;
+            let hit_end_x = (start_x + box_size + (spacing / 2)) as f64;
+
+            if px >= hit_start_x && px <= hit_end_x {
+                return Some(app_id.clone());
+            }
+        }
+        None
+    }
+
+    pub fn update_dnd_hover_target(&mut self, x: f64, y: f64) {
+        let new_app = self.get_app_id_at_location(x, y);
+        let new_index = new_app.as_ref().map(|_| 0); // Triggers visual update
+        if self.dnd_state.hovered_dock_index != new_index {
+            self.dnd_state.hovered_dock_index = new_index;
+            self.needs_redraw = true;
+        }
+    }
+
+    pub fn handle_file_drop_on_icon(&mut self, x: f64, y: f64, file_paths: Vec<PathBuf>) {
+        eprintln!("[DnD DEBUG] Handling file drop on icon...");
+
+        if file_paths.is_empty() {
+            eprintln!("[DnD DEBUG] Aborting: file_paths vector is empty.");
+            return;
+        }
+
+        let target_app = self.get_app_id_at_location(x, y);
+        eprintln!("[DnD DEBUG] App ID at ({:.1}, {:.1}): {:?}", x, y, target_app);
+
+        if let Some(app_id) = target_app {
+            let launcher_path = crate::handlers::get_launcher_path();
+
+            let mut normalized_app_id = app_id.clone();
+            if !normalized_app_id.starts_with("steam_icon_") {
+                if let Some(idx) = normalized_app_id.rfind('_') {
+                    if normalized_app_id[idx + 1..].chars().all(|c| c.is_numeric()) {
+                        normalized_app_id = normalized_app_id[..idx].to_string();
+                    }
+                }
+            }
+
+            eprintln!(
+                "[DnD DEBUG] Launching launcher script: '{}' | Original App ID: '{}' | Normalized: '{}'",
+                launcher_path, app_id, normalized_app_id
+            );
+
+            let mut cmd = Command::new("sh");
+            cmd.arg(&launcher_path).arg(&normalized_app_id);
+
+            for path in &file_paths {
+                cmd.arg(path);
+            }
+
+            eprintln!("[DnD DEBUG] Executing full command: {:?}", cmd);
+
+            match cmd.spawn() {
+                Ok(child) => eprintln!("[DnD DEBUG] Successfully spawned process PID: {}", child.id()),
+                Err(e) => eprintln!("[DnD DEBUG] Failed to spawn launcher: {}", e),
+            }
+        } else {
+            eprintln!("[DnD DEBUG] Drop location standard bounds check returned no app target!");
+        }
+    }
+    // -------
     pub fn get_context_menu_bounds(&self, phys_width: usize, phys_height: usize, scale_factor: f64) -> (usize, usize, usize, usize) {
-        let item_h = (30.0 * scale_factor).round() as usize;
-        let menu_width = (180.0 * scale_factor).round() as usize;
-        let raw_menu_h = self.menu_state.items.len() * item_h;
-        let total_menu_h = raw_menu_h.min(phys_height);
-
-        let cursor_x = (self.menu_state.x as f64 * scale_factor).round() as usize;
-        let cursor_y = (self.menu_state.y as f64 * scale_factor).round() as usize;
-
-        let max_x = phys_width.saturating_sub(menu_width);
-        let menu_x = cursor_x.min(max_x);
-
-        let ideal_y = cursor_y.saturating_sub(total_menu_h);
-        let max_y = phys_height.saturating_sub(total_menu_h);
-        let menu_y = ideal_y.min(max_y);
-
-        (menu_x, menu_y, menu_width, total_menu_h)
+        let (x, y, w, h) = crate::modules::context_menu::get_context_menu_bounds(
+            self.menu_state.x,
+            self.menu_state.y,
+            self.width as usize,
+            self.height as usize,
+            self.menu_state.items.len(),
+            scale_factor,
+        );
+        (x.round() as usize, y.round() as usize, w.round() as usize, h.round() as usize)
     }
     /// Returns true ONLY if at least one visible window is still loading its icon
     pub fn is_animating(&self) -> bool {
@@ -499,52 +617,20 @@ impl AppState {
 
             // Context menu input region (expects surface-local / logical coordinates)
             if menu_is_open {
-                let item_h = 30.0;
-                let menu_width = 180.0;
-                let raw_menu_h = menu_items_len as f64 * item_h;
-                // Allow the menu height to fit nicely inside our 200px window space
-                let total_menu_h = raw_menu_h.min(140.0);
+                let (menu_x, menu_y, menu_w, menu_h) = get_context_menu_bounds(
+                    menu_x_val,
+                    menu_y_val,
+                    dock_width as usize,
+                    dock_height as usize,
+                    menu_items_len,
+                    1.0, // Logical coordinates for Wayland surface input regions
+                );
 
-                let cursor_x = menu_x_val as f64;
-                let cursor_y = menu_y_val as f64;
-
-                let max_x = (dock_width as f64 - menu_width).max(0.0);
-                let menu_x = cursor_x.min(max_x);
-
-                // Position the menu upward from the cursor, bounded within the 200px surface
-                let ideal_y = (cursor_y - total_menu_h).max(0.0);
-                let max_y = (dock_height as f64 - total_menu_h).max(0.0);
-                let menu_y = ideal_y.min(max_y);
-
-                region.add(menu_x as i32, menu_y as i32, menu_width as i32, total_menu_h as i32);
+                region.add(menu_x as i32, menu_y as i32, menu_w as i32, menu_h as i32);
             }
             surface.wl_surface().set_input_region(Some(&region));
             
             // ✅ Destroy the region object immediately to prevent Wayland proxy leakage
-            region.destroy();
-
-            // Context menu input region (expects surface-local / logical coordinates)
-            if menu_is_open {
-                let item_h = 30.0;
-                let menu_width = 180.0;
-                let raw_menu_h = menu_items_len as f64 * item_h;
-                let total_menu_h = raw_menu_h.min(dock_height as f64);
-
-                let cursor_x = menu_x_val as f64;
-                let cursor_y = menu_y_val as f64;
-
-                let max_x = (dock_width as f64 - menu_width).max(0.0);
-                let menu_x = cursor_x.min(max_x);
-
-                let ideal_y = (cursor_y - total_menu_h).max(0.0);
-                let max_y = (dock_height as f64 - total_menu_h).max(0.0);
-                let menu_y = ideal_y.min(max_y);
-
-                region.add(menu_x as i32, menu_y as i32, menu_width as i32, total_menu_h as i32);
-            }
-            surface.wl_surface().set_input_region(Some(&region));
-            
-            // ✅ CRITICAL FIX 1: Destroy the region object immediately to prevent Wayland proxy leakage
             region.destroy();
 
             // --- FRACTIONAL SCALE CALCULATION ---
@@ -621,6 +707,7 @@ impl Dispatch<wayland_client::protocol::wl_region::WlRegion, ()> for AppState {
 // Replace the `impl AppState` block inside src/main.rs with this:
 
 fn main() {
+
     println!("[DEBUG] Starting dock...");
     let conn = Connection::connect_to_env().expect("Failed to connect to Wayland display");
     println!("[DEBUG] Connected to Wayland.");
@@ -744,12 +831,22 @@ fn main() {
         // Initialize animation state
         // Pre-render SVG sequence once at startup (24 FPS, 48x48 icon size)
         fallback_anim,
+        // Drag and drop:
+        dnd_state: DndState::default(),
+        data_device_manager: None,
+        data_device: None,
     };
 
     // =========================================================================
     // Your existing foreign_toplevel manager binding continues right below here
     // =========================================================================
     // Bind protocols via SCTK registry_state
+         
+    // Bind WlDataDeviceManager
+    state.data_device_manager = state.registry_state
+        .bind_one::<WlDataDeviceManager, _, _>(&qh, 1..=3, ())
+        .ok();
+
     state.toplevel_manager = state.registry_state
         .bind_one::<ZwlrForeignToplevelManagerV1, _, _>(&qh, 1..=3, ())
         .ok();

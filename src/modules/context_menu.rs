@@ -12,6 +12,34 @@ pub const HOVER_MENU_WIDTH: u32 = 200;
 pub const HOVER_ITEM_HEIGHT: u32 = 30;
 pub const DOCK_HEIGHT: u32 = 60;
 
+pub fn get_context_menu_bounds(
+    cursor_x: usize,
+    cursor_y: usize,
+    surface_width: usize,
+    surface_height: usize,
+    item_count: usize,
+    scale_factor: f64,
+) -> (f64, f64, f64, f64) {
+    let item_h = 30.0 * scale_factor;
+    let menu_width = 180.0 * scale_factor;
+    let surface_h_scaled = surface_height as f64 * scale_factor;
+    let surface_w_scaled = surface_width as f64 * scale_factor;
+
+    let total_menu_h = (item_count as f64 * item_h).min(surface_h_scaled);
+
+    let cx = cursor_x as f64 * scale_factor;
+    let cy = cursor_y as f64 * scale_factor;
+
+    let max_x = (surface_w_scaled - menu_width).max(0.0);
+    let menu_x = cx.min(max_x);
+
+    let ideal_y = cy - total_menu_h;
+    let max_y = (surface_h_scaled - total_menu_h).max(0.0);
+    let menu_y = ideal_y.clamp(0.0, max_y);
+
+    (menu_x, menu_y, menu_width, total_menu_h)
+}
+
 pub fn get_hover_menu_bounds(
     icon_x: usize,
     dock_width: usize,

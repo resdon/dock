@@ -1,7 +1,12 @@
 use crate::modules::context_menu::{get_hover_menu_bounds};
-use std::collections::HashMap;
 pub use crate::models::LastState;
 use crate::models::WindowDiagnostics;
+
+use std::collections::HashMap;
+use std::os::fd::AsFd;
+use std::io::Read;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use smithay_client_toolkit::{
     compositor::{CompositorHandler},
@@ -16,6 +21,7 @@ use smithay_client_toolkit::{
     shell::wlr_layer::{Anchor, LayerShellHandler, LayerSurface, LayerSurfaceConfigure},
     shm::{Shm, ShmHandler},
 };
+
 use wayland_client::event_created_child;
 use wayland_client::{
     protocol::{
@@ -25,11 +31,16 @@ use wayland_client::{
     Connection, Dispatch, Proxy, QueueHandle,
 };
 
+use wayland_client::backend::{ObjectData, ObjectId};
+
+use wayland_client::protocol::wl_data_device::{Event as DndEvent, WlDataDevice};
+use wayland_client::protocol::wl_data_device_manager::{DndAction, WlDataDeviceManager};
+use wayland_client::protocol::wl_data_offer::{self, WlDataOffer};
 use wayland_protocols_wlr::foreign_toplevel::v1::client::{
     zwlr_foreign_toplevel_handle_v1::{self, ZwlrForeignToplevelHandleV1},
     zwlr_foreign_toplevel_manager_v1::{self, ZwlrForeignToplevelManagerV1},
 };
-use wayland_client::backend::ObjectId;
+
 use crate::AppState;
 
 // Fractional scaling
@@ -40,7 +51,7 @@ use wayland_protocols::wp::fractional_scale::v1::client::{
 // -----
 
 // Resolved launcher.sh path
-fn get_launcher_path() -> String {
+pub fn get_launcher_path() -> String {
     let home = std::env::var("HOME").unwrap_or_default();
     let local_share_path = format!("{}/.local/share/dock/launcher.sh", home);
 
@@ -70,7 +81,191 @@ fn parse_window_states(state_bytes: &[u8]) -> (bool, bool) {
     }
     (activated, minimized)
 }
+/// Parses a `text/uri-list` string into valid local PathBuf instances.
+pub fn parse_uri_list(buffer: &str) -> Vec<PathBuf> {
+    buffer
+        .lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .filter_map(|line| {
+            let path_str = if let Some(stripped) = line.strip_prefix("file://localhost") {
+                stripped
+            } else if let Some(stripped) = line.strip_prefix("file://") {
+                stripped
+            } else {
+                line
+            };
 
+            percent_decode(path_str).map(PathBuf::from)
+        })
+        .collect()
+}
+// Helper
+fn percent_decode(input: &str) -> Option<String> {
+    let mut bytes = Vec::new();
+    let mut chars = input.bytes();
+
+    while let Some(b) = chars.next() {
+        if b == b'%' {
+            let h1 = chars.next()?;
+            let h2 = chars.next()?;
+            
+            // Store array in a local variable so the borrow lasts long enough for `from_utf8`
+            let hex_bytes = [h1, h2];
+            let hex_str = std::str::from_utf8(&hex_bytes).ok()?;
+            let byte = u8::from_str_radix(hex_str, 16).ok()?;
+            
+            bytes.push(byte);
+        } else {
+            bytes.push(b);
+        }
+    }
+
+    String::from_utf8(bytes).ok()
+}
+// --- Dispatch for WlDataDeviceManager ---
+impl Dispatch<WlDataDeviceManager, ()> for AppState {
+    fn event(
+        _state: &mut Self,
+        _manager: &WlDataDeviceManager,
+        _event: <WlDataDeviceManager as Proxy>::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {}
+}
+
+// --- Collect MIME types as they arrive ---
+impl Dispatch<WlDataOffer, ()> for AppState {
+    fn event(
+        state: &mut Self,
+        _offer: &WlDataOffer,
+        event: wl_data_offer::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+        if let wl_data_offer::Event::Offer { mime_type } = event {
+            state.dnd_state.mime_types.push(mime_type);
+        }
+    }
+}
+
+// --- Dispatch for WlDataDevice (Full DnD Handler) ---
+impl Dispatch<WlDataDevice, ()> for AppState {
+    fn event(
+        state: &mut Self,
+        _device: &WlDataDevice,
+        event: DndEvent,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+        match event {
+            DndEvent::DataOffer { id } => {
+                state.dnd_state.current_offer = Some(id);
+                state.dnd_state.mime_types.clear();
+            }
+
+            DndEvent::Enter { serial, x, y, .. } => {
+                state.dnd_state.drag_x = x;
+                state.dnd_state.drag_y = y;
+
+                if let Some(ref offer) = state.dnd_state.current_offer {
+                    let has_uri_list = state.dnd_state.mime_types.iter().any(|m| m == "text/uri-list");
+
+                    if has_uri_list {
+                        offer.accept(serial, Some("text/uri-list".to_string()));
+                        if offer.version() >= 3 {
+                            offer.set_actions(DndAction::Copy, DndAction::Copy);
+                        }
+                    } else {
+                        offer.accept(serial, None);
+                    }
+                }
+
+                state.update_dnd_hover_target(x, y);
+            }
+
+            DndEvent::Motion { x, y, .. } => {
+                state.dnd_state.drag_x = x;
+                state.dnd_state.drag_y = y;
+                state.update_dnd_hover_target(x, y);
+            }
+
+            DndEvent::Leave => {
+                state.dnd_state.current_offer = None;
+                state.dnd_state.mime_types.clear();
+                state.dnd_state.hovered_dock_index = None;
+                state.needs_redraw = true;
+            }
+
+            DndEvent::Drop => {
+                let drop_x = state.dnd_state.drag_x;
+                let drop_y = state.dnd_state.drag_y;
+
+                eprintln!("[DnD DEBUG] Drop event received at x={:.1}, y={:.1}", drop_x, drop_y);
+
+                if let Some(offer) = state.dnd_state.current_offer.take() {
+                    let has_uri_list = state.dnd_state.mime_types.iter().any(|m| m == "text/uri-list");
+
+                    if has_uri_list {
+                        if let Ok((read_pipe, write_pipe)) = os_pipe::pipe() {
+                            offer.receive("text/uri-list".to_string(), write_pipe.as_fd());
+                            
+                            let _ = _conn.flush();
+                            drop(write_pipe);
+
+                            let mut reader = read_pipe;
+                            let mut buffer = String::new();
+                            match reader.read_to_string(&mut buffer) {
+                                Ok(bytes_read) => {
+                                    eprintln!("[DnD DEBUG] Read {} bytes from pipe", bytes_read);
+                                    eprintln!("[DnD DEBUG] Raw URI payload:\n--- START ---\n{}\n--- END ---", buffer.trim());
+                                    
+                                    let paths = parse_uri_list(&buffer);
+                                    eprintln!("[DnD DEBUG] Parsed {} path(s): {:?}", paths.len(), paths);
+
+                                    if !paths.is_empty() {
+                                        state.handle_file_drop_on_icon(drop_x, drop_y, paths);
+                                    } else {
+                                        eprintln!("[DnD DEBUG] Warning: Parsed paths list was empty!");
+                                    }
+                                }
+                                Err(e) => eprintln!("[DnD DEBUG] Error reading pipe: {}", e),
+                            }
+                        }
+
+                        if offer.version() >= 3 {
+                            offer.finish();
+                        }
+                    } else {
+                        eprintln!("[DnD DEBUG] Dropped data does not contain 'text/uri-list' MIME type");
+                    }
+                    offer.destroy();
+                } else {
+                    eprintln!("[DnD DEBUG] No active offer found on drop!");
+                }
+
+                state.dnd_state.hovered_dock_index = None;
+                state.needs_redraw = true;
+            }
+
+            _ => {}
+        }
+    }
+
+    // Required so wayland-client can instantiate incoming WlDataOffer proxies (opcode 0)
+    fn event_created_child(
+        opcode: u16,
+        qh: &QueueHandle<Self>,
+    ) -> Arc<dyn ObjectData> {
+        match opcode {
+            0 => qh.make_data::<WlDataOffer, _>(()),
+            _ => unreachable!(),
+        }
+    }
+}
 // -----Fractional scale manager handler--------
 impl Dispatch<WpFractionalScaleManagerV1, ()> for AppState {
     fn event(
@@ -210,6 +405,10 @@ impl SeatHandler for AppState {
         if cap == Capability::Pointer {
             println!("[INPUT DETECTOR] Mouse Pointer Capability Registered!");
 
+            if let Some(ref ddm) = self.data_device_manager {
+                self.data_device = Some(ddm.get_data_device(&seat, qh, ()));
+            }
+
             let wl_pointer = self.seat_state
                 .get_pointer(qh, &seat)
                 .expect("Failed to secure pointer handle");
@@ -223,6 +422,7 @@ impl SeatHandler for AppState {
         if cap == Capability::Pointer {
             println!("[INPUT DETECTOR] Mouse Pointer Capability Unplugged!");
             self.wl_pointer = None;
+            self.data_device = None;
         }
     }
 }
@@ -296,8 +496,8 @@ impl PointerHandler for AppState {
         let spacing = (12.0 * scale_factor).round() as usize;
         
         // Scale context menu dimensions to match the rendered surface bounds
-        let menu_width = (180.0 * scale_factor).round() as usize;
-        let menu_item_height = (30.0 * scale_factor).round() as usize;
+        let _menu_width = (180.0 * scale_factor).round() as usize;
+        let _menu_item_height = (30.0 * scale_factor).round() as usize;
 
         // Populate map of running windows by app_id
         let mut running_by_app: HashMap<String, Vec<ObjectId>> = HashMap::new(); 

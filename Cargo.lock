@@ -386,7 +386,7 @@ dependencies = [
 
 [[package]]
 name = "dock"
-version = "1.2.5"
+version = "1.2.6"
 dependencies = [
  "base64",
  "dirs",
@@ -398,12 +398,14 @@ dependencies = [
  "linicon",
  "memmap2 0.9.10",
  "once_cell",
+ "os_pipe",
  "resvg",
  "serde",
  "serde_json",
  "sixel-rs",
  "smithay-client-toolkit",
  "sysinfo",
+ "urlencoding",
  "walkdir",
  "wayland-client",
  "wayland-protocols",
@@ -1057,6 +1059,16 @@ checksum = "1c672c7ad9ec066e428c00eb917124a06f08db19e2584de982cc34b1f4c12485"
 dependencies = [
  "dlv-list",
  "hashbrown 0.9.1",
+]
+
+[[package]]
+name = "os_pipe"
+version = "1.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
+dependencies = [
+ "libc",
+ "windows-sys",
 ]
 
 [[package]]
@@ -1905,6 +1917,12 @@ name = "unicode-vo"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1d386ff53b415b7fe27b50bb44679e2cc4660272694b7b6f3326d8480823a94"
+
+[[package]]
+name = "urlencoding"
+version = "2.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
 
 [[package]]
 name = "usvg"

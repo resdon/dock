@@ -1,17 +1,20 @@
 #!/bin/bash
-# launcher.sh - Robustly launch applications by AppId or command name
+# launcher.sh - Robustly launch applications by AppId or command name with optional file arguments
 
 APP_ID="$1"
 
 if [ -z "$APP_ID" ]; then
-    echo "Usage: $0 <app_id>"
+    echo "Usage: $0 <app_id> [file1 file2 ...]"
     exit 1
 fi
+
+# Remove APP_ID from parameters so "$@" only contains the file paths
+shift
 
 # 0. Special handler for custom local binaries like taskman
 if [ "$APP_ID" = "taskman" ]; then
     if [ -x "./taskman" ]; then
-        ./taskman >/dev/null 2>&1 &
+        ./taskman "$@" >/dev/null 2>&1 &
         exit 0
     fi
 fi
@@ -23,16 +26,16 @@ if [[ "$APP_ID" =~ ^steam_(icon|app)_([0-9]+)$ ]]; then
     exit 0
 fi
 
-# 1. Try gtk-launch (best for AppIds/Desktop IDs)
+# 1. Try gtk-launch (gtk-launch supports passing files: gtk-launch <desktop-id> [files...])
 if command -v gtk-launch >/dev/null 2>&1; then
-    if gtk-launch "$APP_ID" >/dev/null 2>&1; then
+    if gtk-launch "$APP_ID" "$@" >/dev/null 2>&1; then
         exit 0
     fi
 fi
 
 # 2. Try as a direct command
 if command -v "$APP_ID" >/dev/null 2>&1; then
-    "$APP_ID" &
+    "$APP_ID" "$@" >/dev/null 2>&1 &
     exit 0
 fi
 
@@ -40,7 +43,7 @@ fi
 if [[ "$APP_ID" == *.* ]]; then
     SHORT_NAME="${APP_ID##*.}"
     if command -v "$SHORT_NAME" >/dev/null 2>&1; then
-        "$SHORT_NAME" &
+        "$SHORT_NAME" "$@" >/dev/null 2>&1 &
         exit 0
     fi
 fi
