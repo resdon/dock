@@ -1,7 +1,9 @@
 use crate::modules::world::World;
 use resvg::tiny_skia::{Pixmap, Rect};
+use crate::render::draw_text;
+use crate::FontManager;
 
-pub const MENU_WIDTH: u32 = 120;
+pub const MENU_WIDTH: u32 = 180;
 pub const MENU_HEIGHT: u32 = 150; // Increased to accommodate 5 potential items
 pub const MENU_ITEM_COUNT: u32 = 5;
 pub const MENU_ITEM_HEIGHT: u32 = MENU_HEIGHT / MENU_ITEM_COUNT;
@@ -11,24 +13,37 @@ pub const HOVER_ITEM_HEIGHT: u32 = 30;
 pub const DOCK_HEIGHT: u32 = 60;
 
 pub fn get_hover_menu_bounds(
-    x: usize,
-    width: u32,
-    height: u32,
-    windows_count: usize,
-) -> (usize, usize, usize, usize) {
-    let menu_width = HOVER_MENU_WIDTH as usize;
-    let menu_height = windows_count * HOVER_ITEM_HEIGHT as usize;
-    let menu_x = x.saturating_sub(menu_width / 2).min((width as usize).saturating_sub(menu_width));
-    // DOCK_HEIGHT is 60. Menu is placed above the dock.
-    let menu_y = (height as usize - DOCK_HEIGHT as usize).saturating_sub(menu_height + 10);
+    icon_x: usize,
+    dock_width: usize,
+    dock_height: usize,
+    window_count: usize,
+    scale_factor: f64,
+) -> (f64, f64, f64, f64) {
+    let item_height = 30.0 * scale_factor;
+    let menu_width = 200.0 * scale_factor;
+    let menu_height = item_height * window_count.max(1) as f64;
+
+    let dock_h_scaled = 60.0 * scale_factor;
+    let margin = 8.0 * scale_factor;
+
+    // Center the menu relative to icon_x
+    let menu_x = (icon_x as f64) - (menu_width / 2.0);
+    // Position menu above the dock
+    let menu_y = (dock_height as f64) - dock_h_scaled - margin - menu_height;
+
+    // Clamp menu_x to stay within surface bounds
+    let max_x = (dock_width as f64) - menu_width;
+    let menu_x = menu_x.clamp(0.0, max_x.max(0.0));
+
     (menu_x, menu_y, menu_width, menu_height)
 }
 
 /// Renders a context menu with items.
 /// Returns a tuple of (menu_pixmap, item_rects) where item_rects are in menu-local coordinates.
 pub fn render_context_menu(
-    world: &mut World,
+    _world: &mut World,
     is_pinned: bool,
+    font_manager: &FontManager,
 ) -> (Pixmap, Vec<Rect>) {
     let width = MENU_WIDTH;
     let height = MENU_HEIGHT;
@@ -67,20 +82,17 @@ pub fn render_context_menu(
         let text_x = ((width as f32 - text_width) / 2.0) as usize;
         let baseline_y = (y + item_height as f32 / 2.0 + text_size / 2.0) as usize;
 
-        // Use the world's draw_text to render onto the raw frame buffer,
-        // passing the actual dimensions of this buffer.
-        if let Err(e) = world.draw_text(
+        draw_text(
             &mut frame,
-            label,
+            width as u32,
+            height as u32,
+            font_manager,
+            label,        // ✅ Changed from &item.label to label
+            text_size,    // ✅ Used text_size variable instead of hardcoded 14.0
             text_x,
-            baseline_y,
-            text_size,
-            [255, 255, 255],
-            width as usize,
-            height as usize,
-        ) {
-            eprintln!("Failed to draw text: {}", e);
-        }
+            baseline_y,   // ✅ Changed from text_y to baseline_y
+            (255, 255, 255),
+        );
     }
 
     // Convert the raw frame buffer into a Pixmap.

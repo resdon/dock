@@ -3,6 +3,8 @@ use crate::models::WindowDiagnostics;
 use crate::modules::context_menu::DOCK_HEIGHT;
 use crate::{MenuState, HoverState, FontManager};
 
+use crate::modules::context_menu::get_hover_menu_bounds;
+
 pub fn draw_text(
     canvas: &mut [u8],
     canvas_width: u32,
@@ -27,10 +29,19 @@ pub fn draw_text(
                     let canvas_idx = (canvas_y * canvas_width as usize + canvas_x) * 4;
                     let alpha = bitmap[y * metrics.width + x] as f32 / 255.0;
                     if alpha > 0.0 {
-                        canvas[canvas_idx] = ((color.0 as f32 * alpha) + (canvas[canvas_idx] as f32 * (1.0 - alpha))) as u8;
-                        canvas[canvas_idx + 1] = ((color.1 as f32 * alpha) + (canvas[canvas_idx + 1] as f32 * (1.0 - alpha))) as u8;
-                        canvas[canvas_idx + 2] = ((color.2 as f32 * alpha) + (canvas[canvas_idx + 2] as f32 * (1.0 - alpha))) as u8;
-                        canvas[canvas_idx + 3] = 255;
+                        let b = color.2 as f32; // Blue component
+                        let g = color.1 as f32; // Green component
+                        let r = color.0 as f32; // Red component
+
+                        let cur_b = canvas[canvas_idx] as f32;
+                        let cur_g = canvas[canvas_idx + 1] as f32;
+                        let cur_r = canvas[canvas_idx + 2] as f32;
+
+                        // Apply alpha blending with BGRA layout
+                        canvas[canvas_idx]     = ((b * alpha) + (cur_b * (1.0 - alpha))) as u8; // Blue
+                        canvas[canvas_idx + 1] = ((g * alpha) + (cur_g * (1.0 - alpha))) as u8; // Green
+                        canvas[canvas_idx + 2] = ((r * alpha) + (cur_r * (1.0 - alpha))) as u8; // Red
+                        canvas[canvas_idx + 3] = 255;                                            // Alpha
                     }
                 }
             }
@@ -255,56 +266,113 @@ pub fn render_windows(
     }
 
     // Context Menu Rendering
-    if menu_state.is_open {
-        let menu_width = crate::modules::context_menu::MENU_WIDTH as usize;
-        let menu_height = crate::modules::context_menu::MENU_HEIGHT as usize;
-        let menu_x = menu_state.x.min((phys_width as usize).saturating_sub(menu_width));
-        let menu_y = menu_state.y.saturating_sub(menu_height);
+    if menu_state.is_open && !menu_state.items.is_empty() {
+        // 1. Calculate menu dimensions
+        let item_h = (30.0 * scale_factor).round() as usize;
+        let menu_width = (180.0 * scale_factor).round() as usize;
 
-        for y in 0..menu_height {
+        // Cap total_menu_h so it NEVER exceeds the screen height itself
+        let raw_menu_h = menu_state.items.len() * item_h;
+        let total_menu_h = raw_menu_h.min(phys_height as usize);
+
+        // 2. Convert cursor coordinates with scaling
+        let cursor_x = (menu_state.x as f64 * scale_factor).round() as usize;
+        let cursor_y = (menu_state.y as f64 * scale_factor).round() as usize;
+
+        // 3. Horizontal clamping (prevent going off right edge)
+        let max_x = (phys_width as usize).saturating_sub(menu_width);
+        let menu_x = cursor_x.min(max_x);
+
+        // 4. Vertical positioning & clamping (prevent going off bottom edge)
+        let ideal_y = cursor_y.saturating_sub(total_menu_h);
+        let max_y = (phys_height as usize).saturating_sub(total_menu_h);
+
+        // menu_y will now sit right above the cursor UNLESS that pushes the bottom past screen bounds
+        let menu_y = ideal_y.min(max_y);
+        
+        // 1. Calculate which item row is hovered ONCE outside the loop
+        let hovered_item_idx = if pointer_x >= menu_x
+            && pointer_x < menu_x + menu_width
+            && pointer_y >= menu_y
+            && pointer_y < menu_y + total_menu_h
+        {
+            Some((pointer_y - menu_y) / item_h)
+        } else {
+            None
+        };
+
+        // 2. Draw background and hover effects
+        for y in 0..total_menu_h {
+            let item_idx = y / item_h;
+            let is_hovered = Some(item_idx) == hovered_item_idx;
+
+            // Select color slice based on hover state (B, G, R, A)
+            let bg_color = if is_hovered {
+                [0x3A, 0x3A, 0x3A, 0xFF] // Hover highlight
+            } else {
+                [0x22, 0x22, 0x22, 0xFF] // Default background
+            };
+
+            let cy = menu_y + y;
+            if cy >= phys_height as usize {
+                continue;
+            }
+
             for x in 0..menu_width {
-                let canvas_x = menu_x + x;
-                let canvas_y = menu_y + y;
-                if canvas_x < phys_width as usize && canvas_y < phys_height as usize {
-                    let canvas_idx = (canvas_y * (phys_width as usize) + canvas_x) * 4;
-                    canvas[canvas_idx] = 0x22; canvas[canvas_idx + 1] = 0x22; canvas[canvas_idx + 2] = 0x22; canvas[canvas_idx + 3] = 0xFF;
+                let cx = menu_x + x;
+                if cx < phys_width as usize {
+                    let idx = (cy * phys_width as usize + cx) * 4;
+                    canvas[idx..idx + 4].copy_from_slice(&bg_color);
                 }
             }
         }
-        let item_h = crate::modules::context_menu::MENU_ITEM_HEIGHT as usize;
-        let is_pinned = menu_state.target_app_id.as_ref().map(|id| pinned_apps.contains(id)).unwrap_or(false);
-        let actions = ["Focus", "Open new", "Minimize", "Close", if is_pinned { "Unpin" } else { "Pin" }];
 
-        for (i, label) in actions.iter().enumerate() {
-            draw_text(canvas, phys_width, phys_height, font_manager, label, 14.0, menu_x + 10, menu_y + 5 + i * item_h, (255, 255, 255));
-            if i > 0 {
-                let line_y = menu_y + i * item_h;
-                for x in 0..menu_width {
-                    let canvas_x = menu_x + x;
-                    if canvas_x < phys_width as usize && line_y < phys_height as usize {
-                        let canvas_idx = (line_y * (phys_width as usize) + canvas_x) * 4;
-                        canvas[canvas_idx] = 0x44; canvas[canvas_idx + 1] = 0x44; canvas[canvas_idx + 2] = 0x44;
-                    }
-                }
-            }
+        // Render menu item labels
+        for (i, item) in menu_state.items.iter().enumerate() {
+            let text_x = menu_x + (12.0 * scale_factor).round() as usize;
+            let text_y = menu_y + i * item_h + (6.0 * scale_factor).round() as usize;
+            let text_color = if matches!(item.item_type, crate::MenuItemType::CloseApp) {
+                (255, 100, 100) // Soft red highlight for Quit
+            } else {
+                (220, 220, 220)
+            };
+
+            draw_text(
+                canvas,
+                phys_width,
+                phys_height,
+                font_manager,
+                &item.label,
+                14.0 * scale_factor as f32,
+                text_x,
+                text_y,
+                text_color,
+            );
         }
     }
-
     // Hover Preview Menu Rendering
     if hover_state.is_visible && !menu_state.is_open && !is_dragging {
         if let Some(ref app_id) = hover_state.app_id {
             if let Some(windows) = running_by_app.get(app_id) {
-                let (menu_x, menu_y, menu_width, menu_height) = crate::modules::context_menu::get_hover_menu_bounds(
-                    hover_state.x, phys_width, phys_height, windows.len()
+                let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
+                    hover_state.x,
+                    phys_width as usize,
+                    phys_height as usize,
+                    windows.len(),
+                    scale_factor,
                 );
 
-                for y in 0..menu_height {
-                    for x in 0..menu_width {
-                        let canvas_x = menu_x + x;
-                        let canvas_y = menu_y + y;
-                        if canvas_x < phys_width as usize && canvas_y < phys_height as usize {
-                            let canvas_idx = (canvas_y * (phys_width as usize) + canvas_x) * 4;
-                            canvas[canvas_idx] = 0x33; canvas[canvas_idx + 1] = 0x33; canvas[canvas_idx + 2] = 0x33; canvas[canvas_idx + 3] = 0xEE;
+                for y in 0..(menu_height as usize) {
+                    for x in 0..(menu_width as usize) {
+                        let canvas_x = menu_x + (x as f64);
+                        let canvas_y = menu_y + (y as f64);
+                        if canvas_x >= 0.0 && canvas_y >= 0.0 {
+                            let cx = canvas_x as usize;
+                            let cy = canvas_y as usize;
+                            if cx < phys_width as usize && cy < phys_height as usize {
+                                let canvas_idx = (cy * (phys_width as usize) + cx) * 4;
+                                canvas[canvas_idx] = 0x33; canvas[canvas_idx + 1] = 0x33; canvas[canvas_idx + 2] = 0x33; canvas[canvas_idx + 3] = 0xEE;
+                            }
                         }
                     }
                 }
@@ -316,49 +384,71 @@ pub fn render_windows(
                     } else { 
                         w.title.clone() 
                     };
-                    draw_text(canvas, phys_width, phys_height, font_manager, &title, 14.0, menu_x + 5, menu_y + i * item_h + 5, (255, 255, 255));
+                    draw_text(
+                        canvas, 
+                        phys_width, 
+                        phys_height, 
+                        font_manager, 
+                        &title, 
+                        14.0, 
+                        (menu_x + 5.0) as usize, 
+                        (menu_y + (i as f64) * (item_h as f64) + 5.0) as usize, 
+                        (255, 255, 255)
+                    );
 
-                    let sq_size = 20;
-                    let sq_x = menu_x + menu_width - sq_size - 5;
-                    let sq_y = menu_y + i * item_h + 5;
+                    let sq_size = 20.0;
+                    let sq_x = menu_x + menu_width - sq_size - 5.0;
+                    let sq_y = menu_y + (i as f64) * (item_h as f64) + 5.0;
                     
-                    for dy in 0..sq_size {
-                        for dx in 0..sq_size {
-                            let cx = sq_x + dx;
-                            let cy = sq_y + dy;
-                            if cx < phys_width as usize && cy < phys_height as usize {
-                                let idx = (cy * phys_width as usize + cx) * 4;
-                                canvas[idx] = 0xE0; canvas[idx + 1] = 0x30; canvas[idx + 2] = 0x30; canvas[idx + 3] = 0xFF;
+                    for dy in 0..(sq_size as usize) {
+                        for dx in 0..(sq_size as usize) {
+                            let cx = sq_x + (dx as f64);
+                            let cy = sq_y + (dy as f64);
+                            if cx >= 0.0 && cy >= 0.0 {
+                                let cxi = cx as usize;
+                                let cyi = cy as usize;
+                                if cxi < phys_width as usize && cyi < phys_height as usize {
+                                    let idx = (cyi * phys_width as usize + cxi) * 4;
+                                    canvas[idx] = 0xE0; canvas[idx + 1] = 0x30; canvas[idx + 2] = 0x30; canvas[idx + 3] = 0xFF;
+                                }
                             }
                         }
                     }
                     
-                    let cross_margin = 5;
-                    let cross_size = sq_size - 2 * cross_margin;
-                    for t in 0..cross_size {
-                        for w in 0..2 {
-                            let px1 = sq_x + cross_margin + t + w;
-                            let py1 = sq_y + cross_margin + t;
-                            if px1 < phys_width as usize && py1 < phys_height as usize {
-                                let idx = (py1 * phys_width as usize + px1) * 4;
-                                canvas[idx] = 0xFF; canvas[idx+1] = 0xFF; canvas[idx+2] = 0xFF; canvas[idx+3] = 0xFF;
+                    let cross_margin = 5.0;
+                    let cross_size = sq_size - 2.0 * cross_margin;
+                    for t in 0..(cross_size as usize) {
+                        for w_idx in 0..2 {
+                            let px1 = sq_x + cross_margin + (t as f64) + (w_idx as f64);
+                            let py1 = sq_y + cross_margin + (t as f64);
+                            if px1 >= 0.0 && py1 >= 0.0 {
+                                let px1i = px1 as usize;
+                                let py1i = py1 as usize;
+                                if px1i < phys_width as usize && py1i < phys_height as usize {
+                                    let idx = (py1i * phys_width as usize + px1i) * 4;
+                                    canvas[idx] = 0xFF; canvas[idx+1] = 0xFF; canvas[idx+2] = 0xFF; canvas[idx+3] = 0xFF;
+                                }
                             }
-                            let px2 = sq_x + cross_margin + t + w;
-                            let py2 = sq_y + sq_size - cross_margin - t - 1;
-                            if px2 < phys_width as usize && py2 < phys_height as usize {
-                                let idx = (py2 * phys_width as usize + px2) * 4;
-                                canvas[idx] = 0xFF; canvas[idx+1] = 0xFF; canvas[idx+2] = 0xFF; canvas[idx+3] = 0xFF;
+                            let px2 = sq_x + cross_margin + (t as f64) + (w_idx as f64);
+                            let py2 = sq_y + sq_size - cross_margin - (t as f64) - 1.0;
+                            if px2 >= 0.0 && py2 >= 0.0 {
+                                let px2i = px2 as usize;
+                                let py2i = py2 as usize;
+                                if px2i < phys_width as usize && py2i < phys_height as usize {
+                                    let idx = (py2i * phys_width as usize + px2i) * 4;
+                                    canvas[idx] = 0xFF; canvas[idx+1] = 0xFF; canvas[idx+2] = 0xFF; canvas[idx+3] = 0xFF;
+                                }
                             }
                         }
                     }
 
                     if i > 0 {
-                        let line_y = menu_y + i * item_h;
-                        for x in 0..menu_width {
-                            let canvas_x = menu_x + x;
+                        let line_y = (menu_y + (i as f64) * (item_h as f64)) as usize;
+                        for x in 0..(menu_width as usize) {
+                            let canvas_x = (menu_x as usize) + x;
                             if canvas_x < phys_width as usize && line_y < phys_height as usize {
                                 let canvas_idx = (line_y * (phys_width as usize) + canvas_x) * 4;
-                                canvas[canvas_idx] = 0x55; canvas[canvas_idx + 1] = 0x55; canvas[canvas_idx + 2] = 0x55;
+                                canvas[canvas_idx] = 0x55; canvas[canvas_idx + 1] = 0x55; canvas[canvas_idx + 2] = 0x55; canvas[canvas_idx + 3] = 0xFF;
                             }
                         }
                     }

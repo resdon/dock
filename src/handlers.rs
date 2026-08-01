@@ -1,4 +1,4 @@
-use crate::modules::context_menu::{MENU_WIDTH, MENU_HEIGHT, MENU_ITEM_HEIGHT, get_hover_menu_bounds};
+use crate::modules::context_menu::{get_hover_menu_bounds};
 use std::collections::HashMap;
 pub use crate::models::LastState;
 use crate::models::WindowDiagnostics;
@@ -287,10 +287,17 @@ impl PointerHandler for AppState {
         }
 
         // --- STEP 2: Unified Layout Metrics ---
-        let current_surface_height = self.height as usize; 
-        let dock_height = 60; 
-        let box_size = 48; 
-        let spacing = 12; 
+        // Get scale factor from the first dock (all docks should have same scale)
+        let scale_factor = self.docks.first().map(|d| d.scale_factor).unwrap_or(1.0);
+        
+        // Scale layout constants to physical pixels
+        let dock_height = (60.0 * scale_factor).round() as usize;
+        let box_size = (48.0 * scale_factor).round() as usize;
+        let spacing = (12.0 * scale_factor).round() as usize;
+        
+        // Scale context menu dimensions to match the rendered surface bounds
+        let menu_width = (180.0 * scale_factor).round() as usize;
+        let menu_item_height = (30.0 * scale_factor).round() as usize;
 
         // Populate map of running windows by app_id
         let mut running_by_app: HashMap<String, Vec<ObjectId>> = HashMap::new(); 
@@ -317,7 +324,11 @@ impl PointerHandler for AppState {
 
         // Gather and sort active windows across all outputs
         let mut sorted_windows: Vec<&WindowDiagnostics> = self.open_windows.values().collect();
-        sorted_windows.sort_by(|a, b| a.app_name.cmp(&b.app_name));
+        sorted_windows.sort_by(|a, b| {
+            a.app_name.cmp(&b.app_name)
+                .then_with(|| a.title.cmp(&b.title))
+                .then_with(|| std::ptr::from_ref(*a).cmp(&std::ptr::from_ref(*b)))
+        });
 
         let mut apps_in_dock: Vec<String> = self.pinned_apps.clone();
         for window in sorted_windows {
@@ -338,7 +349,8 @@ impl PointerHandler for AppState {
         let content_width = if total_items > 0 { total_items * box_size + (total_items + 1) * spacing } else { 0 }; 
         let start_offset_x = if (self.width as usize) > content_width { (self.width as usize - content_width) / 2 } else { 0 }; 
         
-        let dock_top_bound = current_surface_height.saturating_sub(dock_height);
+        let phys_surface_height = (self.height as f64 * scale_factor).round() as usize;
+        let dock_top_bound = phys_surface_height.saturating_sub(dock_height);
 
         // --- STEP 3: Unified Hover & Bounds Tracking ---
         let mut should_be_visible = false;
@@ -367,21 +379,29 @@ impl PointerHandler for AppState {
             if let Some(ref app_id) = self.hover_state.app_id {
                 if let Some(windows) = running_by_app.get(app_id) {
                     let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
-                        self.hover_state.x, self.width, self.height, windows.len()
+                        self.hover_state.x,
+                        self.width as usize,
+                        self.height as usize,
+                        windows.len(),
+                        scale_factor,
                     );
                     
-                    // 1. Strict menu bounds
-                    let inside_menu = self.pointer_x >= menu_x 
-                        && self.pointer_x <= menu_x + menu_width
-                        && self.pointer_y >= menu_y 
-                        && self.pointer_y <= menu_y + menu_height;
+                    // Convert logical pointer coordinates to physical pixels to match menu bounds
+                    let ptr_x = (self.pointer_x as f64) * scale_factor;
+                    let ptr_y = (self.pointer_y as f64) * scale_factor;
 
-                    // 2. Gap bounds (bridges menu_bottom to dock_top, but respects current window list width)
+                    // 1. Strict menu bounds (in physical pixels)
+                    let inside_menu = ptr_x >= menu_x 
+                        && ptr_x <= menu_x + menu_width
+                        && ptr_y >= menu_y 
+                        && ptr_y <= menu_y + menu_height;
+
+                    // 2. Gap bounds (bridges menu_bottom to dock_top)
                     let menu_bottom = menu_y + menu_height;
-                    let inside_gap = self.pointer_x >= menu_x 
-                        && self.pointer_x <= menu_x + menu_width
-                        && self.pointer_y >= menu_bottom 
-                        && self.pointer_y <= dock_top_bound;
+                    let inside_gap = ptr_x >= menu_x 
+                        && ptr_x <= menu_x + menu_width
+                        && ptr_y >= menu_bottom 
+                        && ptr_y <= (dock_top_bound as f64);
 
                     if inside_menu || inside_gap {
                         should_be_visible = true;
@@ -392,23 +412,25 @@ impl PointerHandler for AppState {
             }
         }
 
-        // Hover Stay-Alive Grace Period
-        // Reset leave timer when not in use
-        self.hover_state.last_leave_time = None;
+        // --- Context Menu Dismissal Leeway & Hit Testing ---
+        if self.menu_state.is_open && !self.menu_state.items.is_empty() {
+            let scale_factor = self.docks.first().map(|d| d.scale_factor).unwrap_or(1.0);
+            let phys_width = (self.width as f64 * scale_factor).round() as usize;
+            let phys_height = (self.height as f64 * scale_factor).round() as usize;
 
-        // Context Menu Dismissal Leeway
-        if self.menu_state.is_open {
-            let menu_width = MENU_WIDTH as usize;
-            let menu_height = MENU_HEIGHT as usize;
-            let menu_x = self.menu_state.x.min((self.width as usize).saturating_sub(menu_width));
-            let menu_y = self.menu_state.y.saturating_sub(menu_height);
-            let leeway = 20;
+            let (menu_x, menu_y, menu_width, total_menu_h) = self.get_context_menu_bounds(phys_width, phys_height, scale_factor);
+            
+            // Convert logical pointer to physical pixels
+            let ptr_x = (self.pointer_x as f64) * scale_factor;
+            let ptr_y = (self.pointer_y as f64) * scale_factor;
+            let leeway = (20.0 * scale_factor).round() as f64;
 
-            if self.pointer_x < menu_x.saturating_sub(leeway)
-                || self.pointer_x > menu_x + menu_width + leeway
-                || self.pointer_y < menu_y.saturating_sub(leeway)
-                || self.pointer_y > menu_y + menu_height + leeway
-            {
+            let inside_extended = ptr_x >= (menu_x as f64) - leeway
+                && ptr_x <= (menu_x + menu_width) as f64 + leeway
+                && ptr_y >= (menu_y as f64) - leeway
+                && ptr_y <= (menu_y + total_menu_h) as f64 + leeway;
+
+            if !inside_extended {
                 self.menu_state.is_open = false;
                 layer_changed = true;
             }
@@ -420,7 +442,6 @@ impl PointerHandler for AppState {
             self.hover_state.x = new_x;
             layer_changed = true;
         }
-
         // --- STEP 3.5: Scroll-to-Cycle Windows ---
         for event in events {
             if let PointerEventKind::Axis { vertical, .. } = &event.kind {
@@ -452,11 +473,15 @@ impl PointerHandler for AppState {
                         if let Some(ref app_id) = self.hover_state.app_id {
                             if let Some(windows) = running_by_app.get(app_id) {
                                 let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
-                                    self.hover_state.x, self.width, self.height, windows.len()
+                                    self.hover_state.x,
+                                    self.width as usize,
+                                    self.height as usize,
+                                    windows.len(),
+                                    scale_factor,
                                 );
 
-                                if self.pointer_x >= menu_x && self.pointer_x <= menu_x + menu_width &&
-                                   self.pointer_y >= menu_y && self.pointer_y <= menu_y + menu_height {
+                                if (self.pointer_x as f64) >= menu_x && (self.pointer_x as f64) <= menu_x + menu_width &&
+                                   (self.pointer_y as f64) >= menu_y && (self.pointer_y as f64) <= menu_y + menu_height {
                                     target_app = Some(app_id.clone());
                                 }
                             }
@@ -490,13 +515,14 @@ impl PointerHandler for AppState {
                             }
                         }
                     }
+                // In PointerHandler::pointer_frame during Right Click press (button == 273):
                 } else if button == 273 { // Right Click
                     if is_over_icons {
                         for (index, app_id) in apps_in_dock.iter().enumerate() {
                             let start_x = start_offset_x + spacing + index * (box_size + spacing); 
-                            let end_x = start_x + box_size; 
                             let hit_start_x = start_x.saturating_sub(spacing / 2);
-                            let hit_end_x = end_x + (spacing / 2);
+                            let hit_end_x = start_x + box_size + (spacing / 2);
+                            
                             if self.pointer_x >= hit_start_x && self.pointer_x <= hit_end_x { 
                                 self.menu_state.is_open = true; 
                                 self.menu_state.x = self.pointer_x; 
@@ -507,6 +533,58 @@ impl PointerHandler for AppState {
                                     .find(|id| self.open_windows.get(id).map(|w| w.is_activated).unwrap_or(false)) 
                                     .cloned() 
                                     .or_else(|| windows.first().cloned()); 
+
+                                let is_running = !windows.is_empty();
+                                let is_pinned = self.pinned_apps.contains(app_id);
+
+                                // Load Desktop Actions from .desktop file
+                                let actions = dockman_lib::get_desktop_actions(app_id);
+
+                                let mut items = Vec::new();
+                                if is_running {
+                                    items.push(crate::ContextMenuItem {
+                                        label: "Focus".to_string(),
+                                        item_type: crate::MenuItemType::Focus,
+                                    });
+                                    items.push(crate::ContextMenuItem {
+                                        label: "New Instance".to_string(),
+                                        item_type: crate::MenuItemType::LaunchNew,
+                                    });
+                                    items.push(crate::ContextMenuItem {
+                                        label: "Minimize".to_string(),
+                                        item_type: crate::MenuItemType::Minimize,
+                                    });
+                                } else {
+                                    items.push(crate::ContextMenuItem {
+                                        label: "Launch".to_string(),
+                                        item_type: crate::MenuItemType::LaunchNew,
+                                    });
+                                }
+
+                                // Add Actions
+                                for action in actions {
+                                    items.push(crate::ContextMenuItem {
+                                        label: action.name.clone(),
+                                        item_type: crate::MenuItemType::Action(action),
+                                    });
+                                }
+
+                                // Toggle Pin
+                                let pin_label = if is_pinned { "Unpin from Dock" } else { "Pin to Dock" };
+                                items.push(crate::ContextMenuItem {
+                                    label: pin_label.to_string(),
+                                    item_type: crate::MenuItemType::TogglePin,
+                                });
+
+                                // Full Application Close
+                                if is_running {
+                                    items.push(crate::ContextMenuItem {
+                                        label: "Quit Application".to_string(),
+                                        item_type: crate::MenuItemType::CloseApp,
+                                    });
+                                }
+
+                                self.menu_state.items = items;
                                 layer_changed = true;
                                 break;
                             }
@@ -520,13 +598,17 @@ impl PointerHandler for AppState {
                         if let Some(ref app_id) = self.hover_state.app_id {
                             if let Some(windows) = running_by_app.get(app_id) {
                                 let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
-                                    self.hover_state.x, self.width, self.height, windows.len()
+                                    self.hover_state.x,
+                                    self.width as usize,
+                                    self.height as usize,
+                                    windows.len(),
+                                    scale_factor,
                                 );
 
-                                if self.pointer_x >= menu_x && self.pointer_x <= menu_x + menu_width &&
-                                   self.pointer_y >= menu_y && self.pointer_y <= menu_y + menu_height {
+                                if (self.pointer_x as f64) >= menu_x && (self.pointer_x as f64) <= menu_x + menu_width &&
+                                   (self.pointer_y as f64) >= menu_y && (self.pointer_y as f64) <= menu_y + menu_height {
                                     let item_h = 30;
-                                    let idx = (self.pointer_y - menu_y) / item_h;
+                                    let idx = (((self.pointer_y as f64) - menu_y) as usize) / item_h;
                                     if let Some(handle_id) = windows.get(idx) {
                                         if let Some(win) = self.open_windows.get_mut(handle_id) {
                                             win.handle.close();
@@ -575,85 +657,94 @@ impl PointerHandler for AppState {
             } else if let PointerEventKind::Release { button, .. } = event.kind {
                 if button == 272 { // Left Click Release
                     // A. Context Menu Handling
-                    if self.menu_state.is_open { 
-                        let menu_width = MENU_WIDTH as usize; 
-                        let menu_height = MENU_HEIGHT as usize; 
-                        let menu_x = self.menu_state.x.min((self.width as usize).saturating_sub(menu_width)); 
-                        let menu_y = self.menu_state.y.saturating_sub(menu_height); 
+                    if self.menu_state.is_open && !self.menu_state.items.is_empty() { 
+                        let scale_factor = self.docks.first().map(|d| d.scale_factor).unwrap_or(1.0);
+                        let phys_width = (self.width as f64 * scale_factor).round() as usize;
+                        let phys_height = (self.height as f64 * scale_factor).round() as usize;
+                        let item_h = (30.0 * scale_factor).round() as usize;
 
-                        if self.pointer_x >= menu_x && self.pointer_x <= menu_x + menu_width &&
-                           self.pointer_y >= menu_y && self.pointer_y <= menu_y + menu_height { 
+                        let (menu_x, menu_y, menu_width, total_menu_h) = self.get_context_menu_bounds(phys_width, phys_height, scale_factor);
+                        let ptr_x = (self.pointer_x as f64) * scale_factor;
+                        let ptr_y = (self.pointer_y as f64) * scale_factor;
 
-                            let item_h = MENU_ITEM_HEIGHT as usize; 
-                            let clicked_item = (self.pointer_y - menu_y) / item_h; 
-                            let app_id = self.menu_state.target_app_id.clone(); 
-                            
-                            if let Some(app_id) = app_id { 
-                                match clicked_item {
-                                    0 => {
+                        if ptr_x >= menu_x as f64 && ptr_x <= (menu_x + menu_width) as f64 &&
+                           ptr_y >= menu_y as f64 && ptr_y <= (menu_y + total_menu_h) as f64 { 
+
+                            let clicked_item_idx = ((ptr_y - menu_y as f64) as usize) / item_h; 
+                            if let Some(item) = self.menu_state.items.get(clicked_item_idx) {
+                                match &item.item_type {
+                                    crate::MenuItemType::Focus => {
                                         if let Some(handle_id) = &self.menu_state.target_window { 
                                             if let Some(window_info) = self.open_windows.get_mut(handle_id) { 
                                                 if let Some(seat) = &self.wl_seat { window_info.handle.activate(seat); } 
                                             }
                                         }
                                     },
-                                    1 => {
-                                        let _ = std::process::Command::new("sh")
-                                            .arg(get_launcher_path())
-                                            .arg(app_id)
-                                            .spawn();
+                                    crate::MenuItemType::LaunchNew => {
+                                        if let Some(app_id) = &self.menu_state.target_app_id {
+                                            let _ = std::process::Command::new("sh")
+                                                .arg(get_launcher_path())
+                                                .arg(app_id)
+                                                .spawn();
+                                        }
                                     },
-                                    2 => {
+                                    crate::MenuItemType::Minimize => {
                                         if let Some(handle_id) = &self.menu_state.target_window { 
                                             if let Some(window_info) = self.open_windows.get_mut(handle_id) { 
                                                 window_info.handle.set_minimized(); 
                                             }
                                         }
                                     },
-                                    3 => {
-                                        if let Some(handle_id) = &self.menu_state.target_window { 
-                                            if let Some(window_info) = self.open_windows.get_mut(handle_id) { 
-                                                window_info.handle.close(); 
-                                            }
-                                        }
+                                    crate::MenuItemType::Action(action) => {
+                                        let _ = std::process::Command::new("sh")
+                                            .arg("-c")
+                                            .arg(&action.exec)
+                                            .spawn();
                                     },
-                                    4 => {
-                                        let mut app_id = app_id;
-                                        if !app_id.starts_with("steam_icon_") {
-                                            if let Some(idx) = app_id.rfind('_') {
-                                                if app_id[idx+1..].chars().all(|c| c.is_numeric()) {
-                                                    app_id = app_id[..idx].to_string();
+                                    crate::MenuItemType::TogglePin => {
+                                        if let Some(app_id) = &self.menu_state.target_app_id {
+                                            let mut app_id = app_id.clone();
+                                            if !app_id.starts_with("steam_icon_") {
+                                                if let Some(idx) = app_id.rfind('_') {
+                                                    if app_id[idx+1..].chars().all(|c| c.is_numeric()) {
+                                                        app_id = app_id[..idx].to_string();
+                                                    }
                                                 }
                                             }
-                                        }
-                                        if app_id.to_lowercase().contains("transmission") {
-                                            app_id = "transmission-gtk".to_string();
-                                        }
+                                            if app_id.to_lowercase().contains("transmission") {
+                                                app_id = "transmission-gtk".to_string();
+                                            }
 
-                                        let mut pinned = crate::modules::persistence::load_pinned_apps(); 
-                                        if pinned.contains(&app_id) { 
-                                            pinned.retain(|x| x != &app_id); 
-                                        } else { 
-                                            pinned.push(app_id.clone()); 
-                                            if let Some((rgba, size)) = self.icon_cache.get(&app_id) {
-                                                crate::cache::save_cached_icon(&app_id, *size, *size, rgba);
-                                            } else if let Some(window_info) = self.open_windows.values().find(|w| w.app_id == app_id) {
-                                                if let Some(rgba) = &window_info.icon_rgba {
-                                                    crate::cache::save_cached_icon(
-                                                        &app_id, 
-                                                        window_info.icon_size, 
-                                                        window_info.icon_size, 
-                                                        rgba
-                                                    );
+                                            let mut pinned = crate::modules::persistence::load_pinned_apps(); 
+                                            if pinned.contains(&app_id) { 
+                                                pinned.retain(|x| x != &app_id); 
+                                            } else { 
+                                                pinned.push(app_id.clone()); 
+                                                if let Some((rgba, size)) = self.icon_cache.get(&app_id) {
+                                                    crate::cache::save_cached_icon(&app_id, *size, *size, rgba);
+                                                } else if let Some(window_info) = self.open_windows.values().find(|w| w.app_id == app_id) {
+                                                    if let Some(rgba) = &window_info.icon_rgba {
+                                                        crate::cache::save_cached_icon(
+                                                            &app_id, 
+                                                            window_info.icon_size, 
+                                                            window_info.icon_size, 
+                                                            rgba
+                                                        );
+                                                    }
                                                 }
-                                            }
-                                        } 
-                                        crate::modules::persistence::save_pinned_apps(&pinned); 
-                                        self.pinned_apps = pinned; 
+                                            } 
+                                            crate::modules::persistence::save_pinned_apps(&pinned); 
+                                            self.pinned_apps = pinned; 
+                                        }
                                     },
-                                    _ => {}
+                                    crate::MenuItemType::CloseApp => {
+                                        if let Some(app_id) = self.menu_state.target_app_id.clone() {
+                                            self.close_application_completely(&app_id);
+                                        }
+                                    },
                                 }
                             }
+
                             self.is_dragging = false;
                             self.dragged_app_id = None;
                             self.menu_state.is_open = false; 
@@ -668,21 +759,25 @@ impl PointerHandler for AppState {
                     // B. Hover Preview Menu Handling
                     if self.hover_state.is_visible { 
                         if let Some(ref app_id) = self.hover_state.app_id { 
-                            if let Some(windows) = running_by_app.get(app_id) { 
-                                let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
-                                    self.hover_state.x, self.width, self.height, windows.len()
-                                );
 
-                                if self.pointer_x >= menu_x && self.pointer_x <= menu_x + menu_width &&
-                                   self.pointer_y >= menu_y && self.pointer_y <= menu_y + menu_height { 
+                            if let Some(windows) = running_by_app.get(app_id) {
+                                let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
+                                    self.hover_state.x,
+                                    self.width as usize,
+                                    self.height as usize,
+                                    windows.len(),
+                                    scale_factor,
+                                );
+                                if (self.pointer_x as f64) >= menu_x && (self.pointer_x as f64) <= menu_x + menu_width &&
+                                   (self.pointer_y as f64) >= menu_y && (self.pointer_y as f64) <= menu_y + menu_height { 
                                     let item_h = 30;
-                                    let idx = (self.pointer_y - menu_y) / item_h; 
+                                    let idx = (((self.pointer_y as f64) - menu_y) as usize) / item_h; 
                                     if let Some(handle_id) = windows.get(idx) { 
-                                        let sq_x = menu_x + menu_width - 25;
-                                        let sq_y = menu_y + idx * item_h + 5;
+                                        let sq_x = (menu_x as f64) + (menu_width as f64) - 25.0;
+                                        let sq_y = (menu_y as f64) + ((idx * item_h) as f64) + 5.0;
                                         
-                                        if self.pointer_x >= sq_x && self.pointer_x <= sq_x + 20 &&
-                                           self.pointer_y >= sq_y && self.pointer_y <= sq_y + 20 {
+                                        if (self.pointer_x as f64) >= sq_x && (self.pointer_x as f64) <= sq_x + 20.0 &&
+                                           (self.pointer_y as f64) >= sq_y && (self.pointer_y as f64) <= sq_y + 20.0 {
                                             if let Some(win) = self.open_windows.get_mut(handle_id) {
                                                 win.handle.close();
                                             }

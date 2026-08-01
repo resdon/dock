@@ -8,6 +8,8 @@ pub use dockman_lib::get_icon_path;
 
 use crate::models::WindowDiagnostics;
 
+use crate::modules::context_menu::get_hover_menu_bounds;
+
 use smithay_client_toolkit::shell::WaylandSurface;
 use smithay_client_toolkit::{
     compositor::CompositorState,
@@ -46,6 +48,7 @@ pub mod modules;
 // ...
 use modules::persistence;
 use crate::modules::world::FontManager;
+pub use dockman_lib::DesktopAction;
 
 // Store notifiers per-dock in DockInstance
 pub struct DockInstance {
@@ -58,14 +61,33 @@ pub struct DockInstance {
     pub scale_factor: f64,
 }
 // -----
+// Context Menu
+#[derive(Clone, Debug, PartialEq)]
+pub enum MenuItemType {
+    Focus,
+    LaunchNew,
+    Minimize,
+    Action(DesktopAction),
+    TogglePin,
+    CloseApp,
+}
+
+#[derive(Clone, Debug)]
+pub struct ContextMenuItem {
+    pub label: String,
+    pub item_type: MenuItemType,
+}
+
 pub struct MenuState {
     pub x: usize,
     pub y: usize,
     pub target_window: Option<ObjectId>,
     pub target_app_id: Option<String>,
     pub is_open: bool,
+    pub items: Vec<ContextMenuItem>,
 }
 
+// ------
 pub struct HoverState {
     pub x: usize,
     pub app_id: Option<String>,
@@ -119,11 +141,90 @@ pub struct AppState {
 }
 
 impl AppState {
+    pub fn get_context_menu_bounds(&self, phys_width: usize, phys_height: usize, scale_factor: f64) -> (usize, usize, usize, usize) {
+        let item_h = (30.0 * scale_factor).round() as usize;
+        let menu_width = (180.0 * scale_factor).round() as usize;
+        let raw_menu_h = self.menu_state.items.len() * item_h;
+        let total_menu_h = raw_menu_h.min(phys_height);
+
+        let cursor_x = (self.menu_state.x as f64 * scale_factor).round() as usize;
+        let cursor_y = (self.menu_state.y as f64 * scale_factor).round() as usize;
+
+        let max_x = phys_width.saturating_sub(menu_width);
+        let menu_x = cursor_x.min(max_x);
+
+        let ideal_y = cursor_y.saturating_sub(total_menu_h);
+        let max_y = phys_height.saturating_sub(total_menu_h);
+        let menu_y = ideal_y.min(max_y);
+
+        (menu_x, menu_y, menu_width, total_menu_h)
+    }
     /// Returns true ONLY if at least one visible window is still loading its icon
     pub fn is_animating(&self) -> bool {
         self.open_windows
             .values()
             .any(|win| !win.icon_resolved && win.icon_rgba.is_none())
+    }
+
+    /// Completely closes/quits all instances and processes of an application
+    pub fn close_application_completely(&mut self, app_id: &str) {
+        let mut pids_to_kill = Vec::new();
+        let target_app_lower = app_id.to_lowercase();
+
+        // 1. Close all Wayland foreign toplevel window handles matching app_id
+        for win in self.open_windows.values_mut() {
+            let win_app_id = if !win.app_id.is_empty() {
+                win.app_id.to_lowercase()
+            } else {
+                win.title.to_lowercase()
+            };
+
+            if win_app_id == target_app_lower
+                || win_app_id.starts_with(&target_app_lower)
+                || target_app_lower.contains(&win_app_id)
+            {
+                win.handle.close();
+                if let Some(pid) = win.matched_pid {
+                    pids_to_kill.push(pid);
+                }
+            }
+        }
+
+        // 2. Explicit shutdown hook for Steam
+        if target_app_lower.contains("steam") || app_id.starts_with("steam_icon_") {
+            let _ = std::process::Command::new("steam")
+                .arg("-shutdown")
+                .spawn();
+        }
+
+        // 3. Send SIGTERM to tracked window PIDs
+        for pid in &pids_to_kill {
+            unsafe {
+                libc::kill(*pid as i32, libc::SIGTERM);
+            }
+        }
+
+        // 4. Send SIGTERM to any processes matching process name in sys_scanner
+        self.sys_scanner.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+        let mut clean_name = target_app_lower.as_str();
+        if !clean_name.starts_with("steam_icon_") {
+            if let Some(idx) = clean_name.rfind('_') {
+                if clean_name[idx+1..].chars().all(|c| c.is_numeric()) {
+                    clean_name = &clean_name[..idx];
+                }
+            }
+        }
+
+        for (pid, proc_) in self.sys_scanner.processes() {
+            let proc_name = proc_.name().to_string_lossy().to_lowercase();
+            if proc_name == clean_name || proc_name.contains(clean_name) || clean_name.contains(&proc_name) {
+                unsafe {
+                    libc::kill(pid.as_u32() as i32, libc::SIGTERM);
+                }
+            }
+        }
+
+        self.needs_redraw = true;
     }
     /// Cycles focus through open window instances of `target_app_id`.
     /// `reverse = true` cycles backward (scrolling up), `reverse = false` cycles forward (scrolling down).
@@ -312,6 +413,12 @@ impl AppState {
         let max_dock_width = 800;
 
         for dock in &mut self.docks {
+            // Cache menu state properties before the mutable loop borrow
+            let menu_is_open = self.menu_state.is_open;
+            let menu_x_val = self.menu_state.x;
+            let menu_y_val = self.menu_state.y;
+            let menu_items_len = self.menu_state.items.len();
+
             let dock_output = dock.output.clone();
 
             // 1. Filter open windows matching THIS output using REFERENCES (Zero allocations!)
@@ -343,7 +450,10 @@ impl AppState {
             };
 
             let dock_width = calculated_width.min(max_dock_width);
-            let dock_height = if self.menu_state.is_open || self.hover_state.is_visible { 200 } else { 60 };
+            
+            // Determine if either the context menu or hover state requires the expanded height (200px)
+            let is_expanded = self.menu_state.is_open || self.hover_state.is_visible;
+            let dock_height = if is_expanded { 200 } else { 60 };
 
             dock.width = dock_width;
             dock.height = dock_height;
@@ -354,7 +464,8 @@ impl AppState {
             let compositor = self.compositor_state.wl_compositor();
             let region = compositor.create_region(qh, ());
 
-            let dock_y = (dock_height as i32).saturating_sub(60);
+            // When expanded to 200px, the main dock bar is at the bottom (y: 140 to 200)
+            let dock_y = if is_expanded { 140 } else { 0 };
             region.add(0, dock_y, dock_width as i32, 60);
 
             // Hover preview input region
@@ -369,8 +480,12 @@ impl AppState {
                         })
                         .count();
                     if count > 0 {
-                        let (menu_x, menu_y, menu_width, menu_height) = crate::modules::context_menu::get_hover_menu_bounds(
-                            self.hover_state.x, dock_width, dock_height, count
+                        let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
+                            self.hover_state.x,
+                            dock_width as usize,
+                            dock_height as usize,
+                            count,
+                            self.scale_factor,
                         );
                         region.add(menu_x as i32, menu_y as i32, menu_width as i32, menu_height as i32);
 
@@ -382,15 +497,51 @@ impl AppState {
                 }
             }
 
-            // Context menu input region
-            if self.menu_state.is_open {
-                let menu_width = crate::modules::context_menu::MENU_WIDTH as i32;
-                let menu_height = crate::modules::context_menu::MENU_HEIGHT as i32;
-                let menu_x = (self.menu_state.x as i32).min((dock_width as i32).saturating_sub(menu_width));
-                let menu_y = (self.menu_state.y as i32).saturating_sub(menu_height);
-                region.add(menu_x, menu_y, menu_width, menu_height);
-            }
+            // Context menu input region (expects surface-local / logical coordinates)
+            if menu_is_open {
+                let item_h = 30.0;
+                let menu_width = 180.0;
+                let raw_menu_h = menu_items_len as f64 * item_h;
+                // Allow the menu height to fit nicely inside our 200px window space
+                let total_menu_h = raw_menu_h.min(140.0);
 
+                let cursor_x = menu_x_val as f64;
+                let cursor_y = menu_y_val as f64;
+
+                let max_x = (dock_width as f64 - menu_width).max(0.0);
+                let menu_x = cursor_x.min(max_x);
+
+                // Position the menu upward from the cursor, bounded within the 200px surface
+                let ideal_y = (cursor_y - total_menu_h).max(0.0);
+                let max_y = (dock_height as f64 - total_menu_h).max(0.0);
+                let menu_y = ideal_y.min(max_y);
+
+                region.add(menu_x as i32, menu_y as i32, menu_width as i32, total_menu_h as i32);
+            }
+            surface.wl_surface().set_input_region(Some(&region));
+            
+            // ✅ Destroy the region object immediately to prevent Wayland proxy leakage
+            region.destroy();
+
+            // Context menu input region (expects surface-local / logical coordinates)
+            if menu_is_open {
+                let item_h = 30.0;
+                let menu_width = 180.0;
+                let raw_menu_h = menu_items_len as f64 * item_h;
+                let total_menu_h = raw_menu_h.min(dock_height as f64);
+
+                let cursor_x = menu_x_val as f64;
+                let cursor_y = menu_y_val as f64;
+
+                let max_x = (dock_width as f64 - menu_width).max(0.0);
+                let menu_x = cursor_x.min(max_x);
+
+                let ideal_y = (cursor_y - total_menu_h).max(0.0);
+                let max_y = (dock_height as f64 - total_menu_h).max(0.0);
+                let menu_y = ideal_y.min(max_y);
+
+                region.add(menu_x as i32, menu_y as i32, menu_width as i32, total_menu_h as i32);
+            }
             surface.wl_surface().set_input_region(Some(&region));
             
             // ✅ CRITICAL FIX 1: Destroy the region object immediately to prevent Wayland proxy leakage
@@ -566,6 +717,7 @@ fn main() {
             target_window: None,
             target_app_id: None,
             is_open: false,
+            items: Vec::new(),
         },
         hover_state: HoverState {
             x: 0,

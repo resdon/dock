@@ -78,6 +78,8 @@ pub mod icon_utils {
 use std::fs;
 use std::path::PathBuf;
 
+
+
 	pub fn find_desktop_file_by_name(search_name: &str) -> Option<String> {
         let mut dirs = vec![PathBuf::from("/usr/share/applications")];
         if let Ok(home) = std::env::var("HOME") {
@@ -327,6 +329,138 @@ use std::path::PathBuf;
 
 
 
+}
+
+// DesktopAction struct to hold name and exec commands
+#[derive(Clone, Debug, PartialEq)]
+pub struct DesktopAction {
+    pub name: String,
+    pub exec: String,
+}
+
+/// Strips field codes (e.g. %u, %F, %i) from Exec lines
+pub fn clean_exec_field(exec: &str) -> String {
+    exec.split_whitespace()
+        .filter(|arg| !arg.starts_with('%'))
+        .collect::<Vec<&str>>()
+        .join(" ")
+}
+
+/// Parses [Desktop Entry] Actions= and [Desktop Action <ID>] sections
+pub fn parse_desktop_actions(desktop_path: &Path) -> Vec<DesktopAction> {
+    let file = match File::open(desktop_path) {
+        Ok(f) => f,
+        Err(_) => return Vec::new(),
+    };
+
+    let reader = BufReader::new(file);
+    let mut current_section = String::new();
+    let mut action_keys: Vec<String> = Vec::new();
+    let mut action_map: std::collections::HashMap<String, (String, String)> = std::collections::HashMap::new();
+
+    for line in reader.lines().flatten() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            current_section = trimmed[1..trimmed.len() - 1].to_string();
+            continue;
+        }
+
+        if current_section == "Desktop Entry" {
+            if trimmed.starts_with("Actions=") {
+                let actions_str = &trimmed["Actions=".len()..];
+                action_keys = actions_str
+                    .split(';')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+            }
+        } else if current_section.starts_with("Desktop Action ") {
+            let action_id = current_section["Desktop Action ".len()..].trim().to_string();
+            if let Some((key, value)) = trimmed.split_once('=') {
+                let key = key.trim();
+                let value = value.trim();
+                let entry = action_map.entry(action_id).or_insert_with(|| (String::new(), String::new()));
+                if key == "Name" {
+                    entry.0 = value.to_string();
+                } else if key == "Exec" {
+                    entry.1 = clean_exec_field(value);
+                }
+            }
+        }
+    }
+
+    let mut actions = Vec::new();
+    for action_id in action_keys {
+        if let Some((name, exec)) = action_map.get(&action_id) {
+            if !name.is_empty() && !exec.is_empty() {
+                actions.push(DesktopAction {
+                    name: name.clone(),
+                    exec: exec.clone(),
+                });
+            }
+        }
+    }
+
+    actions
+}
+
+/// Finds the .desktop file for app_id and returns all desktop actions
+pub fn get_desktop_actions(app_id: &str) -> Vec<DesktopAction> {
+    let mut search_id = app_id.to_string();
+    if !search_id.starts_with("steam_icon_") {
+        if let Some(idx) = search_id.rfind('_') {
+            if search_id[idx+1..].chars().all(|c| c.is_numeric()) {
+                search_id = search_id[..idx].to_string();
+            }
+        }
+    }
+    if search_id.to_lowercase().contains("transmission") {
+        search_id = "transmission-gtk".to_string();
+    }
+
+    let xdg_data_dirs = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".to_string());
+    let mut search_paths: Vec<PathBuf> = xdg_data_dirs.split(':').map(|s| Path::new(s).join("applications")).collect();
+    if let Ok(home) = std::env::var("HOME") {
+        search_paths.insert(0, Path::new(&home).join(".local/share/applications"));
+    }
+
+    let candidates = [
+        format!("{}.desktop", search_id),
+        format!("{}.desktop", search_id.to_lowercase()),
+        format!("org.gnome.{}.desktop", search_id),
+        format!("org.kde.{}.desktop", search_id),
+        format!("com.{}.desktop", search_id),
+    ];
+
+    for path in &search_paths {
+        for candidate in &candidates {
+            let desktop_path = path.join(candidate);
+            if desktop_path.exists() {
+                let actions = parse_desktop_actions(&desktop_path);
+                if !actions.is_empty() {
+                    return actions;
+                }
+            }
+        }
+    }
+
+    if let Some(resolved_id) = icon_utils::find_desktop_file_by_exec(&search_id) {
+        for path in &search_paths {
+            let desktop_path = path.join(format!("{}.desktop", resolved_id));
+            if desktop_path.exists() {
+                let actions = parse_desktop_actions(&desktop_path);
+                if !actions.is_empty() {
+                    return actions;
+                }
+            }
+        }
+    }
+
+    Vec::new()
 }
 
 pub fn resolve_steam_game_details(
