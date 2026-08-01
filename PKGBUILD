@@ -7,7 +7,7 @@ arch=('x86_64')
 license=('custom')
 depends=('wayland' 'libxkbcommon' 'fontconfig' 'gcc-libs')
 makedepends=('rust' 'cargo')
-source=('Cargo.toml' 'src' 'font.ttf' 'launcher.sh')
+source=('Cargo.toml' 'src' 'assets/font.ttf' 'launcher.sh')
 sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 prepare() {
@@ -30,5 +30,5 @@ package() {
   
   # Shared Assets
   install -Dm755 "launcher.sh" "$pkgdir/usr/share/dock/launcher.sh"
-  install -Dm644 "font.ttf" "$pkgdir/usr/share/dock/font.ttf"
+  install -Dm644 "assets/font.ttf" "$pkgdir/usr/share/dock/font.ttf"
 }

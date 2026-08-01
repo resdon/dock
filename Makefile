@@ -16,7 +16,7 @@ install: build
 	
 	@echo "Installing assets to $(DATA_DIR)..."
 	mkdir -p $(DATA_DIR)
-	cp launcher.sh font.ttf $(DATA_DIR)/
+	cp launcher.sh assets/font.ttf $(DATA_DIR)/
 	@echo "Installation complete!"
 
 uninstall:
