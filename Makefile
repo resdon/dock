@@ -15,8 +15,9 @@ install: build
 	cp target/release/$(BINARY_NAME) $(INSTALL_BIN)/
 	
 	@echo "Installing assets to $(DATA_DIR)..."
-	mkdir -p $(DATA_DIR)
+	mkdir -p $(DATA_DIR)/24
 	cp launcher.sh assets/font.ttf $(DATA_DIR)/
+	cp -r assets/24/* $(DATA_DIR)/24/
 	@echo "Installation complete!"
 
 uninstall:

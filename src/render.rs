@@ -80,6 +80,7 @@ pub fn render_windows(
     dragged_app_id: Option<&String>,
     pointer_x: usize,
     pointer_y: usize,
+    fallback_anim: &dockman_lib::animations::IconAnimation,
 ) {
     // 1. Clear background
     let dock_height = (DOCK_HEIGHT as f64 * scale_factor).round() as usize;
@@ -106,14 +107,13 @@ pub fn render_windows(
     }
 
     // Then add running apps not in pinned
-	let mut sorted_windows: Vec<&WindowDiagnostics> = open_windows.values().collect();
-	// Sort by app_name first, then fall back to title (or a unique window ID) for stability
-	sorted_windows.sort_by(|a, b| {
-	    a.app_name.cmp(&b.app_name)
-	        .then_with(|| a.title.cmp(&b.title))
-	        .then_with(|| std::ptr::from_ref(*a).cmp(&std::ptr::from_ref(*b)))
-	});
-	    
+    let mut sorted_windows: Vec<&WindowDiagnostics> = open_windows.values().collect();
+    sorted_windows.sort_by(|a, b| {
+        a.app_name.cmp(&b.app_name)
+            .then_with(|| a.title.cmp(&b.title))
+            .then_with(|| std::ptr::from_ref(*a).cmp(&std::ptr::from_ref(*b)))
+    });
+        
     for w in sorted_windows {
         let app_id = if !w.app_id.is_empty() {
             w.app_id.clone()
@@ -164,73 +164,51 @@ pub fn render_windows(
                         let alpha = icon_pixels[src_idx + 3] as f32 / 255.0;
                         if alpha > 0.0 {
                             let dim = if is_running { 1.0 } else { 0.5 };
-                            canvas[canvas_idx]     = ((icon_pixels[src_idx + 2] as f32 * alpha * dim) + (canvas[canvas_idx] as f32 * (1.0 - alpha))) as u8; // Blue
-                            canvas[canvas_idx + 1] = ((icon_pixels[src_idx + 1] as f32 * alpha * dim) + (canvas[canvas_idx + 1] as f32 * (1.0 - alpha))) as u8; // Green
-                            canvas[canvas_idx + 2] = ((icon_pixels[src_idx]     as f32 * alpha * dim) + (canvas[canvas_idx + 2] as f32 * (1.0 - alpha))) as u8; // Red
+                            canvas[canvas_idx]     = ((icon_pixels[src_idx + 2] as f32 * alpha * dim) + (canvas[canvas_idx] as f32 * (1.0 - alpha))) as u8;
+                            canvas[canvas_idx + 1] = ((icon_pixels[src_idx + 1] as f32 * alpha * dim) + (canvas[canvas_idx + 1] as f32 * (1.0 - alpha))) as u8;
+                            canvas[canvas_idx + 2] = ((icon_pixels[src_idx]     as f32 * alpha * dim) + (canvas[canvas_idx + 2] as f32 * (1.0 - alpha))) as u8;
+                            canvas[canvas_idx + 3] = 255;
+                        }
+                    }
+                }
+            }
+        } else if let Some(frame) = fallback_anim.current_frame() {
+            // Draw current active frame from IconAnimation controller
+            let frame_size = frame.width as usize;
+            let offset_x = start_x + (box_size.saturating_sub(frame_size)) / 2;
+            let offset_y = start_y + (box_size.saturating_sub(frame_size)) / 2;
+
+            for fy in 0..frame_size {
+                for fx in 0..frame_size {
+                    let canvas_x = offset_x + fx;
+                    let canvas_y = offset_y + fy;
+
+                    if canvas_x < phys_width as usize && canvas_y < phys_height as usize {
+                        let src_idx = (fy * frame_size + fx) * 4;
+                        let r = frame.rgba[src_idx] as u32;
+                        let g = frame.rgba[src_idx + 1] as u32;
+                        let b = frame.rgba[src_idx + 2] as u32;
+                        let a = frame.rgba[src_idx + 3] as u32;
+
+                        if a > 0 {
+                            let canvas_idx = (canvas_y * (phys_width as usize) + canvas_x) * 4;
+                            let inv_a = 255 - a;
+
+                            canvas[canvas_idx]     = ((b * a + canvas[canvas_idx] as u32 * inv_a) / 255) as u8;
+                            canvas[canvas_idx + 1] = ((g * a + canvas[canvas_idx + 1] as u32 * inv_a) / 255) as u8;
+                            canvas[canvas_idx + 2] = ((r * a + canvas[canvas_idx + 2] as u32 * inv_a) / 255) as u8;
                             canvas[canvas_idx + 3] = 255;
                         }
                     }
                 }
             }
         } else {
-            // Fallback tile with gradient and centered letter
-            let radius = 10.0 * scale_factor;
-            let size_f = box_size as f64;
-            let is_inside_rounded_rect = |px: usize, py: usize| -> bool {
-                let x = px as f64;
-                let y = py as f64;
-                if x < radius && y < radius {
-                    (x - radius).powi(2) + (y - radius).powi(2) <= radius.powi(2)
-                } else if x > size_f - radius && y < radius {
-                    (x - (size_f - radius)).powi(2) + (y - radius).powi(2) <= radius.powi(2)
-                } else if x < radius && y > size_f - radius {
-                    (x - radius).powi(2) + (y - (size_f - radius)).powi(2) <= radius.powi(2)
-                } else if x > size_f - radius && y > size_f - radius {
-                    (x - (size_f - radius)).powi(2) + (y - (size_f - radius)).powi(2) <= radius.powi(2)
-                } else {
-                    true
-                }
-            };
-
-            let hash = app_id.bytes().fold(0u32, |acc, b| acc.wrapping_add(b as u32));
-            let hue = (hash % 360) as f32;
-            let base_color = hsl_to_rgb(hue, 0.6, 0.55);
-            let grad_color = hsl_to_rgb(hue, 0.6, 0.40);
-
-            for y in 0..box_size {
-                for x in 0..box_size {
-                    let canvas_x = start_x + x;
-                    let canvas_y = start_y + y;
-                    if canvas_x < phys_width as usize && canvas_y < phys_height as usize {
-                        if is_inside_rounded_rect(x, y) {
-                            let canvas_idx = (canvas_y * (phys_width as usize) + canvas_x) * 4;
-                            let t = y as f32 / box_size as f32;
-                            let dim = if is_running { 1.0 } else { 0.5 };
-                            let r = (base_color.0 as f32 * (1.0 - t) + grad_color.0 as f32 * t) * dim;
-                            let g = (base_color.1 as f32 * (1.0 - t) + grad_color.1 as f32 * t) * dim;
-                            let b = (base_color.2 as f32 * (1.0 - t) + grad_color.2 as f32 * t) * dim;
-                            
-                            canvas[canvas_idx] = r as u8;
-                            canvas[canvas_idx + 1] = g as u8;
-                            canvas[canvas_idx + 2] = b as u8;
-                            canvas[canvas_idx + 3] = 255;
-                        }
-                    }
-                }
-            }
-
-            // Capitalized first letter
-            let letter = app_id.chars().next()
-                .unwrap_or('?')
-                .to_uppercase()
-                .to_string();
-
-            // Render letter centered (scaled)
+            // Fallback text icon if animation fails/empty
+            let letter = app_id.chars().next().unwrap_or('?').to_uppercase().to_string();
             let font_size = 24.0 * scale_factor as f32;
-            let offset_x = (16.0 * scale_factor).round() as usize;
-            let offset_y = (11.0 * scale_factor).round() as usize;
-
-            draw_text(canvas, phys_width, phys_height, font_manager, &letter, font_size, start_x + offset_x, start_y + offset_y, (255, 255, 255));
+            let text_x = start_x + (16.0 * scale_factor).round() as usize;
+            let text_y = start_y + (11.0 * scale_factor).round() as usize;
+            draw_text(canvas, phys_width, phys_height, font_manager, &letter, font_size, text_x, text_y, (255, 255, 255));
         }
 
         // Render tracking indicator dash(es)
@@ -259,12 +237,10 @@ pub fn render_windows(
                         if canvas_x < phys_width as usize {
                             let canvas_idx = (indicator_y * (phys_width as usize) + canvas_x) * 4;
                             if is_activated {
-                                // Yellow in BGRA format: Blue = 0x00, Green = 0xFF, Red = 0xFF
                                 canvas[canvas_idx]     = 0x00; 
                                 canvas[canvas_idx + 1] = 0xFF; 
                                 canvas[canvas_idx + 2] = 0xFF; 
                             } else {
-                                // Inactive open windows: subtle dim gray/white
                                 let brightness = 0x66;
                                 canvas[canvas_idx]     = brightness;
                                 canvas[canvas_idx + 1] = brightness;
@@ -278,7 +254,7 @@ pub fn render_windows(
         }
     }
 
-    // 4. Render Context Menu
+    // Context Menu Rendering
     if menu_state.is_open {
         let menu_width = crate::modules::context_menu::MENU_WIDTH as usize;
         let menu_height = crate::modules::context_menu::MENU_HEIGHT as usize;
@@ -314,7 +290,7 @@ pub fn render_windows(
         }
     }
 
-    // 5. Render Hover Preview Menu
+    // Hover Preview Menu Rendering
     if hover_state.is_visible && !menu_state.is_open && !is_dragging {
         if let Some(ref app_id) = hover_state.app_id {
             if let Some(windows) = running_by_app.get(app_id) {
@@ -391,7 +367,7 @@ pub fn render_windows(
         }
     }
 
-    // 6. Render Floating Dragged Icon under mouse cursor
+    // Dragged Icon Rendering
     if is_dragging {
         if let Some(drag_id) = dragged_app_id {
             let windows = running_by_app.get(drag_id);

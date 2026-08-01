@@ -7,7 +7,7 @@ arch=('x86_64')
 license=('custom')
 depends=('wayland' 'libxkbcommon' 'fontconfig' 'gcc-libs')
 makedepends=('rust' 'cargo')
-source=('Cargo.toml' 'src' 'assets/font.ttf' 'launcher.sh')
+source=('Cargo.toml' 'src' 'assets' 'launcher.sh')
 sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 prepare() {
@@ -31,4 +31,8 @@ package() {
   # Shared Assets
   install -Dm755 "launcher.sh" "$pkgdir/usr/share/dock/launcher.sh"
   install -Dm644 "assets/font.ttf" "$pkgdir/usr/share/dock/font.ttf"
+
+  # Animation Frame SVGs
+  install -d "$pkgdir/usr/share/dock/24"
+  install -Dm644 assets/24/*.svg -t "$pkgdir/usr/share/dock/24/"
 }

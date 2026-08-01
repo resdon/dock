@@ -35,6 +35,8 @@ use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_m
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use libc; // for loop and animation
+
 // 1. Mount the files as local root modules
 pub mod handlers;
 pub mod render;
@@ -111,9 +113,18 @@ pub struct AppState {
     pub fractional_scale_notifier: Option<WpFractionalScaleV1>,
     pub scale_factor: f64, // Defaults to 1.0
     // -----
+    // Animation state for missing icon fallback
+    // Pre-rendered frame-based icon animation controller
+    pub fallback_anim: dockman_lib::animations::IconAnimation,
 }
 
 impl AppState {
+    /// Returns true ONLY if at least one visible window is still loading its icon
+    pub fn is_animating(&self) -> bool {
+        self.open_windows
+            .values()
+            .any(|win| !win.icon_resolved && win.icon_rgba.is_none())
+    }
     /// Cycles focus through open window instances of `target_app_id`.
     /// `reverse = true` cycles backward (scrolling up), `reverse = false` cycles forward (scrolling down).
     pub fn cycle_window_for_app(&mut self, target_app_id: &str, reverse: bool) {
@@ -300,26 +311,23 @@ impl AppState {
         let spacing = 12;
         let max_dock_width = 800;
 
-        // Iterate through each monitor's dock instance by index
-        let num_docks = self.docks.len();
-        for i in 0..num_docks {
-            let dock_output = self.docks[i].output.clone();
+        for dock in &mut self.docks {
+            let dock_output = dock.output.clone();
 
-            // 1. Filter open windows matching THIS specific monitor output
-            let filtered_windows: HashMap<ObjectId, WindowDiagnostics> = self.open_windows.iter()
+            // 1. Filter open windows matching THIS output using REFERENCES (Zero allocations!)
+            let filtered_windows: HashMap<&ObjectId, &WindowDiagnostics> = self.open_windows.iter()
                 .filter(|(_, win)| win.outputs.contains(&dock_output))
-                .map(|(k, v)| (k.clone(), v.clone()))
                 .collect();
 
-            // 2. Build items list for this output
-            let mut apps_in_dock: Vec<String> = self.pinned_apps.clone();
+            // 2. Build items list without cloning Strings
+            let mut apps_in_dock: Vec<&str> = self.pinned_apps.iter().map(|s| s.as_str()).collect();
             for window in filtered_windows.values() {
                 let id = if !window.app_id.is_empty() {
-                    window.app_id.clone()
+                    window.app_id.as_str()
                 } else if !window.title.is_empty() {
-                    window.title.clone()
+                    window.title.as_str()
                 } else {
-                    "Unknown".to_string()
+                    "Unknown"
                 };
 
                 if !apps_in_dock.contains(&id) { 
@@ -327,7 +335,6 @@ impl AppState {
                 }
             }
 
-            // Calculate dynamic dimensions per dock
             let total_items = apps_in_dock.len();
             let calculated_width = if total_items > 0 {
                 (total_items * box_size + (total_items + 1) * spacing) as u32
@@ -338,11 +345,11 @@ impl AppState {
             let dock_width = calculated_width.min(max_dock_width);
             let dock_height = if self.menu_state.is_open || self.hover_state.is_visible { 200 } else { 60 };
 
-            self.docks[i].width = dock_width;
-            self.docks[i].height = dock_height;
+            dock.width = dock_width;
+            dock.height = dock_height;
 
-            // 3. Configure layer surface & input region for this specific dock
-            let surface = &self.docks[i].surface;
+            // 3. Configure layer surface & input region
+            let surface = &dock.surface;
             surface.set_size(dock_width, dock_height);
             let compositor = self.compositor_state.wl_compositor();
             let region = compositor.create_region(qh, ());
@@ -385,9 +392,12 @@ impl AppState {
             }
 
             surface.wl_surface().set_input_region(Some(&region));
+            
+            // ✅ CRITICAL FIX 1: Destroy the region object immediately to prevent Wayland proxy leakage
+            region.destroy();
 
             // --- FRACTIONAL SCALE CALCULATION ---
-            let dock_scale = self.docks[i].scale_factor;
+            let dock_scale = dock.scale_factor;
             let phys_width = (dock_width as f64 * dock_scale).round() as u32;
             let phys_height = (dock_height as f64 * dock_scale).round() as u32;
             let stride = phys_width * 4;
@@ -396,7 +406,8 @@ impl AppState {
                 continue;
             }
 
-            // Allocate buffer matching PHYSICAL screen pixels
+            dock.current_buffer = None;
+
             let (buffer, canvas) = self
                 .pool
                 .create_buffer(
@@ -407,13 +418,18 @@ impl AppState {
                 )
                 .expect("Failed to allocate SHM buffer");
 
-            // ✅ 14 arguments expected
+            // Build cloned reference map ONLY if render_windows strictly requires owned values,
+            // or update render_windows signature to accept &HashMap<&ObjectId, &WindowDiagnostics>
+            let render_windows_map: HashMap<ObjectId, WindowDiagnostics> = filtered_windows.iter()
+                .map(|(k, v)| ((*k).clone(), (*v).clone()))
+                .collect();
+
             render::render_windows(
                 canvas, 
                 phys_width,
                 phys_height,
                 dock_scale,
-                &filtered_windows,
+                &render_windows_map,
                 &self.pinned_apps,
                 &self.icon_cache,
                 &self.menu_state,
@@ -423,16 +439,15 @@ impl AppState {
                 self.dragged_app_id.as_ref(),
                 self.pointer_x,
                 self.pointer_y,
+                &self.fallback_anim,
             );
 
-            // 5. Attach buffer and commit to this output's surface
-            // Enforce scale 1 so compositor does not scale physical SHM buffer
             surface.wl_surface().set_buffer_scale(1);
             buffer.attach_to(surface.wl_surface()).expect("Buffer attach failed");
             surface.wl_surface().damage_buffer(0, 0, phys_width as i32, phys_height as i32);
             surface.wl_surface().commit();
 
-            self.docks[i].current_buffer = Some(buffer);
+            dock.current_buffer = Some(buffer);
         }
     }
 }
@@ -459,9 +474,6 @@ fn main() {
     let conn = Connection::connect_to_env().expect("Failed to connect to Wayland display");
     println!("[DEBUG] Connected to Wayland.");
     
-    let mut event_queue: wayland_client::EventQueue<AppState> = conn.new_event_queue();
-    let qh = event_queue.handle();
-
     // Fetch globals using SimpleGlobalList
     // 1. Initialize event queue and retrieve globals list
     let (globals, mut event_queue) = registry_queue_init::<AppState>(&conn)
@@ -495,6 +507,22 @@ fn main() {
     .into_iter()
     .find(|p| p.exists())
     .expect("No valid font file found!");
+
+    // Resolve dynamic path for SVG animation frames ---
+    let anim_dir = [
+        PathBuf::from("assets/24"),
+        PathBuf::from(format!("{}/.local/share/dock/24", home)),
+        PathBuf::from("/usr/share/dock/24"),
+    ]
+    .into_iter()
+    .find(|p| p.exists())
+    .unwrap_or_else(|| PathBuf::from("assets/24"));
+
+    let fallback_anim = dockman_lib::animations::IconAnimation::new(
+        anim_dir.to_str().unwrap_or("assets/24"),
+        48,
+        24,
+    );
 
     // =========================================================================
     // 1. CREATE THE VARIABLES RIGHT BEFORE APPSTATE USES THEM
@@ -561,7 +589,9 @@ fn main() {
         fractional_scale_manager: None,
         fractional_scale_notifier: None,
         scale_factor: 1.0,
-
+        // Initialize animation state
+        // Pre-render SVG sequence once at startup (24 FPS, 48x48 icon size)
+        fallback_anim,
     };
 
     // =========================================================================
@@ -625,10 +655,50 @@ fn main() {
     
     // ... Rest of your layer_surface allocation and blocking_dispatch loop code continues exactly the same
     println!("[DEBUG] Starting event loop...");
+
     loop {
-        if let Err(e) = event_queue.blocking_dispatch(&mut state) {
+        let _ = state.connection.flush();
+
+        if let Err(e) = event_queue.dispatch_pending(&mut state) {
             eprintln!("[WARN] Dispatch error: {}", e);
             break;
+        }
+
+        // 1. Sync animation state and check if discrete frame step occurred
+        state.fallback_anim.is_active = state.is_animating();
+        let frame_advanced = state.fallback_anim.update();
+
+        if let Some(guard) = state.connection.prepare_read() {
+            let raw_fd = std::os::unix::io::AsRawFd::as_raw_fd(&guard.connection_fd());
+            let mut pfd = libc::pollfd {
+                fd: raw_fd,
+                events: libc::POLLIN,
+                revents: 0,
+            };
+
+            // 2. Sleep timeout strictly bound to the exact remainder of the current animation frame
+            let timeout_ms = if state.fallback_anim.is_active {
+                state.fallback_anim.time_until_next_frame().as_millis() as i32
+            } else {
+                -1
+            };
+
+            let poll_res = unsafe { libc::poll(&mut pfd, 1, timeout_ms) };
+
+            if poll_res > 0 && (pfd.revents & libc::POLLIN) != 0 {
+                let _ = guard.read();
+            }
+        }
+
+        if let Err(e) = event_queue.dispatch_pending(&mut state) {
+            eprintln!("[WARN] Dispatch error: {}", e);
+            break;
+        }
+
+        // 3. Trigger redraw ONLY when frame explicitly stepped or interaction flagged redraw
+        if frame_advanced || state.needs_redraw {
+            state.draw(&qh);
+            state.needs_redraw = false;
         }
     }
 }

@@ -71,7 +71,7 @@ pub mod models {
 	}
 }
 
-
+pub mod animations;
 pub mod icon_utils {
     use super::*;
 

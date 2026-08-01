@@ -79,7 +79,7 @@ impl Dispatch<WpFractionalScaleV1, WlOutput> for AppState {
         event: wp_fractional_scale_v1::Event,
         data: &WlOutput, // `data` is now the WlOutput bound to this notifier
         _conn: &Connection,
-        qh: &QueueHandle<Self>,
+        _qh: &QueueHandle<Self>,
     ) {
         match event {
             wp_fractional_scale_v1::Event::PreferredScale { scale } => {
@@ -91,7 +91,6 @@ impl Dispatch<WpFractionalScaleV1, WlOutput> for AppState {
                     if (dock.scale_factor - new_scale).abs() > f64::EPSILON {
                         dock.scale_factor = new_scale;
                         state.needs_redraw = true;
-                        state.draw(qh);
                     }
                 }
             }
@@ -131,11 +130,10 @@ impl ProvidesRegistryState for AppState {
 // Compositor Handler - Track dock surface output
 // =========================================================================
 impl CompositorHandler for AppState {
-    fn surface_enter(&mut self, _: &Connection, qh: &QueueHandle<Self>, _: &wayland_client::protocol::wl_surface::WlSurface, output: &WlOutput) {
+    fn surface_enter(&mut self, _: &Connection, _qh: &QueueHandle<Self>, _: &wayland_client::protocol::wl_surface::WlSurface, output: &WlOutput) {
         println!("[DOCK MONITOR] Surface entered output: {:?}", output);
         self.current_output = Some(output.clone());
         self.needs_redraw = true;
-        self.draw(qh);
     }
 
     fn surface_leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wayland_client::protocol::wl_surface::WlSurface, output: &WlOutput) {
@@ -222,7 +220,7 @@ impl PointerHandler for AppState {
     fn pointer_frame(
         &mut self,
         _conn: &Connection,
-        qh: &QueueHandle<Self>,
+        _qh: &QueueHandle<Self>,
         _pointer: &wayland_client::protocol::wl_pointer::WlPointer,
         events: &[PointerEvent],
     ) {
@@ -244,12 +242,12 @@ impl PointerHandler for AppState {
                         if (dx * dx + dy * dy).sqrt() > 5.0 {
                             self.is_dragging = true;
                         }
+                        // Inside Step 1 of pointer_frame:
                         if self.is_dragging {
                             let now = std::time::Instant::now();
                             if now.duration_since(self.last_drag_draw).as_millis() >= 4 {
                                 self.last_drag_draw = now;
-                                self.draw(qh);
-                                let _ = self.connection.flush();
+                                layer_changed = true; // ✅ Set layer_changed instead of calling self.draw(qh) directly
                             }
                         }
                     } else {
@@ -801,12 +799,6 @@ impl PointerHandler for AppState {
         if layer_changed {
             self.needs_redraw = true; 
         }
-
-        if self.needs_redraw {
-            self.draw(qh);
-            self.needs_redraw = false;
-            let _ = self.connection.flush();
-        }
     }
 }
 
@@ -844,7 +836,7 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for AppState {
         event: <ZwlrForeignToplevelHandleV1 as Proxy>::Event,
         _data: &(),
         _conn: &Connection,
-        qh: &QueueHandle<Self>,
+        _qh: &QueueHandle<Self>,
     ) {
         let window_id = handle.id().protocol_id() as u64;
         state.open_windows.entry(handle.id()).or_insert_with(|| {
@@ -858,21 +850,21 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for AppState {
                         window.outputs.push(output);
                     }
                 }
-                state.draw(qh);
+                state.needs_redraw = true; // ✅ Changed from state.draw(qh)
             }
             zwlr_foreign_toplevel_handle_v1::Event::OutputLeave { output } => {
                 if let Some(window) = state.open_windows.get_mut(&handle.id()) {
                     window.outputs.retain(|o| o != &output);
                 }
-                state.draw(qh);
+                state.needs_redraw = true; // ✅ Changed from state.draw(qh)
             }
             zwlr_foreign_toplevel_handle_v1::Event::Closed => {
                 state.open_windows.remove(&handle.id());
-                state.draw(qh);
+                state.needs_redraw = true; // ✅ Changed from state.draw(qh)
             }
             zwlr_foreign_toplevel_handle_v1::Event::Done => {
                 state.update_window_icon(handle.id());
-                state.draw(qh);
+                state.needs_redraw = true; // ✅ Changed from state.draw(qh)
             }
             zwlr_foreign_toplevel_handle_v1::Event::Title { title } => {
                 if let Some(window) = state.open_windows.get_mut(&handle.id()) {
@@ -880,7 +872,7 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for AppState {
                     window.icon_resolved = false;
                 }
                 state.update_window_icon(handle.id());
-                state.draw(qh);
+                state.needs_redraw = true; // ✅ Changed from state.draw(qh)
             }
             zwlr_foreign_toplevel_handle_v1::Event::AppId { app_id } => {
                 if let Some(window) = state.open_windows.get_mut(&handle.id()) {
@@ -889,7 +881,7 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for AppState {
                     window.icon_resolved = false;
                 }
                 state.update_window_icon(handle.id());
-                state.draw(qh);
+                state.needs_redraw = true; // ✅ Changed from state.draw(qh)
             }
             zwlr_foreign_toplevel_handle_v1::Event::State { state: state_bytes } => {
                 let (activated, minimized) = parse_window_states(&state_bytes);
@@ -898,7 +890,7 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for AppState {
                     window.is_minimized = minimized;
                     window.is_pending = false; 
                 }
-                state.draw(qh);
+                state.needs_redraw = true; // ✅ Changed from state.draw(qh)
             }
             _ => {}
         }
