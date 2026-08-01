@@ -39,6 +39,20 @@ use wayland_protocols::wp::fractional_scale::v1::client::{
 };
 // -----
 
+// Resolved launcher.sh path
+fn get_launcher_path() -> String {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let local_share_path = format!("{}/.local/share/dock/launcher.sh", home);
+
+    if std::path::Path::new("./launcher.sh").exists() {
+        "./launcher.sh".to_string()
+    } else if std::path::Path::new(&local_share_path).exists() {
+        local_share_path
+    } else {
+        "/usr/share/dock/launcher.sh".to_string()
+    }
+}
+
 fn parse_window_states(state_bytes: &[u8]) -> (bool, bool) {
     let mut activated = false;
     let mut minimized = false;
@@ -533,11 +547,7 @@ impl PointerHandler for AppState {
                             let hit_end_x = start_x + box_size + (spacing / 2);
 
                             if self.pointer_x >= hit_start_x && self.pointer_x <= hit_end_x {
-                                let launcher_path = if std::path::Path::new("./launcher.sh").exists() {
-                                    "./launcher.sh".to_string()
-                                } else {
-                                    "/usr/share/dock/launcher.sh".to_string()
-                                };
+                                let launcher_path = get_launcher_path();
 
                                 let mut normalized_app_id = app_id.clone();
                                 if !normalized_app_id.starts_with("steam_icon_") {
@@ -588,9 +598,10 @@ impl PointerHandler for AppState {
                                         }
                                     },
                                     1 => {
-                                        let launcher_path = if std::path::Path::new("./launcher.sh").exists() { "./launcher.sh".to_string() }
-                                                            else { "/usr/share/dock/launcher.sh".to_string() };
-                                        let _ = std::process::Command::new("sh").arg(launcher_path).arg(app_id).spawn();
+                                        let _ = std::process::Command::new("sh")
+                                            .arg(get_launcher_path())
+                                            .arg(app_id)
+                                            .spawn();
                                     },
                                     2 => {
                                         if let Some(handle_id) = &self.menu_state.target_window { 
@@ -766,8 +777,7 @@ impl PointerHandler for AppState {
                                             }
                                         }
                                     } else {
-                                        let launcher_path = if std::path::Path::new("./launcher.sh").exists() { "./launcher.sh".to_string() }
-                                                            else { "/usr/share/dock/launcher.sh".to_string() };
+                                        let launcher_path = get_launcher_path();
                                         
                                         let mut normalized_app_id = app_id.clone();
                                         if !normalized_app_id.starts_with("steam_icon_") {
