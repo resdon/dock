@@ -482,14 +482,19 @@ fn main() {
     // Load font for fontmanager
     let pool = SlotPool::new(1024 * 1024 * 16, &shm_state).expect("Failed to create memory pool");
     
+	let home = std::env::var("HOME").unwrap_or_default();
+    let user_data_font = format!("{}/.local/share/dock/font.ttf", home);
+
     let font_path = [
+        PathBuf::from("assets/font.ttf"),
         PathBuf::from("font.ttf"),
+        PathBuf::from(user_data_font), // Added user local share path
         PathBuf::from("/usr/share/dock/font.ttf"),
         PathBuf::from("/usr/share/fonts/TTF/DejaVuSans.ttf"),
     ]
     .into_iter()
     .find(|p| p.exists())
-    .expect("No valid font file found on system!");
+    .expect("No valid font file found!");
 
     // =========================================================================
     // 1. CREATE THE VARIABLES RIGHT BEFORE APPSTATE USES THEM
