@@ -2,6 +2,8 @@ use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
+pub mod icon_indexer;
+pub mod persistence;
 
 /// Clears the cache directory on startup to ensure fresh data
 pub fn refresh_cache_on_launch() {

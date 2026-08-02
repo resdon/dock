@@ -7,7 +7,7 @@ arch=('x86_64')
 license=('custom')
 depends=('wayland' 'libxkbcommon' 'fontconfig' 'gcc-libs')
 makedepends=('rust' 'cargo')
-source=('Cargo.toml' 'src' 'assets' 'launcher.sh')
+source=('Cargo.toml' 'src' 'assets' 'scripts')
 sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 prepare() {
@@ -29,10 +29,14 @@ package() {
   install -Dm755 "target/release/dock" "$pkgdir/usr/bin/dock"
   
   # Shared Assets
-  install -Dm755 "launcher.sh" "$pkgdir/usr/share/dock/launcher.sh"
+  install -Dm755 "scripts/launcher.sh" "$pkgdir/usr/share/dock/launcher.sh"
   install -Dm644 "assets/font.ttf" "$pkgdir/usr/share/dock/font.ttf"
 
   # Animation Frame SVGs
   install -d "$pkgdir/usr/share/dock/24"
   install -Dm644 assets/24/*.svg -t "$pkgdir/usr/share/dock/24/"
+
+  # Generate System Icon Cache Index
+  chmod +x scripts/list_icons.sh
+  ./scripts/list_icons.sh "$pkgdir/usr/share/dock/icon_list.txt"
 }

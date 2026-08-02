@@ -1,4 +1,4 @@
-use crate::modules::world::World;
+use crate::render::font::World;
 use resvg::tiny_skia::{Pixmap, Rect};
 use crate::render::draw_text;
 use crate::FontManager;

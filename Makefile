@@ -12,12 +12,17 @@ build:
 install: build
 	@echo "Installing $(BINARY_NAME) binary to $(INSTALL_BIN)..."
 	mkdir -p $(INSTALL_BIN)
-	cp target/release/$(BINARY_NAME) $(INSTALL_BIN)/
+	install -m 755 target/release/$(BINARY_NAME) $(INSTALL_BIN)/$(BINARY_NAME)
 	
 	@echo "Installing assets to $(DATA_DIR)..."
 	mkdir -p $(DATA_DIR)/24
-	cp launcher.sh assets/font.ttf $(DATA_DIR)/
+	install -m 755 scripts/launcher.sh $(DATA_DIR)/launcher.sh
+	install -m 644 assets/font.ttf $(DATA_DIR)/font.ttf
 	cp -r assets/24/* $(DATA_DIR)/24/
+
+	@echo "Indexing icon paths..."
+	./scripts/list_icons.sh $(DATA_DIR)/icon_list.txt
+
 	@echo "Installation complete!"
 
 uninstall:

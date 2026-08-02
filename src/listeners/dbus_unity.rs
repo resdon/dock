@@ -1,26 +1,17 @@
-// src/modules/dbus_unity.rs
+// src/listeners/dbus_unity.rs
 
 use std::collections::HashMap;
 use tokio::sync::mpsc;
 use zbus::zvariant::Value;
 use zbus::MatchRule;
 
-#[derive(Debug, Clone, Default)]
-pub struct BadgeUpdate {
-    pub desktop_id: String,
-    pub count: i64,
-    pub count_visible: bool,
-    pub progress: f64,
-    pub progress_visible: bool,
-    pub urgent: bool,
-}
+use crate::models::BadgeUpdate;
 
 pub async fn start_unity_dbus_listener(
     tx: mpsc::UnboundedSender<BadgeUpdate>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let connection = zbus::Connection::session().await?;
 
-    // Rule to capture Update signals on com.canonical.Unity.LauncherEntry
     let rule = MatchRule::builder()
         .msg_type(zbus::message::Type::Signal)
         .interface("com.canonical.Unity.LauncherEntry")?
@@ -44,7 +35,6 @@ pub async fn start_unity_dbus_listener(
 }
 
 fn parse_unity_update(app_uri: String, props: HashMap<String, Value>) -> Option<BadgeUpdate> {
-    // Extract desktop ID from URIs like "application://discord.desktop" or "file:///.../telegram.desktop"
     let desktop_id = app_uri
         .strip_prefix("application://")
         .or_else(|| app_uri.rsplit('/').next())
@@ -61,7 +51,6 @@ fn parse_unity_update(app_uri: String, props: HashMap<String, Value>) -> Option<
         ..Default::default()
     };
 
-    // Extract badge count (can be i64, i32, or u64 depending on sending app)
     if let Some(val) = props.get("count") {
         update.count = match val {
             Value::I64(v) => *v,
@@ -78,7 +67,6 @@ fn parse_unity_update(app_uri: String, props: HashMap<String, Value>) -> Option<
         update.count_visible = update.count > 0;
     }
 
-    // Extract progress bar percentage (0.0 to 1.0)
     if let Some(val) = props.get("progress") {
         update.progress = match val {
             Value::F64(v) => *v,

@@ -1,205 +1,10 @@
+// src/render/mod.rs
+
 use std::collections::HashMap;
-use crate::models::WindowDiagnostics;
-use crate::modules::context_menu::DOCK_HEIGHT;
+use crate::models::{BadgeUpdate, WindowDiagnostics};
 use crate::{MenuState, HoverState, FontManager};
-use crate::modules::dock_item::DockItem;
-use crate::modules::dbus_unity::BadgeUpdate;
-use crate::modules::context_menu::get_hover_menu_bounds;
-
-use cairo;
-use image::GenericImageView;
-
-// dbus_unity notifications
-// Software badge drawer for raw BGRA canvas
-// Embed the image bytes directly into the compiled binary
-static BADGE_ICON_BYTES: &[u8] = include_bytes!("../assets/dialog-warning.png");
-
-pub fn draw_canvas_badge(
-    canvas: &mut [u8],
-    canvas_width: u32,
-    canvas_height: u32,
-    badge: &BadgeUpdate,
-    start_x: usize,
-    start_y: usize,
-    box_size: usize,
-) {
-    if !badge.count_visible || badge.count <= 0 {
-        return;
-    }
-
-    let Ok(img) = image::load_from_memory(BADGE_ICON_BYTES) else {
-        return;
-    };
-    
-    let (badge_w, badge_h) = img.dimensions();
-    // Get the raw &[u8] slice from RGBA buffer
-    let badge_rgba = img.to_rgba8();
-    let raw_bytes = badge_rgba.as_raw();
-
-    let overlay_x = (start_x + box_size).saturating_sub(badge_w as usize);
-    let overlay_y = start_y;
-
-    for y in 0..badge_h as usize {
-        let canvas_y = overlay_y + y;
-        if canvas_y >= canvas_height as usize { break; }
-
-        for x in 0..badge_w as usize {
-            let canvas_x = overlay_x + x;
-            if canvas_x >= canvas_width as usize { break; }
-
-            let src_idx = (y * badge_w as usize + x) * 4;
-            let src_r = raw_bytes[src_idx] as u32;
-            let src_g = raw_bytes[src_idx + 1] as u32;
-            let src_b = raw_bytes[src_idx + 2] as u32;
-            let src_a = raw_bytes[src_idx + 3] as u32;
-
-            if src_a == 0 { continue; } // Skip transparent pixels
-
-            let dst_idx = (canvas_y * canvas_width as usize + canvas_x) * 4;
-
-            // BGRA software canvas alpha blending
-            let alpha = src_a;
-            let inv_alpha = 255 - alpha;
-
-            let dst_b = canvas[dst_idx] as u32;
-            let dst_g = canvas[dst_idx + 1] as u32;
-            let dst_r = canvas[dst_idx + 2] as u32;
-
-            canvas[dst_idx]     = ((src_b * alpha + dst_b * inv_alpha) / 255) as u8;
-            canvas[dst_idx + 1] = ((src_g * alpha + dst_g * inv_alpha) / 255) as u8;
-            canvas[dst_idx + 2] = ((src_r * alpha + dst_r * inv_alpha) / 255) as u8;
-            canvas[dst_idx + 3] = 255;
-        }
-    }
-}
-
-pub fn draw_dock_item_badge(
-    cr: &cairo::Context,
-    item: &DockItem,
-    icon_x: f64,
-    icon_y: f64,
-    icon_size: f64,
-) {
-    // 1. Draw Download Progress Bar
-    if item.show_progress {
-        let bar_h = 4.0;
-        let bar_w = icon_size * 0.8;
-        let bar_x = icon_x + (icon_size - bar_w) / 2.0;
-        let bar_y = icon_y + icon_size - bar_h;
-
-        // Progress Track Background
-        cr.set_source_rgba(0.2, 0.2, 0.2, 0.7);
-        cr.rectangle(bar_x, bar_y, bar_w, bar_h);
-        let _ = cr.fill();
-
-        // Progress Fill
-        cr.set_source_rgba(0.2, 0.6, 1.0, 0.9);
-        cr.rectangle(bar_x, bar_y, bar_w * item.progress, bar_h);
-        let _ = cr.fill();
-    }
-
-    // 2. Draw Unread Count Badge
-    if item.show_badge {
-        let badge_text = if item.badge_count > 99 {
-            "99+".to_string()
-        } else {
-            item.badge_count.to_string()
-        };
-
-        let radius = 9.0;
-        let badge_cx = icon_x + icon_size - radius;
-        let badge_cy = icon_y + radius;
-
-        // Badge Red Background Pill
-        cr.set_source_rgb(0.9, 0.2, 0.2); // Vibrant red
-        cr.arc(badge_cx, badge_cy, radius, 0.0, 2.0 * std::f64::consts::PI);
-        let _ = cr.fill();
-
-        // Badge Text (White)
-        cr.set_source_rgb(1.0, 1.0, 1.0);
-        cr.set_font_size(10.0);
-        cr.select_font_face("Sans", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
-        
-        let extents = cr.text_extents(&badge_text).unwrap();
-        
-        let text_x = badge_cx - (extents.width() / 2.0 + extents.x_bearing());
-        let text_y = badge_cy - (extents.height() / 2.0 + extents.y_bearing());
-
-        cr.move_to(text_x, text_y);
-        let _ = cr.show_text(&badge_text);
-    }
-}
-// ------
-pub fn draw_text(
-    canvas: &mut [u8],
-    canvas_width: u32,
-    canvas_height: u32,
-    font_manager: &FontManager,
-    text: &str,
-    size: f32,
-    start_x: usize,
-    start_y: usize,
-    color: (u8, u8, u8),
-) {
-    let mut x_offset = start_x;
-    for c in text.chars() {
-        let font = font_manager.get_font(c);
-        let (metrics, bitmap) = font.rasterize(c, size);
-        for y in 0..metrics.height {
-            for x in 0..metrics.width {
-                let canvas_x = (x_offset as isize + x as isize + metrics.xmin as isize) as usize;
-                let canvas_y = (start_y as isize + y as isize + (size as isize - metrics.height as isize - metrics.ymin as isize)) as usize;
-
-                if canvas_x < canvas_width as usize && canvas_y < canvas_height as usize {
-                    let canvas_idx = (canvas_y * canvas_width as usize + canvas_x) * 4;
-                    let alpha = bitmap[y * metrics.width + x] as f32 / 255.0;
-                    if alpha > 0.0 {
-                        let b = color.2 as f32; // Blue component
-                        let g = color.1 as f32; // Green component
-                        let r = color.0 as f32; // Red component
-
-                        let cur_b = canvas[canvas_idx] as f32;
-                        let cur_g = canvas[canvas_idx + 1] as f32;
-                        let cur_r = canvas[canvas_idx + 2] as f32;
-
-                        // Apply alpha blending with BGRA layout
-                        canvas[canvas_idx]     = ((b * alpha) + (cur_b * (1.0 - alpha))) as u8; // Blue
-                        canvas[canvas_idx + 1] = ((g * alpha) + (cur_g * (1.0 - alpha))) as u8; // Green
-                        canvas[canvas_idx + 2] = ((r * alpha) + (cur_r * (1.0 - alpha))) as u8; // Red
-                        canvas[canvas_idx + 3] = 255;                                            // Alpha
-                    }
-                }
-            }
-        }
-        x_offset += metrics.advance_width as usize;
-    }
-}
-
-fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
-    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
-    let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
-    let m = l - c / 2.0;
-
-    let (r, g, b) = if h < 60.0 {
-        (c, x, 0.0)
-    } else if h < 120.0 {
-        (x, c, 0.0)
-    } else if h < 180.0 {
-        (0.0, c, x)
-    } else if h < 240.0 {
-        (0.0, x, c)
-    } else if h < 300.0 {
-        (x, 0.0, c)
-    } else {
-        (c, 0.0, x)
-    };
-
-    (
-        ((r + m) * 255.0) as u8,
-        ((g + m) * 255.0) as u8,
-        ((b + m) * 255.0) as u8,
-    )
-}
+use crate::render::context_menu::{get_hover_menu_bounds, DOCK_HEIGHT, HOVER_ITEM_HEIGHT};
+use crate::render::{draw_text, draw_canvas_badge, hsl_to_rgb};
 
 pub fn render_windows(
     canvas: &mut [u8],
@@ -236,14 +41,12 @@ pub fn render_windows(
     let mut apps_in_dock = Vec::new();
     let mut running_by_app: HashMap<String, Vec<&WindowDiagnostics>> = HashMap::new();
     
-    // Order from pinned apps first
     for app_id in pinned_apps {
         if !apps_in_dock.contains(app_id) {
             apps_in_dock.push(app_id.clone());
         }
     }
 
-    // Then add running apps not in pinned
     let mut sorted_windows: Vec<&WindowDiagnostics> = open_windows.values().collect();
     sorted_windows.sort_by(|a, b| {
         a.app_name.cmp(&b.app_name)
@@ -282,11 +85,13 @@ pub fn render_windows(
         let is_running = windows.is_some();
         let is_activated = windows.map(|v| v.iter().any(|w| w.is_activated)).unwrap_or(false);
 
-        // Get icon from cache or from first running window
+        // In render/mod.rs (where the icon is resolved for the dock slot):
+
         let icon = windows.and_then(|v| v.first().and_then(|w| w.icon_rgba.as_ref().map(|rgba| (rgba.as_slice(), w.icon_size))))
                     .or_else(|| icon_cache.get(app_id).map(|(v, s)| (v.as_slice(), *s)));
 
         if let Some((icon_pixels, img_size_u32)) = icon {
+            // --- Render real icon pixels (your existing code here) ---
             let img_size = img_size_u32 as usize;
             for y in 0..box_size {
                 for x in 0..box_size {
@@ -303,14 +108,14 @@ pub fn render_windows(
                             let dim = if is_running { 1.0 } else { 0.5 };
                             canvas[canvas_idx]     = ((icon_pixels[src_idx + 2] as f32 * alpha * dim) + (canvas[canvas_idx] as f32 * (1.0 - alpha))) as u8;
                             canvas[canvas_idx + 1] = ((icon_pixels[src_idx + 1] as f32 * alpha * dim) + (canvas[canvas_idx + 1] as f32 * (1.0 - alpha))) as u8;
-                            canvas[canvas_idx + 2] = ((icon_pixels[src_idx]     as f32 * alpha * dim) + (canvas[canvas_idx + 2] as f32 * (1.0 - alpha))) as u8;
+                            canvas[canvas_idx + 2] = ((icon_pixels[src_idx]      as f32 * alpha * dim) + (canvas[canvas_idx + 2] as f32 * (1.0 - alpha))) as u8;
                             canvas[canvas_idx + 3] = 255;
                         }
                     }
                 }
             }
+        // src/render/mod.rs (when icon is missing from cache/windows)
         } else if let Some(frame) = fallback_anim.current_frame() {
-            // Draw current active frame from IconAnimation controller
             let frame_size = frame.width as usize;
             let offset_x = start_x + (box_size.saturating_sub(frame_size)) / 2;
             let offset_y = start_y + (box_size.saturating_sub(frame_size)) / 2;
@@ -340,14 +145,12 @@ pub fn render_windows(
                 }
             }
         } else {
-            // Fallback text icon if animation fails/empty
             let letter = app_id.chars().next().unwrap_or('?').to_uppercase().to_string();
             let font_size = 24.0 * scale_factor as f32;
             let text_x = start_x + (16.0 * scale_factor).round() as usize;
             let text_y = start_y + (11.0 * scale_factor).round() as usize;
             draw_text(canvas, phys_width, phys_height, font_manager, &letter, font_size, text_x, text_y, (255, 255, 255));
         }
-
         // Render tracking indicator dash(es)
         if is_running {
             let indicator_y = start_y + box_size + (4.0 * scale_factor).round() as usize;
@@ -389,6 +192,7 @@ pub fn render_windows(
                 }
             }
         }
+        
         // Draw Notification Badge overlay
         if let Some(badge) = badges.get(app_id) {
             draw_canvas_badge(
@@ -405,30 +209,23 @@ pub fn render_windows(
 
     // Context Menu Rendering
     if menu_state.is_open && !menu_state.items.is_empty() {
-        // 1. Calculate menu dimensions
         let item_h = (30.0 * scale_factor).round() as usize;
         let menu_width = (180.0 * scale_factor).round() as usize;
 
-        // Cap total_menu_h so it NEVER exceeds the screen height itself
         let raw_menu_h = menu_state.items.len() * item_h;
         let total_menu_h = raw_menu_h.min(phys_height as usize);
 
-        // 2. Convert cursor coordinates with scaling
         let cursor_x = (menu_state.x as f64 * scale_factor).round() as usize;
         let cursor_y = (menu_state.y as f64 * scale_factor).round() as usize;
 
-        // 3. Horizontal clamping (prevent going off right edge)
         let max_x = (phys_width as usize).saturating_sub(menu_width);
         let menu_x = cursor_x.min(max_x);
 
-        // 4. Vertical positioning & clamping (prevent going off bottom edge)
         let ideal_y = cursor_y.saturating_sub(total_menu_h);
         let max_y = (phys_height as usize).saturating_sub(total_menu_h);
 
-        // menu_y will now sit right above the cursor UNLESS that pushes the bottom past screen bounds
         let menu_y = ideal_y.min(max_y);
         
-        // 1. Calculate which item row is hovered ONCE outside the loop
         let hovered_item_idx = if pointer_x >= menu_x
             && pointer_x < menu_x + menu_width
             && pointer_y >= menu_y
@@ -439,16 +236,14 @@ pub fn render_windows(
             None
         };
 
-        // 2. Draw background and hover effects
         for y in 0..total_menu_h {
             let item_idx = y / item_h;
             let is_hovered = Some(item_idx) == hovered_item_idx;
 
-            // Select color slice based on hover state (B, G, R, A)
             let bg_color = if is_hovered {
-                [0x3A, 0x3A, 0x3A, 0xFF] // Hover highlight
+                [0x3A, 0x3A, 0x3A, 0xFF]
             } else {
-                [0x22, 0x22, 0x22, 0xFF] // Default background
+                [0x22, 0x22, 0x22, 0xFF]
             };
 
             let cy = menu_y + y;
@@ -465,12 +260,11 @@ pub fn render_windows(
             }
         }
 
-        // Render menu item labels
         for (i, item) in menu_state.items.iter().enumerate() {
             let text_x = menu_x + (12.0 * scale_factor).round() as usize;
             let text_y = menu_y + i * item_h + (6.0 * scale_factor).round() as usize;
             let text_color = if matches!(item.item_type, crate::MenuItemType::CloseApp) {
-                (255, 100, 100) // Soft red highlight for Quit
+                (255, 100, 100)
             } else {
                 (220, 220, 220)
             };
@@ -488,6 +282,7 @@ pub fn render_windows(
             );
         }
     }
+
     // Hover Preview Menu Rendering
     if hover_state.is_visible && !menu_state.is_open && !is_dragging {
         if let Some(ref app_id) = hover_state.app_id {
@@ -515,7 +310,7 @@ pub fn render_windows(
                     }
                 }
 
-                let item_h = crate::modules::context_menu::HOVER_ITEM_HEIGHT as usize;
+                let item_h = HOVER_ITEM_HEIGHT as usize;
                 for (i, w) in windows.iter().enumerate() {
                     let title = if w.title.chars().count() > 20 { 
                         format!("{}...", w.title.chars().take(17).collect::<String>()) 

@@ -1,14 +1,16 @@
-
+pub mod app;
 pub mod cache;
+pub mod handlers;
+pub mod render;
+pub mod resolvers;
+pub mod listeners;
+
+use app::AppState;
 
 pub use dockman_lib::models;
 pub use dockman_lib::icon_utils;
 pub use dockman_lib::terminal_graphics;
 pub use dockman_lib::get_icon_path;
-
-use crate::models::WindowDiagnostics;
-use crate::modules::context_menu::{get_hover_menu_bounds, get_context_menu_bounds};
-use crate::modules::dbus_unity::BadgeUpdate;
 
 use smithay_client_toolkit::shell::WaylandSurface;
 use smithay_client_toolkit::{
@@ -16,749 +18,103 @@ use smithay_client_toolkit::{
     output::OutputState,
     registry::{RegistryState},
     seat::SeatState,
-    shell::wlr_layer::{Anchor, Layer, LayerShell, LayerSurface},
-    shm::slot::{Buffer, SlotPool},
     shm::Shm,
 };
-use wayland_client::globals::registry_queue_init;
+use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer, LayerShell};
+use smithay_client_toolkit::shm::slot::SlotPool;
 
-use wayland_client::protocol::wl_output::WlOutput;
-use wayland_client::protocol::wl_pointer::WlPointer;
-use wayland_client::protocol::wl_seat::WlSeat;
-use wayland_client::protocol::wl_shm;
-use wayland_client::protocol::{wl_data_offer::WlDataOffer};
+use wayland_client::Connection;
 use wayland_client::protocol::wl_data_device_manager::WlDataDeviceManager;
-use wayland_client::protocol::wl_data_device::WlDataDevice;
-
-use wayland_client::backend::ObjectId;
-use wayland_client::{Connection, Dispatch};
+use wayland_client::globals::registry_queue_init;
 
 use wayland_protocols::wp::fractional_scale::v1::client::{
     wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1,
-    wp_fractional_scale_v1::WpFractionalScaleV1,
 };
 use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::process::Command;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 
 use libc; // for loop and animation
 
-// 1. Mount the files as local root modules
-pub mod handlers;
-pub mod render;
-pub mod modules;
+use crate::cache::persistence;
+use crate::render::font::FontManager;
 
-
-// ...
-use modules::persistence;
-use crate::modules::world::FontManager;
 pub use dockman_lib::DesktopAction;
+use dockman_lib::listeners::start_unity_dbus_listener;
 
-// Store notifiers per-dock in DockInstance
-pub struct DockInstance {
-    pub surface: LayerSurface,
-    pub output: WlOutput,
-    pub width: u32,
-    pub height: u32,
-    pub current_buffer: Option<Buffer>,
-    pub scale_notifier: Option<WpFractionalScaleV1>,
-    pub scale_factor: f64,
+use app::types::*;
+
+/// Loads icon_list.txt directly into a fast RAM lookup table ($O(1)$)
+fn load_icon_index_map() -> HashMap<String, PathBuf> {
+    let mut map = HashMap::new();
+    let home = std::env::var("HOME").unwrap_or_default();
+    
+    let candidate_paths = [
+        PathBuf::from(format!("{}/.cache/dockman/icon_list.txt", home)),
+        PathBuf::from("./icon_list.txt"),
+        PathBuf::from(format!("{}/.local/share/dock/icon_list.txt", home)),
+        PathBuf::from("/usr/share/dock/icon_list.txt"),
+    ];
+
+    let Some(list_path) = candidate_paths.into_iter().find(|p| p.exists()) else {
+        return map;
+    };
+
+    if let Ok(file) = File::open(list_path) {
+        let reader = BufReader::new(file);
+        for line in reader.lines().flatten() {
+            let path = PathBuf::from(&line);
+            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                let key = stem.to_lowercase();
+                // Prefer PNG icons when duplicate names exist
+                if !map.contains_key(&key) || line.to_lowercase().ends_with(".png") {
+                    map.insert(key, path);
+                }
+            }
+        }
+    }
+    map
 }
-// -----
-
-// Drag and drop
-#[derive(Default)]
-pub struct DndState {
-    /// Currently active data offer being dragged over our surface
-    pub current_offer: Option<WlDataOffer>,
-    /// MIME types supported by the current offer
-    pub mime_types: Vec<String>,
-    /// Current pointer position during drag
-    pub drag_x: f64,
-    pub drag_y: f64,
-    /// Index of dock item currently hovered during drag
-    pub hovered_dock_index: Option<usize>,
-}
-// Context Menu
-#[derive(Clone, Debug, PartialEq)]
-pub enum MenuItemType {
-    Focus,
-    LaunchNew,
-    Minimize,
-    Action(DesktopAction),
-    TogglePin,
-    CloseApp,
-}
-
-#[derive(Clone, Debug)]
-pub struct ContextMenuItem {
-    pub label: String,
-    pub item_type: MenuItemType,
-}
-
-pub struct MenuState {
-    pub x: usize,
-    pub y: usize,
-    pub target_window: Option<ObjectId>,
-    pub target_app_id: Option<String>,
-    pub is_open: bool,
-    pub items: Vec<ContextMenuItem>,
-}
-
-// ------
-pub struct HoverState {
-    pub x: usize,
-    pub app_id: Option<String>,
-    pub is_visible: bool,
-    pub last_leave_time: Option<std::time::Instant>,
-}
-
-pub struct AppState {
-	pub connection: Connection,
-    pub registry_state: RegistryState,
-    pub compositor_state: CompositorState,
-    pub output_state: OutputState,
-    pub layer_shell: LayerShell,
-    pub shm_state: Shm,
-    pub pool: SlotPool,
-    pub seat_state: SeatState,
-    pub layer_surface: Option<LayerSurface>,
-    pub current_buffer: Option<Buffer>,
-    pub width: u32,
-    pub height: u32,
-    pub toplevel_manager: Option<ZwlrForeignToplevelManagerV1>,
-    pub font_manager: FontManager,
-    pub wl_seat: Option<WlSeat>,
-    pub wl_pointer: Option<WlPointer>,
-    pub pointer_x: usize,
-    pub pointer_y: usize,
-    pub open_windows: HashMap<ObjectId, WindowDiagnostics>,
-    pub pinned_apps: Vec<String>,
-    pub icon_cache: HashMap<String, (Vec<u8>, u32)>,
-    pub menu_state: MenuState,
-    pub hover_state: HoverState,
-    pub last_interact_time: std::time::Instant,
-    pub needs_redraw: bool,
-    pub last_mouse_pos: Option<(f64, f64)>,
-    pub is_dragging: bool,
-    pub drag_start_x: f64,
-    pub drag_start_y: f64,
-    pub dragged_app_id: Option<String>,
-    pub last_drag_draw: std::time::Instant,
-    pub sys_scanner: sysinfo::System,
-    pub current_output: Option<WlOutput>,
-    pub docks: Vec<DockInstance>,
-    // Scale Tracking
-    pub fractional_scale_manager: Option<WpFractionalScaleManagerV1>,
-    pub fractional_scale_notifier: Option<WpFractionalScaleV1>,
-    pub scale_factor: f64, // Defaults to 1.0
-    // -----
-    // Animation state for missing icon fallback
-    // Pre-rendered frame-based icon animation controller
-    pub fallback_anim: dockman_lib::animations::IconAnimation,
-    // Drag and drop
-    pub dnd_state: DndState,
-    pub data_device_manager: Option<WlDataDeviceManager>,
-    pub data_device: Option<WlDataDevice>,
-    // dbus
-    pub badges: HashMap<String, BadgeUpdate>,
-}
-
-impl AppState {
-    // Find which icon resides under (drop_x, drop_y) and launch the target process with the extracted path arguments:
-    /// Maps surface logical/physical coordinates to an app ID in the dock layout
-    pub fn get_app_id_at_location(&self, x: f64, y: f64) -> Option<String> {
-        let box_size = 48.0;
-        let spacing = 12.0;
-        let dock_height = 60.0;
-
-        let dock_top_bound = (self.height as f64) - dock_height;
-
-        if y < dock_top_bound {
-            return None;
-        }
-
-        let mut apps_in_dock: Vec<String> = self.pinned_apps.clone();
-        for window in self.open_windows.values() {
-            let id = if !window.app_id.is_empty() {
-                window.app_id.clone()
-            } else if !window.title.is_empty() {
-                window.title.clone()
-            } else {
-                "Unknown".to_string()
-            };
-            if !apps_in_dock.contains(&id) {
-                apps_in_dock.push(id);
-            }
-        }
-
-        let total_items = apps_in_dock.len();
-        let content_width = if total_items > 0 { 
-            total_items as f64 * box_size + (total_items + 1) as f64 * spacing
-        } else { 
-            0.0 
-        };
-        
-        let start_offset_x = if (self.width as f64) > content_width { 
-            ((self.width as f64) - content_width) / 2.0 
-        } else { 
-            0.0 
-        };
-
-        for (index, app_id) in apps_in_dock.iter().enumerate() {
-            let start_x = start_offset_x + spacing + index as f64 * (box_size + spacing);
-            let hit_start_x = start_x - (spacing / 2.0);
-            let hit_end_x = start_x + box_size + (spacing / 2.0);
-
-            if x >= hit_start_x && x <= hit_end_x {
-                return Some(app_id.clone());
-            }
-        }
-        None
-    }
-    pub fn update_dnd_hover_target(&mut self, x: f64, y: f64) {
-        let new_app = self.get_app_id_at_location(x, y);
-        let new_index = new_app.as_ref().map(|_| 0); // Triggers visual update
-        if self.dnd_state.hovered_dock_index != new_index {
-            self.dnd_state.hovered_dock_index = new_index;
-            self.needs_redraw = true;
-        }
-    }
-
-    pub fn handle_file_drop_on_icon(&mut self, x: f64, y: f64, file_paths: Vec<PathBuf>) {
-        eprintln!("[DnD DEBUG] Handling file drop on icon...");
-
-        if file_paths.is_empty() {
-            eprintln!("[DnD DEBUG] Aborting: file_paths vector is empty.");
-            return;
-        }
-
-        let target_app = self.get_app_id_at_location(x, y);
-        eprintln!("[DnD DEBUG] App ID at ({:.1}, {:.1}): {:?}", x, y, target_app);
-
-        if let Some(app_id) = target_app {
-            let launcher_path = crate::handlers::get_launcher_path();
-
-            let mut normalized_app_id = app_id.clone();
-            if !normalized_app_id.starts_with("steam_icon_") {
-                if let Some(idx) = normalized_app_id.rfind('_') {
-                    if normalized_app_id[idx + 1..].chars().all(|c| c.is_numeric()) {
-                        normalized_app_id = normalized_app_id[..idx].to_string();
-                    }
-                }
-            }
-
-            eprintln!(
-                "[DnD DEBUG] Launching launcher script: '{}' | Original App ID: '{}' | Normalized: '{}'",
-                launcher_path, app_id, normalized_app_id
-            );
-
-            let mut cmd = Command::new("sh");
-            cmd.arg(&launcher_path).arg(&normalized_app_id);
-
-            for path in &file_paths {
-                cmd.arg(path);
-            }
-
-            eprintln!("[DnD DEBUG] Executing full command: {:?}", cmd);
-
-            match cmd.spawn() {
-                Ok(child) => eprintln!("[DnD DEBUG] Successfully spawned process PID: {}", child.id()),
-                Err(e) => eprintln!("[DnD DEBUG] Failed to spawn launcher: {}", e),
-            }
-        } else {
-            eprintln!("[DnD DEBUG] Drop location standard bounds check returned no app target!");
-        }
-    }
-    // -------
-    pub fn get_context_menu_bounds(&self, _phys_width: usize, _phys_height: usize, scale_factor: f64) -> (usize, usize, usize, usize) {
-        let (x, y, w, h) = crate::modules::context_menu::get_context_menu_bounds(
-            self.menu_state.x,
-            self.menu_state.y,
-            self.width as usize,
-            self.height as usize,
-            self.menu_state.items.len(),
-            scale_factor,
-        );
-        (x.round() as usize, y.round() as usize, w.round() as usize, h.round() as usize)
-    }
-    /// Returns true ONLY if at least one visible window is still loading its icon
-    pub fn is_animating(&self) -> bool {
-        self.open_windows
-            .values()
-            .any(|win| !win.icon_resolved && win.icon_rgba.is_none())
-    }
-
-    /// Completely closes/quits all instances and processes of an application
-    pub fn close_application_completely(&mut self, app_id: &str) {
-        let mut pids_to_kill = Vec::new();
-        let target_app_lower = app_id.to_lowercase();
-
-        // 1. Close all Wayland foreign toplevel window handles matching app_id
-        for win in self.open_windows.values_mut() {
-            let win_app_id = if !win.app_id.is_empty() {
-                win.app_id.to_lowercase()
-            } else {
-                win.title.to_lowercase()
-            };
-
-            if win_app_id == target_app_lower
-                || win_app_id.starts_with(&target_app_lower)
-                || target_app_lower.contains(&win_app_id)
-            {
-                win.handle.close();
-                if let Some(pid) = win.matched_pid {
-                    pids_to_kill.push(pid);
-                }
-            }
-        }
-
-        // 2. Explicit shutdown hook for Steam
-        if target_app_lower.contains("steam") || app_id.starts_with("steam_icon_") {
-            let _ = std::process::Command::new("steam")
-                .arg("-shutdown")
-                .spawn();
-        }
-
-        // 3. Send SIGTERM to tracked window PIDs
-        for pid in &pids_to_kill {
-            unsafe {
-                libc::kill(*pid as i32, libc::SIGTERM);
-            }
-        }
-
-        // 4. Send SIGTERM to any processes matching process name in sys_scanner
-        self.sys_scanner.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
-        let mut clean_name = target_app_lower.as_str();
-        if !clean_name.starts_with("steam_icon_") {
-            if let Some(idx) = clean_name.rfind('_') {
-                if clean_name[idx+1..].chars().all(|c| c.is_numeric()) {
-                    clean_name = &clean_name[..idx];
-                }
-            }
-        }
-
-        for (pid, proc_) in self.sys_scanner.processes() {
-            let proc_name = proc_.name().to_string_lossy().to_lowercase();
-            if proc_name == clean_name || proc_name.contains(clean_name) || clean_name.contains(&proc_name) {
-                unsafe {
-                    libc::kill(pid.as_u32() as i32, libc::SIGTERM);
-                }
-            }
-        }
-
-        self.needs_redraw = true;
-    }
-    /// Cycles focus through open window instances of `target_app_id`.
-    /// `reverse = true` cycles backward (scrolling up), `reverse = false` cycles forward (scrolling down).
-    pub fn cycle_window_for_app(&mut self, target_app_id: &str, reverse: bool) {
-        // 1. Gather all matching open windows for this app ID
-        let mut matching_windows: Vec<(&wayland_client::backend::ObjectId, &crate::models::WindowDiagnostics)> = self
-            .open_windows
-            .iter()
-            .filter(|(_, win)| {
-                let id = if !win.app_id.is_empty() {
-                    win.app_id.as_str()
-                } else if !win.title.is_empty() {
-                    win.title.as_str()
-                } else {
-                    "Unknown"
-                };
-                id == target_app_id
-            })
-            .collect();
-
-        // If 0 or 1 window, there's nothing to cycle through
-        if matching_windows.len() <= 1 {
-            return;
-        }
-
-        // 2. Sort by title to maintain a consistent cycle order 
-        // (Since ObjectId doesn't implement Ord)
-        matching_windows.sort_by(|a, b| a.1.title.cmp(&b.1.title));
-
-        // 3. Find index of the currently active/focused window (if any)
-        // FIX: Changed `is_active` to `is_activated`
-        let active_idx = matching_windows
-            .iter()
-            .position(|(_, win)| win.is_activated);
-
-        // 4. Calculate target index with wrapping modulo
-        let count = matching_windows.len();
-        let next_idx = match active_idx {
-            Some(idx) => {
-                if reverse {
-                    (idx + count - 1) % count
-                } else {
-                    (idx + 1) % count
-                }
-            }
-            None => 0, // If none are currently active, activate the first instance
-        };
-
-        // 5. Request focus via zwlr_foreign_toplevel_handle_v1
-        let (_, target_win) = matching_windows[next_idx];
-        
-        // FIX: target_win.handle is already the handle, not an Option.
-        if let Some(ref seat) = self.wl_seat {
-            target_win.handle.activate(seat);
-            self.needs_redraw = true;
-            println!(
-                "[DEBUG] Scrolled focus to instance {}/{} of '{}'",
-                next_idx + 1,
-                count,
-                target_app_id
-            );
-        }
-    }
-
-    pub fn update_window_icon(&mut self, window_id: ObjectId) {
-        if let Some(window) = self.open_windows.get_mut(&window_id) {
-            if window.icon_resolved {
-                return;
-            }
-            
-            let mut search_id = if !window.app_id.trim().is_empty() {
-                window.app_id.trim().to_string()
-            } else {
-                window.title.trim().to_string()
-            };
-
-            // Normalize taskman / Task Manager title or ID
-            let lower_id = search_id.to_lowercase();
-            if lower_id.contains("task manager") || lower_id == "taskman" {
-                search_id = "taskman".to_string();
-            }
-            
-            // 0. Proactive cleaning: strip suffixes like _1234 (common for dynamic app_ids), preserving steam_icon_<appid>
-            if !search_id.starts_with("steam_icon_") {
-                if let Some(idx) = search_id.rfind('_') {
-                    if search_id[idx+1..].chars().all(|c| c.is_numeric()) {
-                        search_id = search_id[..idx].to_string();
-                    }
-                }
-            }
-            let original_app_id = window.app_id.clone();
-
-            // Refresh process scanner
-            self.sys_scanner.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
-
-            // Match PID for window if not already matched
-            if window.matched_pid.is_none() {
-                let target_app = search_id.to_lowercase();
-                if let Some((pid, _)) = self.sys_scanner.processes().iter().find(|(_, p)| {
-                    let proc_name = p.name().to_string_lossy().to_lowercase();
-                    proc_name.contains(&target_app) || target_app.contains(&proc_name)
-                }) {
-                    window.matched_pid = Some(pid.as_u32());
-                }
-            }
-
-            let pid_opt = window.matched_pid.map(sysinfo::Pid::from_u32);
-
-            // Priority 1: Check dynamic Steam/Gamescope game details FIRST
-            // This prevents gamescope/steam windows from temporarily normalizing to "steam" via Exec match
-            if let Some((appid, steam_name, steam_icon_path)) = dockman_lib::resolve_steam_game_details(&search_id, &window.title, &self.sys_scanner, pid_opt) {
-                let target_size = 48;
-                if let Some((_, _, rgba_data)) = crate::terminal_graphics::load_image_raw_rgba(&steam_icon_path, target_size) {
-                    let icon_key = format!("steam_icon_{}", appid);
-                    window.app_name = steam_name.clone();
-                    window.app_id = icon_key.clone();
-                    window.icon_name = icon_key.clone();
-                    window.icon_rgba = Some(rgba_data.clone());
-                    window.icon_size = target_size;
-                    window.icon_resolved = true;
-                    self.icon_cache.insert(icon_key.clone(), (rgba_data.clone(), target_size));
-                    if self.pinned_apps.contains(&icon_key) {
-                        crate::cache::save_cached_icon(&icon_key, target_size, target_size, &rgba_data);
-                    }
-                    println!("[DEBUG] Resolved Steam Game '{}' AppID: {} -> Icon Path: {:?}", steam_name, appid, steam_icon_path);
-                    return;
-                }
-            }
-
-            // Match against pinned apps strictly by exact match
-            for pinned_id in &self.pinned_apps {
-                let p_lower = pinned_id.to_lowercase();
-                let s_lower = search_id.to_lowercase();
-                if p_lower == s_lower 
-                    && !p_lower.starts_with("steam_icon_") && !s_lower.starts_with("steam_icon_") 
-                {
-                    search_id = pinned_id.clone();
-                    window.app_id = search_id.clone();
-                    break;
-                }
-            }
-            // 1. Try to normalize app_id to a stable .desktop ID if it isn't one already
-            if !search_id.is_empty() {
-                // If it doesn't look like a standard ID, try to find the desktop file it belongs to
-                if !crate::icon_utils::get_icon_from_desktop(&search_id).is_some() {
-                    if let Some(resolved_id) = crate::icon_utils::find_desktop_file_by_exec(&search_id) {
-                        println!("[DEBUG] Normalized app_id '{}' -> '{}' via Exec match", search_id, resolved_id);
-                        search_id = resolved_id;
-                        window.app_id = search_id.clone();
-                    }
-                }
-            }
-
-            if !search_id.is_empty() {
-                let icon_name = crate::icon_utils::extract_icon_name(&search_id);
-                let icon_path = crate::get_icon_path(&search_id);
-                println!("[DEBUG] App '{}' (orig: '{}') -> Icon Name: '{}', Path: {:?}", search_id, original_app_id, icon_name, icon_path);
-                
-                let mut raw_pixels = None;
-                let target_size = 48;
-                if let Some(path) = icon_path {
-                    if let Some((_, _, rgba_data)) = crate::terminal_graphics::load_image_raw_rgba(&path, target_size) {
-                        raw_pixels = Some(rgba_data.clone());
-                        self.icon_cache.insert(search_id.clone(), (rgba_data.clone(), target_size));
-                        if self.pinned_apps.contains(&search_id) {
-                            crate::cache::save_cached_icon(&search_id, target_size, target_size, &rgba_data);
-                        }
-                    }
-                }
-                window.icon_name = icon_name;
-                window.icon_rgba = raw_pixels.clone();
-                window.icon_size = target_size;
-                // Only mark resolved if we actually found an icon
-                if raw_pixels.is_some() {
-                    window.icon_resolved = true;
-                }
-            } else {
-                println!("[DEBUG] Could not resolve any ID for window with title '{}'", window.title);
-            }
-        }
-    }
-
-    pub fn draw(&mut self, qh: &wayland_client::QueueHandle<Self>) {
-        let box_size = 48;
-        let spacing = 12;
-        let max_dock_width = 800;
-
-        for dock in &mut self.docks {
-            // Cache menu state properties before the mutable loop borrow
-            let menu_is_open = self.menu_state.is_open;
-            let menu_x_val = self.menu_state.x;
-            let menu_y_val = self.menu_state.y;
-            let menu_items_len = self.menu_state.items.len();
-
-            let dock_output = dock.output.clone();
-
-            // 1. Filter open windows matching THIS output using REFERENCES (Zero allocations!)
-            let filtered_windows: HashMap<&ObjectId, &WindowDiagnostics> = self.open_windows.iter()
-                .filter(|(_, win)| win.outputs.contains(&dock_output))
-                .collect();
-
-            // 2. Build items list without cloning Strings
-            let mut apps_in_dock: Vec<&str> = self.pinned_apps.iter().map(|s| s.as_str()).collect();
-            for window in filtered_windows.values() {
-                let id = if !window.app_id.is_empty() {
-                    window.app_id.as_str()
-                } else if !window.title.is_empty() {
-                    window.title.as_str()
-                } else {
-                    "Unknown"
-                };
-
-                if !apps_in_dock.contains(&id) { 
-                    apps_in_dock.push(id); 
-                }
-            }
-
-            let total_items = apps_in_dock.len();
-            let calculated_width = if total_items > 0 {
-                (total_items * box_size + (total_items + 1) * spacing) as u32
-            } else { 
-                100 
-            };
-
-            let dock_width = calculated_width.min(max_dock_width);
-            
-            // Determine if either the context menu or hover state requires the expanded height (200px)
-            let is_expanded = self.menu_state.is_open || self.hover_state.is_visible;
-            let dock_height = if is_expanded { 200 } else { 60 };
-
-            dock.width = dock_width;
-            dock.height = dock_height;
-
-            // 3. Configure layer surface & input region
-            let surface = &dock.surface;
-            surface.set_size(dock_width, dock_height);
-            let compositor = self.compositor_state.wl_compositor();
-            let region = compositor.create_region(qh, ());
-
-            // When expanded to 200px, the main dock bar is at the bottom (y: 140 to 200)
-            let dock_y = if is_expanded { 140 } else { 0 };
-            region.add(0, dock_y, dock_width as i32, 60);
-
-            // Hover preview input region
-            if self.hover_state.is_visible {
-                if let Some(ref app_id) = self.hover_state.app_id {
-                    let count = filtered_windows.values()
-                        .filter(|w| {
-                            let id = if !w.app_id.is_empty() { w.app_id.as_str() }
-                                     else if !w.title.is_empty() { w.title.as_str() }
-                                     else { "Unknown" };
-                            id == app_id.as_str()
-                        })
-                        .count();
-                    
-                    let dock_scale = dock.scale_factor;
-
-                    if count > 0 {
-                        let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
-                            self.hover_state.x,
-                            dock_width as usize,
-                            dock_height as usize,
-                            count,
-                            dock_scale,
-                        );
-                        region.add(menu_x as i32, menu_y as i32, menu_width as i32, menu_height as i32);
-
-                        let gap_y = (menu_y + menu_height) as i32;
-                        if gap_y < dock_y {
-                            region.add(menu_x as i32, gap_y, menu_width as i32, dock_y - gap_y);
-                        }
-                    }
-                }
-            }
-
-            // Context menu input region (expects surface-local / logical coordinates)
-            if menu_is_open {
-                let (menu_x, menu_y, menu_w, menu_h) = get_context_menu_bounds(
-                    menu_x_val,
-                    menu_y_val,
-                    dock_width as usize,
-                    dock_height as usize,
-                    menu_items_len,
-                    1.0, // Logical coordinates for Wayland surface input regions
-                );
-
-                region.add(menu_x as i32, menu_y as i32, menu_w as i32, menu_h as i32);
-            }
-            surface.wl_surface().set_input_region(Some(&region));
-            
-            // ✅ Destroy the region object immediately to prevent Wayland proxy leakage
-            region.destroy();
-
-            // --- FRACTIONAL SCALE CALCULATION ---
-            let dock_scale = dock.scale_factor;
-            let phys_width = (dock_width as f64 * dock_scale).round() as u32;
-            let phys_height = (dock_height as f64 * dock_scale).round() as u32;
-            let stride = phys_width * 4;
-
-            if phys_width == 0 || phys_height == 0 {
-                continue;
-            }
-
-            dock.current_buffer = None;
-
-            let (buffer, canvas) = self
-                .pool
-                .create_buffer(
-                    phys_width as i32,
-                    phys_height as i32,
-                    stride as i32,
-                    wl_shm::Format::Argb8888,
-                )
-                .expect("Failed to allocate SHM buffer");
-
-            // Build cloned reference map ONLY if render_windows strictly requires owned values,
-            // or update render_windows signature to accept &HashMap<&ObjectId, &WindowDiagnostics>
-            let render_windows_map: HashMap<ObjectId, WindowDiagnostics> = filtered_windows.iter()
-                .map(|(k, v)| ((*k).clone(), (*v).clone()))
-                .collect();
-
-            render::render_windows(
-                canvas, 
-                phys_width,
-                phys_height,
-                dock_scale,
-                &render_windows_map,
-                &self.pinned_apps,
-                &self.icon_cache,
-                &self.menu_state,
-                &self.hover_state,
-                &self.font_manager,
-                self.is_dragging,
-                self.dragged_app_id.as_ref(),
-                self.pointer_x,
-                self.pointer_y,
-                &self.fallback_anim,
-                &self.badges,
-            );
-
-            surface.wl_surface().set_buffer_scale(1);
-            buffer.attach_to(surface.wl_surface()).expect("Buffer attach failed");
-            surface.wl_surface().damage_buffer(0, 0, phys_width as i32, phys_height as i32);
-            surface.wl_surface().commit();
-
-            dock.current_buffer = Some(buffer);
-        }
-    }
-}
-
-impl Dispatch<wayland_client::protocol::wl_region::WlRegion, ()> for AppState {
-    fn event(
-        _state: &mut Self,
-        _proxy: &wayland_client::protocol::wl_region::WlRegion,
-        _event: <wayland_client::protocol::wl_region::WlRegion as wayland_client::Proxy>::Event,
-        _data: &(),
-        _conn: &wayland_client::Connection,
-        _qhandle: &wayland_client::QueueHandle<Self>,
-    ) {
-        // WlRegion has no events, so this body can remain empty.
-    }
-}
-// =========================================================================
-// Add the missing .draw() orchestration method to bridge render.rs
-// =========================================================================
-// Replace the `impl AppState` block inside src/main.rs with this:
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 1. Setup DBus Channel
+    // 1. Kick off background indexer
+    crate::cache::icon_indexer::spawn_startup_indexer();
+
+    // 2. Pre-load any existing icon index from disk into memory
+    let _icon_map = load_icon_index_map();
+
+    // 3. Setup DBus Channel
     let (badge_tx, mut badge_rx) = tokio::sync::mpsc::unbounded_channel();
     
-    // 2. Spawn async DBus listener
+    // 4. Spawn async DBus listener
     let runtime = tokio::runtime::Runtime::new()?;
     runtime.spawn(async move {
-        let _ = modules::dbus_unity::start_unity_dbus_listener(badge_tx).await;
+        let _ = start_unity_dbus_listener(badge_tx).await;
     });
-    // ------
 
-    println!("[DEBUG] Starting dock...");
     let conn = Connection::connect_to_env().expect("Failed to connect to Wayland display");
-    println!("[DEBUG] Connected to Wayland.");
-    
-    // Fetch globals using SimpleGlobalList
-    // 1. Initialize event queue and retrieve globals list
     let (globals, mut event_queue) = registry_queue_init::<AppState>(&conn)
         .expect("Failed to initialize Wayland registry queue");
 
-    // 2. Get the queue handle
     let qh = event_queue.handle();
-
-    // 3. RegistryState::new takes only &globals in SCTK 0.20
     let registry_state = RegistryState::new(&globals);
-
-    // 4. Bind remaining SCTK states
     let compositor_state = CompositorState::bind(&globals, &qh).expect("Failed to bind compositor");
     let output_state = OutputState::new(&globals, &qh);
     let layer_shell = LayerShell::bind(&globals, &qh).expect("wlr_layer_shell required");
     let shm_state = Shm::bind(&globals, &qh).expect("wl_shm required");
     let seat_state = SeatState::new(&globals, &qh);
-    // Load font for fontmanager
     let pool = SlotPool::new(1024 * 1024 * 16, &shm_state).expect("Failed to create memory pool");
     
-	let home = std::env::var("HOME").unwrap_or_default();
+    let home = std::env::var("HOME").unwrap_or_default();
     let user_data_font = format!("{}/.local/share/dock/font.ttf", home);
 
     let font_path = [
         PathBuf::from("assets/font.ttf"),
         PathBuf::from("font.ttf"),
-        PathBuf::from(user_data_font), // Added user local share path
+        PathBuf::from(user_data_font),
         PathBuf::from("/usr/share/dock/font.ttf"),
         PathBuf::from("/usr/share/fonts/TTF/DejaVuSans.ttf"),
     ]
@@ -766,7 +122,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     .find(|p| p.exists())
     .expect("No valid font file found!");
 
-    // Resolve dynamic path for SVG animation frames ---
     let anim_dir = [
         PathBuf::from("assets/24"),
         PathBuf::from(format!("{}/.local/share/dock/24", home)),
@@ -782,9 +137,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         24,
     );
 
-    // =========================================================================
-    // 1. CREATE THE VARIABLES RIGHT BEFORE APPSTATE USES THEM
-    // =========================================================================
     let pinned_vector = persistence::load_pinned_apps();
     let mut permanent_icon_cache = HashMap::new();
     for app_id in &pinned_vector {
@@ -793,9 +145,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // =========================================================================
-    // 2. INITIALIZE THE FULL STATE MATCHING YOUR COMPOSITOR STRUCT
-    // =========================================================================
+    // Channel for background icon loading
+    let (icon_tx, icon_rx) = std::sync::mpsc::channel();
+
     let mut state = AppState {
         connection: conn.clone(),
         registry_state,
@@ -809,15 +161,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         current_buffer: None,
         width: 100, 
         height: 60,
-        toplevel_manager: None, // This gets bound right below this block
+        toplevel_manager: None,
         font_manager: FontManager::from_file(&font_path).expect("Failed to memory-map font file"),
         wl_seat: None,
         wl_pointer: None,
         pointer_x: 0,
         pointer_y: 0,
         open_windows: HashMap::new(),
-        pinned_apps: pinned_vector, // Already a Vec<String>
-        icon_cache: permanent_icon_cache,                 // Found in scope now!
+        pinned_apps: pinned_vector,
+        icon_cache: permanent_icon_cache,
+        pending_icon_searches: std::collections::HashSet::new(),
+        icon_rx,
+        icon_tx,
         menu_state: MenuState {
             x: 0,
             y: 0,
@@ -848,23 +203,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         fractional_scale_manager: None,
         fractional_scale_notifier: None,
         scale_factor: 1.0,
-        // Initialize animation state
-        // Pre-render SVG sequence once at startup (24 FPS, 48x48 icon size)
         fallback_anim,
-        // Drag and drop:
         dnd_state: DndState::default(),
         data_device_manager: None,
         data_device: None,
-        // dbus
         badges: HashMap::new(),
     };
 
-    // =========================================================================
-    // Your existing foreign_toplevel manager binding continues right below here
-    // =========================================================================
-    // Bind protocols via SCTK registry_state
-         
-    // Bind WlDataDeviceManager
     state.data_device_manager = state.registry_state
         .bind_one::<WlDataDeviceManager, _, _>(&qh, 1..=3, ())
         .ok();
@@ -877,11 +222,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .bind_one::<WpFractionalScaleManagerV1, _, _>(&qh, 1..=1, ())
         .ok();
 
-    println!("[DEBUG] Doing roundtrip...");
     event_queue.roundtrip(&mut state).unwrap();
-    println!("[DEBUG] Roundtrip complete.");
 
-    // Loop over all outputs registered by Wayland
     for output in state.output_state.outputs() {
         let raw_surface = state.compositor_state.create_surface(&qh);
         let layer_surface = state.layer_shell.create_layer_surface(
@@ -892,7 +234,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(&output),
         );
 
-        // Pass `output.clone()` as UserData instead of `()`
         let scale_notifier = if let Some(ref manager) = state.fractional_scale_manager {
             Some(manager.get_fractional_scale(layer_surface.wl_surface(), &qh, output.clone()))
         } else {
@@ -917,16 +258,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // Simple Verification Check
-    if state.toplevel_manager.is_some() {
-        println!("[DEBUG] Active window tracking protocols linked to event loop successfully via direct binding!");
-    } else {
-        eprintln!("[ERROR] Your compositor does not support zwlr_foreign_toplevel_manager_v1!");
-    }
-    
-    // ... Rest of your layer_surface allocation and blocking_dispatch loop code continues exactly the same
-    println!("[DEBUG] Starting event loop...");
-
     loop {
         let _ = state.connection.flush();
 
@@ -935,7 +266,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             break;
         }
 
-        // 1. Sync animation state and check if discrete frame step occurred
+        // Drain background icon results and mark redraw if an icon loaded
+        if state.process_loaded_icons() {
+            state.needs_redraw = true;
+        }
+
+        // Sync fallback animation state and advance frame
         state.fallback_anim.is_active = state.is_animating();
         let frame_advanced = state.fallback_anim.update();
 
@@ -947,7 +283,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 revents: 0,
             };
 
-            // 2. Sleep timeout strictly bound to the exact remainder of the current animation frame
             let timeout_ms = if state.fallback_anim.is_active {
                 state.fallback_anim.time_until_next_frame().as_millis() as i32
             } else {
@@ -960,7 +295,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = guard.read();
             }
         }
-        // Drain incoming DBus badge updates
+
         while let Ok(update) = badge_rx.try_recv() {
             let clean_id = update.desktop_id
                 .trim_start_matches("application://")
@@ -970,17 +305,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             state.badges.insert(clean_id, update);
             state.needs_redraw = true;
         }
-        // -----
+
         if let Err(e) = event_queue.dispatch_pending(&mut state) {
             eprintln!("[WARN] Dispatch error: {}", e);
             break;
         }
 
-        // 3. Trigger redraw ONLY when frame explicitly stepped or interaction flagged redraw
         if frame_advanced || state.needs_redraw {
             state.draw(&qh);
             state.needs_redraw = false;
         }
     }
-    Ok (())
+    Ok(())
 }

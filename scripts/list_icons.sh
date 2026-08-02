@@ -1,6 +1,5 @@
 #!/bin/bash
 
-# Define the root directories to search
 SEARCH_DIRS=(
     "/usr/share/icons"
     "$HOME/.local/share/icons"
@@ -9,24 +8,20 @@ SEARCH_DIRS=(
     "$HOME/.local/share/pixmaps"
 )
 
-# Output file
-OUTPUT_FILE="icon_list.txt"
+# Allow passing a target output file as argument $1, fallback to local icon_list.txt
+OUTPUT_FILE="${1:-icon_list.txt}"
 
-# Clear previous file
+# Create parent directory if needed
+mkdir -p "$(dirname "$OUTPUT_FILE")"
 > "$OUTPUT_FILE"
 
-# Counter for items
 TOTAL_COUNT=0
 
-# Print header to file
 printf "%-30s | %s\n" "Filename" "Full Path" >> "$OUTPUT_FILE"
 echo "--------------------------------------------------------------------------" >> "$OUTPUT_FILE"
 
-# Loop through each directory
 for dir in "${SEARCH_DIRS[@]}"; do
     if [ -d "$dir" ]; then
-        # Search recursively for .png and .svg
-        # -printf "%f\t%p\n" outputs the filename and the full path separated by a tab
         while IFS=$'\t' read -r filename filepath; do
             printf "%-30s | %s\n" "$filename" "$filepath" >> "$OUTPUT_FILE"
             ((TOTAL_COUNT++))
@@ -34,7 +29,6 @@ for dir in "${SEARCH_DIRS[@]}"; do
     fi
 done
 
-# Print final total to file
 echo "--------------------------------------------------------------------------" >> "$OUTPUT_FILE"
 echo "Total icons (.png and .svg) found: $TOTAL_COUNT" >> "$OUTPUT_FILE"
 
