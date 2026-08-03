@@ -1,9 +1,11 @@
 pub mod app;
 pub mod cache;
+pub mod graphics;
 pub mod handlers;
+pub mod listeners;
 pub mod render;
 pub mod resolvers;
-pub mod listeners;
+
 
 use app::AppState;
 
@@ -42,6 +44,7 @@ use std::io::{BufRead, BufReader};
 use libc; // for loop and animation
 
 use crate::cache::persistence;
+use crate::graphics::AutoHideState;
 use crate::render::font::FontManager;
 
 pub use dockman_lib::DesktopAction;
@@ -220,6 +223,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         subcompositor,
         icon_load: icon_loader,
         animations: HashMap::new(),
+        hide_state: AutoHideState::new(),
     };
 
     state.data_device_manager = state.registry_state

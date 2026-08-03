@@ -36,6 +36,12 @@ impl AppState {
             }
         }
 
+        // =========================================================================
+        // PRE-RENDER TICK (Run ONCE before iterating over surfaces/docks)
+        // =========================================================================
+        self.needs_redraw = false;
+        let is_animating = self.hide_state.tick();
+
         // 2. Process each dock display output
         for dock in &mut self.docks {
             let menu_is_open = self.menu_state.is_open;
@@ -355,6 +361,7 @@ impl AppState {
                 .map(|(k, v)| ((*k).clone(), (*v).clone()))
                 .collect();
 
+            // 1. Render standard dock surface
             render::render_dock_surface(
                 canvas,
                 phys_width,
@@ -371,6 +378,14 @@ impl AppState {
                 &self.fallback_anim,
                 &self.badges,
             );
+
+            // 2. Apply auto-hide transparency overlay
+            self.hide_state.apply_alpha_to_canvas(canvas);
+
+            // 3. Request next frame BEFORE commit if animation is active
+            if is_animating {
+                surface.wl_surface().frame(qh, surface.wl_surface().clone());
+            }
 
             surface.wl_surface().set_buffer_scale(scale_int);
             buffer.attach_to(surface.wl_surface()).expect("Buffer attach failed");

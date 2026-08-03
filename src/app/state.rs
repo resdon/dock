@@ -31,7 +31,7 @@ use wayland_protocols::wp::fractional_scale::v1::client::{
 };
 use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1;
 
-
+use crate::graphics::hide::AutoHideState;
 use crate::models::{WindowDiagnostics, BadgeUpdate};
 use crate::render::font::FontManager;
 use crate::resolvers::search_icon_list_file;
@@ -101,6 +101,8 @@ pub struct AppState {
     // Icon load
     pub icon_load: IconLoader,
     pub animations: HashMap<String, IconAnimation>,
+    // Autohide
+    pub hide_state: AutoHideState,
 }
 
 /// Generates a blank/generic 48x48 RGBA fallback icon when an icon cannot be found anywhere

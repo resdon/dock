@@ -62,13 +62,13 @@ impl PointerHandler for AppState {
         // Helper to map surface-local popup coordinates to dock-local logical coordinates
         let dock_surface_ptr = self.docks.first().map(|d| d.surface.wl_surface());
 
-        let map_coordinates = |event: &PointerEvent, state: &AppState, running_by_app: &HashMap<String, Vec<ObjectId>>| -> (f32, f32) {
+        let map_coordinates = |event: &PointerEvent, state: &AppState, _running_by_app: &HashMap<String, Vec<ObjectId>>| -> (f32, f32) {
             let (px, py) = event.position;
             
             if let Some(dock_surf) = dock_surface_ptr {
                 let is_main_surface = event.surface == *dock_surf;
                 if !is_main_surface {
-                    // Check context menu first so it takes precedence over hover state
+                    // Context menu check
                     if state.menu_state.is_open && !state.menu_state.items.is_empty() {
                         let phys_width = (state.width as f32 * scale_factor).round() as i32;
                         let phys_height = (state.height as f32 * scale_factor).round() as i32;
@@ -76,31 +76,25 @@ impl PointerHandler for AppState {
                         return (px as f32 + (menu_x as f32 / scale_factor), py as f32 + (menu_y as f32 / scale_factor));
                     }
 
-                    // Inside map_coordinates closure:
+                    // Hover state check
                     if state.hover_state.is_visible {
                         if let Some(ref app_id) = state.hover_state.app_id {
-                            // Use `self.` instead of `state.`
-                            let apps_in_dock = &self.pinned_apps; 
-
-                            // Safely calculate the number of open windows for this specific app
-                            // Note: Adjust `w.app_id` to whatever the actual field name is in WindowDiagnostics
-                            let win_count = self.open_windows
+                            let win_count = state.open_windows
                                 .values()
                                 .filter(|w| w.app_id == *app_id)
                                 .count()
                                 .max(1);
 
-                            let total_apps = apps_in_dock.len();
-                            let hovered_app_index = apps_in_dock.iter().position(|id| id == app_id).unwrap_or(0);
+                            let total_apps = state.pinned_apps.len();
+                            let hovered_app_index = state.pinned_apps.iter().position(|id| id == app_id).unwrap_or(0);
 
-                            // Explicitly mark literals as _f64 to fix the E0689 rounding error
-                            let menu_w = (180.0_f64 * self.scale_factor).round() as i32;
-                            let menu_h = (win_count as f64 * 30.0_f64 * self.scale_factor).round() as i32;
-                            let scale_i32 = self.scale_factor.round() as i32;
+                            let menu_w = (180.0_f64 * state.scale_factor as f64).round() as i32;
+                            let menu_h = (win_count as f64 * 30.0_f64 * state.scale_factor as f64).round() as i32;
+                            let scale_i32 = state.scale_factor.round() as i32;
 
-                            let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
-                                self.width as i32,
-                                self.height as i32,
+                            let (menu_x, menu_y, _, _) = get_hover_menu_bounds(
+                                state.width,
+                                state.height,
                                 total_apps,
                                 hovered_app_index,
                                 menu_w,
@@ -122,6 +116,19 @@ impl PointerHandler for AppState {
                     let (mapped_x, mapped_y) = map_coordinates(event, self, &running_by_app);
                     self.pointer_x = mapped_x as i32;
                     self.pointer_y = mapped_y as i32;
+
+                    // =========================================================
+                    // AUTO-HIDE PROXIMITY CHECK
+                    // =========================================================
+                    let proximity_margin = 20;
+                    let is_near = self.pointer_x >= 0 
+                        && self.pointer_x <= self.width 
+                        && self.pointer_y >= -proximity_margin 
+                        && self.pointer_y <= self.height;
+
+                    self.hide_state.update_proximity(is_near);
+                    self.needs_redraw = true;
+                    // =========================================================
                     
                     if self.dragged_app_id.is_some() {
                         let dx = mapped_x - self.drag_start_x as f32;
@@ -141,6 +148,10 @@ impl PointerHandler for AppState {
                     }
                 }
                 PointerEventKind::Leave { .. } => {
+                    // Cursor left surface boundaries entirely
+                    self.hide_state.update_proximity(false);
+                    self.needs_redraw = true;
+                    
                     if let Some(dock_surf) = dock_surface_ptr {
                         if event.surface == *dock_surf {
                             // Defer dismissal to STEP 3 geometry/leeway checks 
@@ -745,8 +756,8 @@ impl PointerHandler for AppState {
                                 let hovered_app_index = apps_in_dock.iter().position(|id| id == app_id).unwrap_or(0);
 
                                 // Explicitly mark literals as _f64 to fix the E0689 rounding error
-                                let menu_w = (180.0_f64 * self.scale_factor).round() as i32;
-                                let menu_h = (win_count as f64 * 30.0_f64 * self.scale_factor).round() as i32;
+                                let menu_w = (180.0_f64 * self.scale_factor as f64).round() as i32;
+                                let menu_h = (win_count as f64 * 30.0_f64 * self.scale_factor as f64).round() as i32;
                                 let scale_i32 = self.scale_factor.round() as i32;
 
                                 let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
