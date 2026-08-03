@@ -10,9 +10,20 @@ use smithay_client_toolkit::shm::slot::Buffer; // Or wayland_client::protocol::w
 
 // Wayland Protocols
 use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1;
+use wayland_client::protocol::wl_subsurface::WlSubsurface;
+use wayland_client::protocol::wl_subcompositor::WlSubcompositor;
 
 // Project Types
 use crate::DesktopAction;
+
+// To hold subsurface handles
+pub struct PopupSurface {
+    pub subsurface: WlSubsurface,
+    pub surface: wayland_client::protocol::wl_surface::WlSurface,
+    pub current_buffer: Option<Buffer>,
+    pub width: u32,
+    pub height: u32,
+}
 
 // Store notifiers per-dock in DockInstance
 pub struct DockInstance {
@@ -23,6 +34,8 @@ pub struct DockInstance {
     pub current_buffer: Option<Buffer>,
     pub scale_notifier: Option<WpFractionalScaleV1>,
     pub scale_factor: f64,
+    pub hover_popup: Option<PopupSurface>,
+    pub menu_popup: Option<PopupSurface>,
 }
 // -----
 

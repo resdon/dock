@@ -12,9 +12,9 @@ pub fn draw_canvas_badge(
     canvas_width: u32,
     canvas_height: u32,
     badge: &BadgeUpdate,
-    start_x: usize,
-    start_y: usize,
-    box_size: usize,
+    start_x: i32,
+    start_y: i32,
+    box_size: i32,
 ) {
     if !badge.count_visible || badge.count <= 0 {
         return;
@@ -28,18 +28,18 @@ pub fn draw_canvas_badge(
     let badge_rgba = img.to_rgba8();
     let raw_bytes = badge_rgba.as_raw();
 
-    let overlay_x = (start_x + box_size).saturating_sub(badge_w as usize);
+    let overlay_x = (start_x + box_size).saturating_sub(badge_w as i32);
     let overlay_y = start_y;
 
     for y in 0..badge_h as usize {
-        let canvas_y = overlay_y + y;
-        if canvas_y >= canvas_height as usize { break; }
+        let canvas_y = overlay_y + y as i32;
+        if canvas_y >= canvas_height as i32 { break; }
 
-        for x in 0..badge_w as usize {
-            let canvas_x = overlay_x + x;
-            if canvas_x >= canvas_width as usize { break; }
+        for x in 0..badge_w as i32 {
+            let canvas_x = overlay_x + x as i32;
+            if canvas_x >= canvas_width as i32 { break; }
 
-            let src_idx = (y * badge_w as usize + x) * 4;
+            let src_idx = (y * badge_w as usize + x as usize) * 4;
             let src_r = raw_bytes[src_idx] as u32;
             let src_g = raw_bytes[src_idx + 1] as u32;
             let src_b = raw_bytes[src_idx + 2] as u32;
@@ -47,19 +47,19 @@ pub fn draw_canvas_badge(
 
             if src_a == 0 { continue; }
 
-            let dst_idx = (canvas_y * canvas_width as usize + canvas_x) * 4;
+            let dst_idx = ((canvas_y as usize * canvas_width as usize + canvas_x as usize) * 4) as usize;
 
             let alpha = src_a;
             let inv_alpha = 255 - alpha;
 
-            let dst_b = canvas[dst_idx] as u32;
-            let dst_g = canvas[dst_idx + 1] as u32;
-            let dst_r = canvas[dst_idx + 2] as u32;
+            let dst_b = canvas[(dst_idx) as usize] as u32;
+            let dst_g = canvas[(dst_idx + 1) as usize] as u32;
+            let dst_r = canvas[(dst_idx + 2) as usize] as u32;
 
-            canvas[dst_idx]     = ((src_b * alpha + dst_b * inv_alpha) / 255) as u8;
-            canvas[dst_idx + 1] = ((src_g * alpha + dst_g * inv_alpha) / 255) as u8;
-            canvas[dst_idx + 2] = ((src_r * alpha + dst_r * inv_alpha) / 255) as u8;
-            canvas[dst_idx + 3] = 255;
+            canvas[(dst_idx) as usize]     = ((src_b * alpha + dst_b * inv_alpha) / 255) as u8;
+            canvas[(dst_idx + 1) as usize] = ((src_g * alpha + dst_g * inv_alpha) / 255) as u8;
+            canvas[(dst_idx + 2) as usize] = ((src_r * alpha + dst_r * inv_alpha) / 255) as u8;
+            canvas[(dst_idx + 3) as usize] = 255;
         }
     }
 }

@@ -336,10 +336,10 @@ impl World {
     pub fn draw_blue_box(
         &self,
         frame: &mut [u8],
-        x_start: usize,
-        x_end: usize,
-        y_start: usize,
-        y_end: usize,
+        x_start: i32,
+        x_end: i32,
+        y_start: i32,
+        y_end: i32,
     ) {
         let blue_pixel: [u8; 4] = [255, 100, 0, 255]; 
 
@@ -348,10 +348,10 @@ impl World {
                 let is_edge = x == x_start || x == x_end || y == y_start || y == y_end;
                 
                 if is_edge {
-                    let pixel_index = (y * self.width + x) * 4;
+                    let pixel_index = (y * self.width as i32 + x) * 4;
 
-                    if pixel_index + 3 < frame.len() {
-                        frame[pixel_index..pixel_index + 4].copy_from_slice(&blue_pixel);
+                    if ((pixel_index + 3) as usize) < (frame.len() as usize) {
+                        frame[(pixel_index as usize)..((pixel_index as usize + 4 as usize))].copy_from_slice(&blue_pixel);
                     }
                 }
             }
@@ -362,8 +362,8 @@ impl World {
         &mut self,
         frame: &mut [u8],
         text: &str,
-        start_x: usize,
-        baseline_y: usize,
+        start_x: i32,
+        baseline_y: i32,
         size: f32,
         color: [u8; 3],
         frame_width: usize,
@@ -394,8 +394,8 @@ impl World {
                 );
             }
 
-            cursor_x += advance;
-            if cursor_x >= frame_width {
+            cursor_x += advance as i32;
+            if cursor_x >= frame_width as i32 {
                 break;
             }
         }
@@ -408,8 +408,8 @@ impl World {
         width: usize,
         height: usize,
         glyph: &CachedGlyph,
-        x: usize,
-        y: usize,
+        x: i32,
+        y: i32,
         color: [u8; 3],
     ) {
         let g_width = glyph.metrics.width;

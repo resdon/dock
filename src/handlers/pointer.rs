@@ -1,4 +1,4 @@
-use crate::render::context_menu::{get_hover_menu_bounds};
+use crate::render::window_list::get_hover_menu_bounds;
 pub use crate::models::LastState;
 use crate::models::WindowDiagnostics;
 use crate::app::AppState;
@@ -9,6 +9,7 @@ use smithay_client_toolkit::{
     seat::{
         pointer::{PointerEvent, PointerEventKind, PointerHandler},
     },
+    shell::WaylandSurface,
 };
 
 use wayland_client::{
@@ -34,43 +35,131 @@ impl PointerHandler for AppState {
         self.last_interact_time = std::time::Instant::now(); 
         let mut layer_changed = false;
 
+        let scale_factor: f32 = self.docks.first().map(|d| d.scale_factor).unwrap_or(1.0) as f32;
+
+        // --- Build running_by_app early for coordinate mapping ---
+        let mut running_by_app: HashMap<String, Vec<ObjectId>> = HashMap::new(); 
+        for (id, window) in &self.open_windows {
+            let app_id = if !window.app_id.is_empty() {
+                window.app_id.clone()
+            } else if !window.title.is_empty() {
+                window.title.clone()
+            } else {
+                "Unknown".to_string()
+            };
+            running_by_app.entry(app_id).or_default().push(id.clone());
+        }
+        for windows in running_by_app.values_mut() {
+            windows.sort_by(|a, b| {
+                let win_a = self.open_windows.get(a);
+                let win_b = self.open_windows.get(b);
+                let title_a = win_a.map(|w| w.title.as_str()).unwrap_or("");
+                let title_b = win_b.map(|w| w.title.as_str()).unwrap_or("");
+                title_a.cmp(title_b)
+            });
+        }
+
+        // Helper to map surface-local popup coordinates to dock-local logical coordinates
+        let dock_surface_ptr = self.docks.first().map(|d| d.surface.wl_surface());
+
+        let map_coordinates = |event: &PointerEvent, state: &AppState, running_by_app: &HashMap<String, Vec<ObjectId>>| -> (f32, f32) {
+            let (px, py) = event.position;
+            
+            if let Some(dock_surf) = dock_surface_ptr {
+                let is_main_surface = event.surface == *dock_surf;
+                if !is_main_surface {
+                    // Check context menu first so it takes precedence over hover state
+                    if state.menu_state.is_open && !state.menu_state.items.is_empty() {
+                        let phys_width = (state.width as f32 * scale_factor).round() as i32;
+                        let phys_height = (state.height as f32 * scale_factor).round() as i32;
+                        let (menu_x, menu_y, _, _) = state.get_context_menu_bounds(phys_width, phys_height, scale_factor);
+                        return (px as f32 + (menu_x as f32 / scale_factor), py as f32 + (menu_y as f32 / scale_factor));
+                    }
+
+                    // Inside map_coordinates closure:
+                    if state.hover_state.is_visible {
+                        if let Some(ref app_id) = state.hover_state.app_id {
+                            // Use `self.` instead of `state.`
+                            let apps_in_dock = &self.pinned_apps; 
+
+                            // Safely calculate the number of open windows for this specific app
+                            // Note: Adjust `w.app_id` to whatever the actual field name is in WindowDiagnostics
+                            let win_count = self.open_windows
+                                .values()
+                                .filter(|w| w.app_id == *app_id)
+                                .count()
+                                .max(1);
+
+                            let total_apps = apps_in_dock.len();
+                            let hovered_app_index = apps_in_dock.iter().position(|id| id == app_id).unwrap_or(0);
+
+                            // Explicitly mark literals as _f64 to fix the E0689 rounding error
+                            let menu_w = (180.0_f64 * self.scale_factor).round() as i32;
+                            let menu_h = (win_count as f64 * 30.0_f64 * self.scale_factor).round() as i32;
+                            let scale_i32 = self.scale_factor.round() as i32;
+
+                            let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
+                                self.width as i32,
+                                self.height as i32,
+                                total_apps,
+                                hovered_app_index,
+                                menu_w,
+                                menu_h,
+                                scale_i32,
+                            );
+                            return (px as f32 + (menu_x as f32 / scale_factor), py as f32 + (menu_y as f32 / scale_factor));
+                        }
+                    }
+                }
+            }
+
+            (px as f32, py as f32)
+        };
         // --- STEP 1: Parse the Frame Packet & Handle Instant Leave ---
         for event in events {
             match event.kind {
                 PointerEventKind::Enter { .. } | PointerEventKind::Motion { .. } => {
-                    self.pointer_x = event.position.0 as usize;
-                    self.pointer_y = event.position.1 as usize;
+                    let (mapped_x, mapped_y) = map_coordinates(event, self, &running_by_app);
+                    self.pointer_x = mapped_x as i32;
+                    self.pointer_y = mapped_y as i32;
                     
                     if self.dragged_app_id.is_some() {
-                        let dx = event.position.0 - self.drag_start_x;
-                        let dy = event.position.1 - self.drag_start_y;
+                        let dx = mapped_x - self.drag_start_x as f32;
+                        let dy = mapped_y - self.drag_start_y as f32;
                         if (dx * dx + dy * dy).sqrt() > 5.0 {
                             self.is_dragging = true;
                         }
-                        // Inside Step 1 of pointer_frame:
                         if self.is_dragging {
                             let now = std::time::Instant::now();
                             if now.duration_since(self.last_drag_draw).as_millis() >= 4 {
                                 self.last_drag_draw = now;
-                                layer_changed = true; // ✅ Set layer_changed instead of calling self.draw(qh) directly
+                                layer_changed = true;
                             }
                         }
                     } else {
-                        layer_changed = true; // normal hover updates
+                        layer_changed = true;
                     }
                 }
                 PointerEventKind::Leave { .. } => {
-                    // Immediately dismiss hover state when pointer leaves the surface entirely
-                    if self.hover_state.is_visible {
-                        self.hover_state.is_visible = false;
-                        self.hover_state.app_id = None;
-                        layer_changed = true;
-                    }
-                    self.hover_state.last_leave_time = None;
+                    if let Some(dock_surf) = dock_surface_ptr {
+                        if event.surface == *dock_surf {
+                            // Defer dismissal to STEP 3 geometry/leeway checks 
+                            // to allow smooth mouse transition into subsurfaces.
+                        } else {
+                            if self.hover_state.is_visible {
+                                self.hover_state.is_visible = false;
+                                self.hover_state.app_id = None;
+                                layer_changed = true;
+                                self.needs_redraw = true; // Force redraw to clear old frames
+                            }
+                            self.hover_state.last_leave_time = None;
 
-                    if self.menu_state.is_open {
-                        self.menu_state.is_open = false;
-                        layer_changed = true;
+                            if self.menu_state.is_open {
+                                self.menu_state.is_open = false;
+                                layer_changed = true;
+                                self.needs_redraw = true; // Force redraw to clear old frames
+                            }
+                        }
                     }
                 }
                 _ => {}
@@ -78,17 +167,12 @@ impl PointerHandler for AppState {
         }
 
         // --- STEP 2: Unified Layout Metrics ---
-        // Get scale factor from the first dock (all docks should have same scale)
-        // Scale layout constants to physical pixels
-        let scale_factor = self.docks.first().map(|d| d.scale_factor).unwrap_or(1.0);
-        let dock_height = 60_usize;
-        let box_size = 48_usize;
-        let spacing = 12_usize;
+        let dock_height: i32 = 60 as i32;
+        let box_size: i32 = 48 as i32;
+        let spacing: i32 = 12 as i32;
         
-        // Scale context menu dimensions to match the rendered surface bounds
-        let _menu_width = (180.0 * scale_factor).round() as usize;
-        let _menu_item_height = (30.0 * scale_factor).round() as usize;
-
+        let _menu_width = (180.0 * scale_factor as f32).round() as i32;
+        let _menu_item_height = (30.0 * scale_factor as f32).round() as i32;
         // Populate map of running windows by app_id
         let mut running_by_app: HashMap<String, Vec<ObjectId>> = HashMap::new(); 
         for (id, window) in &self.open_windows {
@@ -101,7 +185,7 @@ impl PointerHandler for AppState {
             };
             running_by_app.entry(app_id).or_default().push(id.clone());
         }
-        // ✅ FIX: Sort each app's window vector so click index matches render index
+        // ✅ FIX: Sort each app's window vector so click index as i32 matches render index as i32
         for windows in running_by_app.values_mut() {
             windows.sort_by(|a, b| {
                 let win_a = self.open_windows.get(a);
@@ -135,30 +219,30 @@ impl PointerHandler for AppState {
             }
         }
         
-        let total_items = apps_in_dock.len(); 
-        let content_width = if total_items > 0 { total_items * box_size + (total_items + 1) * spacing } else { 0 }; 
-        let start_offset_x = if (self.width as usize) > content_width { (self.width as usize - content_width) / 2 } else { 0 }; 
+        let total_items: i32 = apps_in_dock.len() as i32; 
+        let content_width: i32 = if total_items > 0 { total_items * box_size + (total_items + 1) * spacing } else { 0 }; 
+        let start_offset_x: i32 = if (self.width as i32) > content_width { (self.width as i32 - content_width) / 2 } else { 0 }; 
         
-        let phys_surface_height = (self.height as f64 * scale_factor).round() as usize;
-        let dock_top_bound = phys_surface_height.saturating_sub(dock_height);
+        let phys_surface_height = (self.height as f32 * scale_factor as f32).round() as i32;
+        let dock_top_bound = phys_surface_height.saturating_sub(dock_height as i32);
 
         // --- STEP 3: Unified Hover & Bounds Tracking ---
         let mut should_be_visible = false;
         let mut new_app_id = None;
         let mut new_x = self.hover_state.x;
 
-        let is_over_icons = self.pointer_y >= dock_top_bound;
+        let is_over_icons = self.pointer_y >= dock_top_bound as i32;
 
         if is_over_icons {
             for (index, app_id) in apps_in_dock.iter().enumerate() {
-                let start_x = start_offset_x + spacing + index * (box_size + spacing);
-                let end_x = start_x + box_size;
-                let hit_start_x = start_x.saturating_sub(spacing / 2);
-                let hit_end_x = end_x + (spacing / 2);
+                let start_x: i32 = start_offset_x as i32 + spacing as i32 + index as i32 * (box_size as i32 + spacing as i32); 
+                let end_x: i32 = start_x + box_size as i32;
+                let hit_start_x: i32 = start_x.saturating_sub(spacing as i32 / 2);
+                let hit_end_x: i32 = end_x + (spacing as i32 / 2) as i32;
                 
                 if self.pointer_x >= hit_start_x && self.pointer_x <= hit_end_x {
                     should_be_visible = true;
-                    new_x = start_x + box_size / 2;
+                    let new_x: i32 = start_x as i32 + box_size as i32 / 2;
                     new_app_id = Some(app_id.clone());
                     break;
                 }
@@ -168,32 +252,46 @@ impl PointerHandler for AppState {
         if !should_be_visible && self.hover_state.is_visible {
             if let Some(ref app_id) = self.hover_state.app_id {
                 if let Some(windows) = running_by_app.get(app_id) {
+                    // Use `self.` instead of `state.`
+                    let apps_in_dock = &self.pinned_apps; 
+
+                    // Safely calculate the number of open windows for this specific app
+                    // Note: Adjust `w.app_id` to whatever the actual field name is in WindowDiagnostics
+                    let win_count = self.open_windows
+                        .values()
+                        .filter(|w| w.app_id == *app_id)
+                        .count()
+                        .max(1);
+
+                    let total_apps = apps_in_dock.len();
+                    let hovered_app_index = apps_in_dock.iter().position(|id| id == app_id).unwrap_or(0);
+
+                    // Explicitly mark literals as _f64 to fix the E0689 rounding error
+                    let menu_w = (180.0_f64 * self.scale_factor).round() as i32;
+                    let menu_h = (win_count as f64 * 30.0_f64 * self.scale_factor).round() as i32;
+                    let scale_i32 = self.scale_factor.round() as i32;
+
                     let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
-                        self.hover_state.x,
-                        self.width as usize,
-                        self.height as usize,
-                        windows.len(),
-                        scale_factor,
+                        self.width as i32,
+                        self.height as i32,
+                        total_apps,
+                        hovered_app_index,
+                        menu_w,
+                        menu_h,
+                        scale_i32,
                     );
                     
                     // Convert logical pointer coordinates to physical pixels to match menu bounds
-                    let ptr_x = (self.pointer_x as f64) * scale_factor;
-                    let ptr_y = (self.pointer_y as f64) * scale_factor;
+                    let ptr_x: i32 = ((self.pointer_x as f32) * scale_factor as f32) as i32;
+                    let ptr_y: i32 = ((self.pointer_y as f32) * scale_factor as f32) as i32;
 
-                    // 1. Strict menu bounds (in physical pixels)
-                    let inside_menu = ptr_x >= menu_x 
-                        && ptr_x <= menu_x + menu_width
-                        && ptr_y >= menu_y 
-                        && ptr_y <= menu_y + menu_height;
+                    // Strict menu bounds only (removes the gap leeway)
+                    let inside_menu = ptr_x >= menu_x
+                        && ptr_x <= (menu_x + menu_width)
+                        && ptr_y >= menu_y
+                        && ptr_y <= (menu_y + menu_height);
 
-                    // 2. Gap bounds (bridges menu_bottom to dock_top)
-                    let menu_bottom = menu_y + menu_height;
-                    let inside_gap = ptr_x >= menu_x 
-                        && ptr_x <= menu_x + menu_width
-                        && ptr_y >= menu_bottom 
-                        && ptr_y <= (dock_top_bound as f64);
-
-                    if inside_menu || inside_gap {
+                    if inside_menu {
                         should_be_visible = true;
                         new_app_id = Some(app_id.clone());
                         new_x = self.hover_state.x;
@@ -204,34 +302,65 @@ impl PointerHandler for AppState {
 
         // --- Context Menu Dismissal Leeway & Hit Testing ---
         if self.menu_state.is_open && !self.menu_state.items.is_empty() {
-            let scale_factor = self.docks.first().map(|d| d.scale_factor).unwrap_or(1.0);
-            let phys_width = (self.width as f64 * scale_factor).round() as usize;
-            let phys_height = (self.height as f64 * scale_factor).round() as usize;
+            let scale_factor = (self.docks.first().map(|d| d.scale_factor as f32).unwrap_or(1.0)) as f32;
+            let phys_width = (self.width as f32 * scale_factor as f32).round() as i32;
+            let phys_height = (self.height as f32 * scale_factor as f32).round() as i32;
 
-            let (menu_x, menu_y, menu_width, total_menu_h) = self.get_context_menu_bounds(phys_width, phys_height, scale_factor);
+            let (menu_x, menu_y, menu_width, total_menu_h) = self.get_context_menu_bounds(phys_width, phys_height, scale_factor as f32);
             
             // Convert logical pointer to physical pixels
-            let ptr_x = (self.pointer_x as f64) * scale_factor;
-            let ptr_y = (self.pointer_y as f64) * scale_factor;
-            let leeway = (20.0 * scale_factor).round() as f64;
+            let ptr_x: i32 = ((self.pointer_x as f32) * scale_factor as f32) as i32;
+            let ptr_y: i32 = ((self.pointer_y as f32) * scale_factor as f32) as i32;
+            let leeway = (20.0 * scale_factor as f32).round() as i32;
 
-            let inside_extended = ptr_x >= (menu_x as f64) - leeway
-                && ptr_x <= (menu_x + menu_width) as f64 + leeway
-                && ptr_y >= (menu_y as f64) - leeway
-                && ptr_y <= (menu_y + total_menu_h) as f64 + leeway;
+            let inside_extended: bool = ptr_x >= (menu_x as i32) - leeway
+                && ptr_x <= (menu_x + menu_width) as i32 + leeway
+                && ptr_y >= (menu_y as i32) - leeway
+                && ptr_y <= (menu_y + total_menu_h) as i32 + leeway;
 
             if !inside_extended {
                 self.menu_state.is_open = false;
                 layer_changed = true;
+                self.needs_redraw = true; // Force compositor frame update to clear garbage
             }
         }
 
-        if should_be_visible != self.hover_state.is_visible || new_app_id != self.hover_state.app_id {
-            self.hover_state.is_visible = should_be_visible;
+        // --- 1-Second Delay Applied Only When Leaving Main Dock ---
+        let mut effective_should_be_visible = should_be_visible;
+
+        // Check if cursor is strictly outside the main dock bounding box area (using i32 since pointer coordinates are i32)
+        let pointer_on_main_dock = self.pointer_x >= 0 
+            && self.pointer_x <= self.width as i32 
+            && self.pointer_y >= 0 
+            && self.pointer_y <= self.height as i32;
+
+        if !effective_should_be_visible && self.hover_state.is_visible {
+            // Only trigger the delay if the cursor is completely off the main dock
+            if !pointer_on_main_dock {
+                let leave_time = *self.hover_state.last_leave_time.get_or_insert_with(std::time::Instant::now);
+                
+                if leave_time.elapsed() < std::time::Duration::from_secs(1) {
+                    effective_should_be_visible = true;
+                    self.needs_redraw = true; // Keep frame loop active during grace period
+                } else {
+                    self.hover_state.last_leave_time = None;
+                }
+            } else {
+                // If still on the main dock context, reset timer and dismiss immediately if requested
+                self.hover_state.last_leave_time = None;
+            }
+        } else if effective_should_be_visible {
+            self.hover_state.last_leave_time = None;
+        }
+
+        if effective_should_be_visible != self.hover_state.is_visible || new_app_id != self.hover_state.app_id {
+            self.hover_state.is_visible = effective_should_be_visible;
             self.hover_state.app_id = new_app_id;
             self.hover_state.x = new_x;
             layer_changed = true;
+            self.needs_redraw = true; // Force compositor frame update to clear garbage
         }
+
         // --- STEP 3.5: Scroll-to-Cycle Windows ---
         for event in events {
             if let PointerEventKind::Axis { vertical, .. } = &event.kind {
@@ -247,7 +376,7 @@ impl PointerHandler for AppState {
                     // 1. Check if hovering over dock icons
                     if is_over_icons {
                         for (index, app_id) in apps_in_dock.iter().enumerate() {
-                            let start_x = start_offset_x + spacing + index * (box_size + spacing);
+                            let start_x = start_offset_x + spacing + index as i32 * (box_size + spacing);
                             let hit_start_x = start_x.saturating_sub(spacing / 2);
                             let hit_end_x = start_x + box_size + (spacing / 2);
 
@@ -262,16 +391,36 @@ impl PointerHandler for AppState {
                     if target_app.is_none() && self.hover_state.is_visible {
                         if let Some(ref app_id) = self.hover_state.app_id {
                             if let Some(windows) = running_by_app.get(app_id) {
-                                let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
-                                    self.hover_state.x,
-                                    self.width as usize,
-                                    self.height as usize,
-                                    windows.len(),
-                                    scale_factor,
-                                );
+                                // Use `self.` instead of `state.`
+                                let apps_in_dock = &self.pinned_apps; 
 
-                                let ptr_x = (self.pointer_x as f64) * scale_factor;
-                                let ptr_y = (self.pointer_y as f64) * scale_factor;
+                                // Safely calculate the number of open windows for this specific app
+                                // Note: Adjust `w.app_id` to whatever the actual field name is in WindowDiagnostics
+                                let win_count = self.open_windows
+                                    .values()
+                                    .filter(|w| w.app_id == *app_id)
+                                    .count()
+                                    .max(1);
+
+                                let total_apps = apps_in_dock.len();
+                                let hovered_app_index = apps_in_dock.iter().position(|id| id == app_id).unwrap_or(0);
+
+                                // Explicitly mark literals as _f64 to fix the E0689 rounding error
+                                let menu_w = (180.0_f64 * self.scale_factor).round() as i32;
+                                let menu_h = (win_count as f64 * 30.0_f64 * self.scale_factor).round() as i32;
+                                let scale_i32 = self.scale_factor.round() as i32;
+
+                                let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
+                                    self.width as i32,
+                                    self.height as i32,
+                                    total_apps,
+                                    hovered_app_index,
+                                    menu_w,
+                                    menu_h,
+                                    scale_i32,
+                                );
+                                let ptr_x: i32 = ((self.pointer_x as f32) * scale_factor as f32) as i32;
+                                let ptr_y: i32 = ((self.pointer_y as f32) * scale_factor as f32) as i32;
 
                                 if ptr_x >= menu_x && ptr_x <= menu_x + menu_width &&
                                 ptr_y >= menu_y && ptr_y <= menu_y + menu_height {
@@ -295,14 +444,14 @@ impl PointerHandler for AppState {
                 if button == 272 { // Left Click
                     if is_over_icons {
                         for (index, app_id) in apps_in_dock.iter().enumerate() {
-                            let start_x = start_offset_x + spacing + index * (box_size + spacing); 
-                            let end_x = start_x + box_size; 
-                            let hit_start_x = start_x.saturating_sub(spacing / 2);
-                            let hit_end_x = end_x + (spacing / 2);
+                            let start_x: i32 = start_offset_x + spacing + index as i32 * (box_size + spacing); 
+                            let end_x: i32 = start_x + box_size; 
+                            let hit_start_x: i32 = start_x.saturating_sub(spacing / 2);
+                            let hit_end_x: i32 = end_x + (spacing / 2);
                             if self.pointer_x >= hit_start_x && self.pointer_x <= hit_end_x { 
                                 self.dragged_app_id = Some(app_id.clone());
-                                self.drag_start_x = self.pointer_x as f64;
-                                self.drag_start_y = self.pointer_y as f64;
+                                self.drag_start_x = self.pointer_x as i32;
+                                self.drag_start_y = self.pointer_y as i32;
                                 self.is_dragging = false;
                                 break;
                             }
@@ -312,14 +461,17 @@ impl PointerHandler for AppState {
                 } else if button == 273 { // Right Click
                     if is_over_icons {
                         for (index, app_id) in apps_in_dock.iter().enumerate() {
-                            let start_x = start_offset_x + spacing + index * (box_size + spacing); 
-                            let hit_start_x = start_x.saturating_sub(spacing / 2);
-                            let hit_end_x = start_x + box_size + (spacing / 2);
+                            let start_x: i32 = start_offset_x + spacing + index as i32 as i32 * (box_size + spacing as i32); 
+                            let hit_start_x: i32 = start_x.saturating_sub(spacing as i32 / 2);
+                            let hit_end_x: i32 = start_x + box_size as i32 + (spacing as i32 / 2);
                             
                             if self.pointer_x >= hit_start_x && self.pointer_x <= hit_end_x { 
-                                self.menu_state.is_open = true; 
-                                self.menu_state.x = self.pointer_x; 
-                                self.menu_state.y = self.pointer_y; 
+                                self.hover_state.is_visible = false;
+                                self.hover_state.app_id = None;
+                                self.menu_state.is_open = true;
+                                self.needs_redraw = true;
+                                self.menu_state.x = self.pointer_x as usize; 
+                                self.menu_state.y = self.pointer_y as usize;
                                 self.menu_state.target_app_id = Some(app_id.clone()); 
                                 let windows = running_by_app.get(app_id).cloned().unwrap_or_default(); 
                                 self.menu_state.target_window = windows.iter()
@@ -380,6 +532,7 @@ impl PointerHandler for AppState {
                                 self.menu_state.items = items;
                                 layer_changed = true;
                                 break;
+    
                             }
                         }
                     }
@@ -390,21 +543,41 @@ impl PointerHandler for AppState {
                     if self.hover_state.is_visible {
                         if let Some(ref app_id) = self.hover_state.app_id {
                             if let Some(windows) = running_by_app.get(app_id) {
-                                let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
-                                    self.hover_state.x,
-                                    self.width as usize,
-                                    self.height as usize,
-                                    windows.len(),
-                                    scale_factor,
-                                );
+                                // Use `self.` instead of `state.`
+                                let apps_in_dock = &self.pinned_apps; 
 
-                                let ptr_x = (self.pointer_x as f64) * scale_factor;
-                                let ptr_y = (self.pointer_y as f64) * scale_factor;
-                                let item_h = (30.0 * scale_factor).round() as usize;
+                                // Safely calculate the number of open windows for this specific app
+                                // Note: Adjust `w.app_id` to whatever the actual field name is in WindowDiagnostics
+                                let win_count = self.open_windows
+                                    .values()
+                                    .filter(|w| w.app_id == *app_id)
+                                    .count()
+                                    .max(1);
+
+                                let total_apps = apps_in_dock.len();
+                                let hovered_app_index = apps_in_dock.iter().position(|id| id == app_id).unwrap_or(0);
+
+                                // Explicitly mark literals as _f64 to fix the E0689 rounding error
+                                let menu_w = (180.0_f64 * self.scale_factor).round() as i32;
+                                let menu_h = (win_count as f64 * 30.0_f64 * self.scale_factor).round() as i32;
+                                let scale_i32 = self.scale_factor.round() as i32;
+
+                                let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
+                                    self.width as i32,
+                                    self.height as i32,
+                                    total_apps,
+                                    hovered_app_index,
+                                    menu_w,
+                                    menu_h,
+                                    scale_i32,
+                                );
+                                let ptr_x: i32 = ((self.pointer_x as f32) * scale_factor as f32) as i32;
+                                let ptr_y: i32 = ((self.pointer_y as f32) * scale_factor as f32) as i32;
+                                let item_h: i32 = (30.0 * scale_factor as f32).round() as i32;
 
                                 if ptr_x >= menu_x && ptr_x <= menu_x + menu_width &&
                                 ptr_y >= menu_y && ptr_y <= menu_y + menu_height {
-                                    let idx = ((ptr_y - menu_y) as usize) / item_h;
+                                    let idx: usize = ((ptr_y - menu_y) as usize) / item_h as usize;
                                     if let Some(handle_id) = windows.get(idx) {
                                         if let Some(win) = self.open_windows.get_mut(handle_id) {
                                             win.handle.close();
@@ -420,7 +593,7 @@ impl PointerHandler for AppState {
                     // 2. Dock Icon: Middle-click to launch fresh separate instance
                     if !handled && is_over_icons {
                         for (index, app_id) in apps_in_dock.iter().enumerate() {
-                            let start_x = start_offset_x + spacing + index * (box_size + spacing);
+                            let start_x = start_offset_x + spacing + index as i32 * (box_size + spacing);
                             let hit_start_x = start_x.saturating_sub(spacing / 2);
                             let hit_end_x = start_x + box_size + (spacing / 2);
 
@@ -455,19 +628,19 @@ impl PointerHandler for AppState {
                     // A. Context Menu Handling
                     if self.menu_state.is_open && !self.menu_state.items.is_empty() { 
                         let scale_factor = self.docks.first().map(|d| d.scale_factor).unwrap_or(1.0);
-                        let phys_width = (self.width as f64 * scale_factor).round() as usize;
-                        let phys_height = (self.height as f64 * scale_factor).round() as usize;
-                        let item_h = (30.0 * scale_factor).round() as usize;
+                        let phys_width = (self.width as f32 * scale_factor as f32).round() as i32;
+                        let phys_height = (self.height as f32 * scale_factor as f32).round() as i32;
+                        let item_h = (30.0 * scale_factor as f32).round() as i32;
 
-                        let (menu_x, menu_y, menu_width, total_menu_h) = self.get_context_menu_bounds(phys_width, phys_height, scale_factor);
-                        let ptr_x = (self.pointer_x as f64) * scale_factor;
-                        let ptr_y = (self.pointer_y as f64) * scale_factor;
+                        let (menu_x, menu_y, menu_width, total_menu_h) = self.get_context_menu_bounds(phys_width, phys_height, scale_factor as f32);
+                        let ptr_x = (self.pointer_x as f32 * scale_factor as f32).round() as i32;
+                        let ptr_y = (self.pointer_y as f32 * scale_factor as f32).round() as i32;
 
-                        if ptr_x >= menu_x as f64 && ptr_x <= (menu_x + menu_width) as f64 &&
-                           ptr_y >= menu_y as f64 && ptr_y <= (menu_y + total_menu_h) as f64 { 
+                        if ptr_x >= menu_x && ptr_x <= (menu_x + menu_width) &&
+                           ptr_y >= menu_y && ptr_y <= (menu_y + total_menu_h) { 
 
-                            let clicked_item_idx = ((ptr_y - menu_y as f64) as usize) / item_h; 
-                            if let Some(item) = self.menu_state.items.get(clicked_item_idx) {
+                            let clicked_item_idx = ((ptr_y - menu_y) as i32) / item_h; 
+                            if let Some(item) = self.menu_state.items.get(clicked_item_idx as usize) {
                                 match &item.item_type {
                                     crate::MenuItemType::Focus => {
                                         if let Some(handle_id) = &self.menu_state.target_window { 
@@ -557,25 +730,45 @@ impl PointerHandler for AppState {
                         if let Some(ref app_id) = self.hover_state.app_id { 
 
                             if let Some(windows) = running_by_app.get(app_id) {
-                                let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
-                                    self.hover_state.x,
-                                    self.width as usize,
-                                    self.height as usize,
-                                    windows.len(),
-                                    scale_factor,
-                                );
+                                // Use `self.` instead of `state.`
+                                let apps_in_dock = &self.pinned_apps; 
 
-                                let ptr_x = (self.pointer_x as f64) * scale_factor;
-                                let ptr_y = (self.pointer_y as f64) * scale_factor;
-                                let item_h = (30.0 * scale_factor).round() as usize;
+                                // Safely calculate the number of open windows for this specific app
+                                // Note: Adjust `w.app_id` to whatever the actual field name is in WindowDiagnostics
+                                let win_count = self.open_windows
+                                    .values()
+                                    .filter(|w| w.app_id == *app_id)
+                                    .count()
+                                    .max(1);
+
+                                let total_apps = apps_in_dock.len();
+                                let hovered_app_index = apps_in_dock.iter().position(|id| id == app_id).unwrap_or(0);
+
+                                // Explicitly mark literals as _f64 to fix the E0689 rounding error
+                                let menu_w = (180.0_f64 * self.scale_factor).round() as i32;
+                                let menu_h = (win_count as f64 * 30.0_f64 * self.scale_factor).round() as i32;
+                                let scale_i32 = self.scale_factor.round() as i32;
+
+                                let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
+                                    self.width as i32,
+                                    self.height as i32,
+                                    total_apps,
+                                    hovered_app_index,
+                                    menu_w,
+                                    menu_h,
+                                    scale_i32,
+                                );
+                                let ptr_x: i32 = (self.pointer_x as f32 * scale_factor as f32).round() as i32;
+                                let ptr_y: i32 = (self.pointer_y as f32 * scale_factor as f32).round() as i32;
+                                let item_h: i32 = (30.0 * scale_factor as f32).round() as i32;
 
                                 if ptr_x >= menu_x && ptr_x <= menu_x + menu_width &&
                                 ptr_y >= menu_y && ptr_y <= menu_y + menu_height { 
-                                    let idx = ((ptr_y - menu_y) as usize) / item_h; 
-                                    if let Some(handle_id) = windows.get(idx) { 
-                                        let sq_x = menu_x + menu_width - (25.0 * scale_factor);
-                                        let sq_y = menu_y + (idx * item_h) as f64 + (5.0 * scale_factor);
-                                        let sq_size = 20.0 * scale_factor;
+                                    let idx = ((ptr_y - menu_y) as i32) / item_h; 
+                                    if let Some(handle_id) = windows.get(idx as usize) { 
+                                        let sq_x = (menu_x as f32 + menu_width as f32 - (25.0 * scale_factor as f32)) as i32;
+                                        let sq_y = (menu_y as f32 + idx as f32 * item_h as f32 + (5.0 * scale_factor as f32)) as i32;
+                                        let sq_size = (20.0 * scale_factor as f32) as i32;
                                         
                                         if ptr_x >= sq_x && ptr_x <= sq_x + sq_size &&
                                         ptr_y >= sq_y && ptr_y <= sq_y + sq_size {
@@ -603,20 +796,20 @@ impl PointerHandler for AppState {
                             if is_over_icons {
                                 let mut dropped_idx = None;
                                 for (index, _) in apps_in_dock.iter().enumerate() {
-                                    let start_x = start_offset_x + spacing + index * (box_size + spacing);
-                                    let hit_start_x = start_x.saturating_sub(spacing / 2);
-                                    let hit_end_x = start_x + box_size + (spacing / 2);
-                                    if self.pointer_x >= hit_start_x && self.pointer_x <= hit_end_x {
-                                        dropped_idx = Some(index);
+                                    let start_x = start_offset_x as i32 + spacing as i32 + index as i32 * (box_size as i32 + spacing as i32);
+                                    let hit_start_x = (start_x.saturating_sub(spacing as i32 / 2)) as i32;
+                                    let hit_end_x = (start_x as i32 + box_size as i32 + (spacing as i32 / 2)) as i32;
+                                    if self.pointer_x as i32 >= hit_start_x && self.pointer_x as i32 <= hit_end_x {
+                                        dropped_idx = Some(index as i32);
                                         break;
                                     }
                                 }
-                                if dropped_idx.is_none() && self.pointer_x >= start_offset_x {
-                                    dropped_idx = Some(apps_in_dock.len().saturating_sub(1));
+                                if dropped_idx.is_none() && self.pointer_x as i32 >= start_offset_x as i32 {
+                                    dropped_idx = Some(apps_in_dock.len().saturating_sub(1) as i32);
                                 }
                                 
                                 if let Some(target_idx) = dropped_idx {
-                                    if let Some(target_app_id) = apps_in_dock.get(target_idx) {
+                                    if let Some(target_app_id) = apps_in_dock.get(target_idx as usize) {
                                         let old_idx_opt = self.pinned_apps.iter().position(|x| x == dragged_id);
                                         let new_idx_opt = self.pinned_apps.iter().position(|x| x == target_app_id);
                                         
@@ -659,11 +852,11 @@ impl PointerHandler for AppState {
                         // C. Dock Icon Click Handling (Execute Launch/Focus)
                         if is_over_icons {
                             for (index, app_id) in apps_in_dock.iter().enumerate() {
-                                let start_x = start_offset_x + spacing + index * (box_size + spacing); 
-                                let end_x = start_x + box_size; 
-                                let hit_start_x = start_x.saturating_sub(spacing / 2);
-                                let hit_end_x = end_x + (spacing / 2);
-                                if self.pointer_x >= hit_start_x && self.pointer_x <= hit_end_x { 
+                                let start_x: i32 = start_offset_x as i32 + spacing as i32 + index as i32 * (box_size as i32 + spacing as i32); 
+                                let end_x: i32 = start_x + box_size as i32; 
+                                let hit_start_x: i32 = (start_x.saturating_sub(spacing as i32 / 2)) as i32;
+                                let hit_end_x: i32 = end_x + (spacing as i32 / 2);
+                                if self.pointer_x as i32 >= hit_start_x && self.pointer_x as i32 <= hit_end_x { 
                                     if let Some(windows) = running_by_app.get(app_id) { 
                                         if let Some(handle_id) = windows.first() { 
                                             let was_active = self.open_windows.get(handle_id).map(|w| w.is_activated).unwrap_or(false); 

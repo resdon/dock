@@ -25,6 +25,8 @@ use smithay_client_toolkit::shm::slot::SlotPool;
 
 use wayland_client::Connection;
 use wayland_client::protocol::wl_data_device_manager::WlDataDeviceManager;
+use wayland_client::protocol::wl_subcompositor::WlSubcompositor;
+use wayland_client::protocol::wl_subsurface::WlSubsurface;
 use wayland_client::globals::registry_queue_init;
 
 use wayland_protocols::wp::fractional_scale::v1::client::{
@@ -106,6 +108,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let layer_shell = LayerShell::bind(&globals, &qh).expect("wlr_layer_shell required");
     let shm_state = Shm::bind(&globals, &qh).expect("wl_shm required");
     let seat_state = SeatState::new(&globals, &qh);
+    // Bind fractional scale manager after registry_state and qh are available
+    let fractional_scale_manager: Option<WpFractionalScaleManagerV1> = registry_state.bind_one(&qh, 1..=1, ()).ok();
+    let subcompositor = registry_state
+        .bind_one::<WlSubcompositor, _, _>(&qh, 1..=1, ())
+        .expect("wp_subcompositor not available");
+
     let pool = SlotPool::new(1024 * 1024 * 16, &shm_state).expect("Failed to create memory pool");
     
     let home = std::env::var("HOME").unwrap_or_default();
@@ -147,6 +155,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Channel for background icon loading
     let (icon_tx, icon_rx) = std::sync::mpsc::channel();
+    let icon_loader = app::icon_load::IconLoader::new(icon_tx.clone());
 
     let mut state = AppState {
         connection: conn.clone(),
@@ -191,8 +200,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         needs_redraw: false,
         last_mouse_pos: None,
         is_dragging: false,
-        drag_start_x: 0.0,
-        drag_start_y: 0.0,
+        drag_start_x: 0,
+        drag_start_y: 0,
         dragged_app_id: None,
         last_drag_draw: std::time::Instant::now(),
         sys_scanner: sysinfo::System::new_with_specifics(
@@ -208,6 +217,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         data_device_manager: None,
         data_device: None,
         badges: HashMap::new(),
+        subcompositor,
+        icon_load: icon_loader,
+        animations: HashMap::new(),
     };
 
     state.data_device_manager = state.registry_state
@@ -240,60 +252,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             None
         };
 
+        // Define physical dimensions prior to setting surface size
+        let dock_width = 540;
+        let dock_height = 60;
+        let scale_factor = 1.0;
+        let phys_width = (dock_width as f64 * scale_factor).round() as u32;
+        let phys_height = (dock_height as f64 * scale_factor).round() as u32;
+
         layer_surface.set_keyboard_interactivity(
             smithay_client_toolkit::shell::wlr_layer::KeyboardInteractivity::None
         );
-        layer_surface.set_size(540, 60);
+        layer_surface.set_size(phys_width, phys_height);
         layer_surface.set_anchor(Anchor::BOTTOM);
         layer_surface.wl_surface().commit();
 
         state.docks.push(DockInstance {
             surface: layer_surface,
             output,
-            width: 540,
-            height: 60,
+            width: dock_width,
+            height: dock_height,
             current_buffer: None,
             scale_notifier,
-            scale_factor: 1.0,
+            scale_factor,
+            hover_popup: None,
+            menu_popup: None,
         });
     }
 
+    // --- MAIN EVENT LOOP ---
     loop {
-        let _ = state.connection.flush();
-
+        // 1. Dispatch any events already in the client queue
         if let Err(e) = event_queue.dispatch_pending(&mut state) {
             eprintln!("[WARN] Dispatch error: {}", e);
             break;
         }
 
-        // Drain background icon results and mark redraw if an icon loaded
+        // 2. Drain background channels (Icons & DBus Badges)
         if state.process_loaded_icons() {
             state.needs_redraw = true;
-        }
-
-        // Sync fallback animation state and advance frame
-        state.fallback_anim.is_active = state.is_animating();
-        let frame_advanced = state.fallback_anim.update();
-
-        if let Some(guard) = state.connection.prepare_read() {
-            let raw_fd = std::os::unix::io::AsRawFd::as_raw_fd(&guard.connection_fd());
-            let mut pfd = libc::pollfd {
-                fd: raw_fd,
-                events: libc::POLLIN,
-                revents: 0,
-            };
-
-            let timeout_ms = if state.fallback_anim.is_active {
-                state.fallback_anim.time_until_next_frame().as_millis() as i32
-            } else {
-                -1
-            };
-
-            let poll_res = unsafe { libc::poll(&mut pfd, 1, timeout_ms) };
-
-            if poll_res > 0 && (pfd.revents & libc::POLLIN) != 0 {
-                let _ = guard.read();
-            }
         }
 
         while let Ok(update) = badge_rx.try_recv() {
@@ -306,14 +302,59 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             state.needs_redraw = true;
         }
 
+        // 3. Advance animations and hover timers
+        state.fallback_anim.is_active = state.is_animating();
+        let frame_advanced = state.fallback_anim.update();
+
+        // Advance dynamic per-app animations (such as connecting states or missing icon fallbacks)
+        for (app_id, anim) in state.animations.iter_mut() {
+            if anim.update() {
+                if let Some(frame) = anim.current_frame() {
+                    // Update the icon cache with the new frame's RGBA data and trigger a redraw
+                    state.icon_cache.insert(app_id.clone(), (frame.rgba.clone(), frame.width));
+                    state.needs_redraw = true;
+                }
+            }
+        }
+
+        // 4. Determine socket poll timeout dynamically
+        let timeout_ms = if state.fallback_anim.is_active {
+            state.fallback_anim.time_until_next_frame().as_millis().min(1000) as i32
+        } else {
+            // Force a constant ~15-16ms frame poll interval instead of falling back to 50ms
+            15 
+        };
+        // 5. Prepare Wayland Socket Read & Poll
+        let _ = state.connection.flush(); // Flush any pending outgoing requests first
+        if let Some(guard) = state.connection.prepare_read() {
+            let raw_fd = std::os::unix::io::AsRawFd::as_raw_fd(&guard.connection_fd());
+            let mut pfd = libc::pollfd {
+                fd: raw_fd,
+                events: libc::POLLIN,
+                revents: 0,
+            };
+
+            let poll_res = unsafe { libc::poll(&mut pfd, 1, timeout_ms) };
+
+            if poll_res > 0 && (pfd.revents & libc::POLLIN) != 0 {
+                let _ = guard.read();
+            }
+        }
+
+        // 6. Dispatch events newly read from socket
         if let Err(e) = event_queue.dispatch_pending(&mut state) {
             eprintln!("[WARN] Dispatch error: {}", e);
             break;
         }
 
+        // 7. Redraw surfaces if needed and FLUSH immediately
+        // Force redraw every frame loop iteration (~15ms)
+        //state.needs_redraw = true; // Nonstop redraw
+
         if frame_advanced || state.needs_redraw {
             state.draw(&qh);
             state.needs_redraw = false;
+            let _ = state.connection.flush(); // Ensure updates hit display server NOW
         }
     }
     Ok(())

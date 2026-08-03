@@ -103,6 +103,6 @@ pub fn load_svg_animation_sequence(dir_path: &str, target_size: u32) -> Vec<Fram
             }
         }
     }
-
+    println!("[ANIMATION RUNNNING!!!]");
     frames
 }

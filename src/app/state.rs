@@ -3,7 +3,8 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::process::Command;
 use std::path::PathBuf;
 
-use smithay_client_toolkit::shell::WaylandSurface;
+use dockman_lib::animations::IconAnimation;
+
 use smithay_client_toolkit::{
     compositor::CompositorState,
     output::OutputState,
@@ -20,7 +21,7 @@ use wayland_client::protocol::{
     wl_output::WlOutput,
     wl_pointer::WlPointer,
     wl_seat::WlSeat,
-    wl_shm,
+    wl_subcompositor::WlSubcompositor,
 };
 use wayland_client::Connection;
 
@@ -30,18 +31,19 @@ use wayland_protocols::wp::fractional_scale::v1::client::{
 };
 use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1;
 
+
 use crate::models::{WindowDiagnostics, BadgeUpdate};
-use crate::render;
-use crate::render::context_menu::{get_context_menu_bounds, get_hover_menu_bounds};
 use crate::render::font::FontManager;
 use crate::resolvers::search_icon_list_file;
 
+use super::icon_load::IconLoader;
 use super::types::{DndState, DockInstance, HoverState, MenuState};
 
 pub struct IconLoadResult {
     pub app_id: String,
     pub rgba: Vec<u8>,
     pub size: u32,
+    pub animation: Option<IconAnimation>,
 }
 
 pub struct AppState {
@@ -55,24 +57,24 @@ pub struct AppState {
     pub seat_state: SeatState,
     pub layer_surface: Option<LayerSurface>,
     pub current_buffer: Option<Buffer>,
-    pub width: u32,
-    pub height: u32,
+    pub width: i32,
+    pub height: i32,
     pub toplevel_manager: Option<ZwlrForeignToplevelManagerV1>,
     pub font_manager: FontManager,
     pub wl_seat: Option<WlSeat>,
     pub wl_pointer: Option<WlPointer>,
-    pub pointer_x: usize,
-    pub pointer_y: usize,
+    pub pointer_x: i32,
+    pub pointer_y: i32,
     pub open_windows: HashMap<ObjectId, WindowDiagnostics>,
     pub pinned_apps: Vec<String>,
     pub menu_state: MenuState,
     pub hover_state: HoverState,
     pub last_interact_time: std::time::Instant,
     pub needs_redraw: bool,
-    pub last_mouse_pos: Option<(f64, f64)>,
+    pub last_mouse_pos: Option<(i32, i32)>,
     pub is_dragging: bool,
-    pub drag_start_x: f64,
-    pub drag_start_y: f64,
+    pub drag_start_x: i32,
+    pub drag_start_y: i32,
     pub dragged_app_id: Option<String>,
     pub last_drag_draw: std::time::Instant,
     pub sys_scanner: sysinfo::System,
@@ -95,10 +97,14 @@ pub struct AppState {
     pub pending_icon_searches: HashSet<String>,
     pub icon_rx: Receiver<IconLoadResult>,
     pub icon_tx: Sender<IconLoadResult>,
+    pub subcompositor: WlSubcompositor,
+    // Icon load
+    pub icon_load: IconLoader,
+    pub animations: HashMap<String, IconAnimation>,
 }
 
 /// Generates a blank/generic 48x48 RGBA fallback icon when an icon cannot be found anywhere
-fn load_generic_fallback_bytes() -> Option<(Vec<u8>, u32)> {
+pub(crate) fn load_generic_fallback_bytes() -> Option<(Vec<u8>, u32)> {
     let size = 48;
     // Semi-transparent gray box (RGBA)
     let rgba = vec![128, 128, 128, 180].repeat((size * size) as usize);
@@ -187,16 +193,16 @@ impl AppState {
         }
     }
 
-    pub fn get_context_menu_bounds(&self, _phys_width: usize, _phys_height: usize, scale_factor: f64) -> (usize, usize, usize, usize) {
+    pub fn get_context_menu_bounds(&self, _phys_width: i32, _phys_height: i32, scale_factor: f32) -> (i32, i32, i32, i32) {
         let (x, y, w, h) = crate::render::context_menu::get_context_menu_bounds(
-            self.menu_state.x,
-            self.menu_state.y,
-            self.width as usize,
-            self.height as usize,
-            self.menu_state.items.len(),
-            scale_factor,
+            self.menu_state.x as i32,
+            self.menu_state.y as i32,
+            self.width as i32,
+            self.height as i32,
+            self.menu_state.items.len() as i32,
+            scale_factor as f32,
         );
-        (x.round() as usize, y.round() as usize, w.round() as usize, h.round() as usize)
+        ((x as f32).round() as i32, (y as f32).round() as i32, (w as f32).round() as i32, (h as f32).round() as i32)
     }
 
     /// Returns true if at least one window, pinned app, or background icon search is active
@@ -303,7 +309,7 @@ impl AppState {
         }
     }
 
-    /// Spawns background thread to locate, load, and decode a missing icon asynchronously
+    /// Sends an icon load request to the background worker pool asynchronously
     pub fn request_icon_load(&mut self, app_id: String) {
         if self.icon_cache.contains_key(&app_id) || !self.pending_icon_searches.insert(app_id.clone()) {
             return;
@@ -312,38 +318,8 @@ impl AppState {
         // Force an immediate redraw so the fallback animation starts playing on frame 1
         self.needs_redraw = true;
 
-        let tx = self.icon_tx.clone();
-        let app_id_clone = app_id.clone();
-
-        std::thread::spawn(move || {
-            // Step 1 & 2: Resolve path via standard XDG or icon_list.txt fallback
-            let icon_path = crate::get_icon_path(&app_id_clone)
-                .or_else(|| search_icon_list_file(&app_id_clone));
-
-            // Step 3: Attempt to load and decode RGBA image
-            if let Some(path) = icon_path {
-                if let Ok(img) = image::open(&path) {
-                    let rgba_img = img.to_rgba8();
-                    let (w, _h) = rgba_img.dimensions();
-
-                    let _ = tx.send(IconLoadResult {
-                        app_id: app_id_clone,
-                        rgba: rgba_img.into_raw(),
-                        size: w,
-                    });
-                    return;
-                }
-            }
-
-            // Step 4: Final generic fallback if unresolvable or decode fails
-            if let Some((default_bytes, size)) = load_generic_fallback_bytes() {
-                let _ = tx.send(IconLoadResult {
-                    app_id: app_id_clone,
-                    rgba: default_bytes,
-                    size,
-                });
-            }
-        });
+        // Push into the channel queue instantly with zero thread-spawn overhead
+        self.icon_load.request(app_id);
     }
 
     /// Polls background load queue and returns true if any new icons were inserted
@@ -352,7 +328,10 @@ impl AppState {
 
         while let Ok(result) = self.icon_rx.try_recv() {
             self.pending_icon_searches.remove(&result.app_id);
-            self.icon_cache.insert(result.app_id, (result.rgba, result.size));
+            self.icon_cache.insert(result.app_id.clone(), (result.rgba, result.size));
+            if let Some(anim) = result.animation {
+                self.animations.insert(result.app_id, anim); // <--- Register active animation
+            }
             updated = true;
         }
 
@@ -453,172 +432,6 @@ impl AppState {
                     window.icon_resolved = true;
                 }
             }
-        }
-    }
-
-    pub fn draw(&mut self, qh: &wayland_client::QueueHandle<Self>) {
-        let box_size = 48;
-        let spacing = 12;
-        let max_dock_width = 800;
-
-        // 1. Build the list of all apps currently in the dock (pinned + unique running windows)
-        let mut apps_in_dock = self.pinned_apps.clone();
-        for win in self.open_windows.values() {
-            if !apps_in_dock.contains(&win.app_id) {
-                apps_in_dock.push(win.app_id.clone());
-            }
-        }
-
-        // 2. Queue missing icons for all apps in the dock before mutably borrowing self.docks
-        for app_id in &apps_in_dock {
-            if !self.icon_cache.contains_key(app_id) {
-                self.request_icon_load(app_id.to_string());
-            }
-        }
-        for dock in &mut self.docks {
-            let menu_is_open = self.menu_state.is_open;
-            let menu_x_val = self.menu_state.x;
-            let menu_y_val = self.menu_state.y;
-            let menu_items_len = self.menu_state.items.len();
-
-            let dock_output = dock.output.clone();
-
-            let filtered_windows: HashMap<&ObjectId, &WindowDiagnostics> = self.open_windows.iter()
-                .filter(|(_, win)| win.outputs.contains(&dock_output))
-                .collect();
-
-            let mut apps_in_dock: Vec<&str> = self.pinned_apps.iter().map(|s| s.as_str()).collect();
-            for window in filtered_windows.values() {
-                let id = if !window.app_id.is_empty() {
-                    window.app_id.as_str()
-                } else if !window.title.is_empty() {
-                    window.title.as_str()
-                } else {
-                    "Unknown"
-                };
-
-                if !apps_in_dock.contains(&id) { 
-                    apps_in_dock.push(id); 
-                }
-            }
-
-            let total_items = apps_in_dock.len();
-            let calculated_width = if total_items > 0 {
-                (total_items * box_size + (total_items + 1) * spacing) as u32
-            } else { 
-                100 
-            };
-
-            let dock_width = calculated_width.min(max_dock_width);
-            let is_expanded = self.menu_state.is_open || self.hover_state.is_visible;
-            let dock_height = if is_expanded { 200 } else { 60 };
-
-            dock.width = dock_width;
-            dock.height = dock_height;
-
-            let surface = &dock.surface;
-            surface.set_size(dock_width, dock_height);
-            let compositor = self.compositor_state.wl_compositor();
-            let region = compositor.create_region(qh, ());
-
-            let dock_y = if is_expanded { 140 } else { 0 };
-            region.add(0, dock_y, dock_width as i32, 60);
-
-            if self.hover_state.is_visible {
-                if let Some(ref app_id) = self.hover_state.app_id {
-                    let count = filtered_windows.values()
-                        .filter(|w| {
-                            let id = if !w.app_id.is_empty() { w.app_id.as_str() }
-                                     else if !w.title.is_empty() { w.title.as_str() }
-                                     else { "Unknown" };
-                            id == app_id.as_str()
-                        })
-                        .count();
-                    
-                    let dock_scale = dock.scale_factor;
-
-                    if count > 0 {
-                        let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
-                            self.hover_state.x,
-                            dock_width as usize,
-                            dock_height as usize,
-                            count,
-                            dock_scale,
-                        );
-                        region.add(menu_x as i32, menu_y as i32, menu_width as i32, menu_height as i32);
-
-                        let gap_y = (menu_y + menu_height) as i32;
-                        if gap_y < dock_y {
-                            region.add(menu_x as i32, gap_y, menu_width as i32, dock_y - gap_y);
-                        }
-                    }
-                }
-            }
-
-            if menu_is_open {
-                let (menu_x, menu_y, menu_w, menu_h) = get_context_menu_bounds(
-                    menu_x_val,
-                    menu_y_val,
-                    dock_width as usize,
-                    dock_height as usize,
-                    menu_items_len,
-                    1.0,
-                );
-                region.add(menu_x as i32, menu_y as i32, menu_w as i32, menu_h as i32);
-            }
-            surface.wl_surface().set_input_region(Some(&region));
-            region.destroy();
-
-            let dock_scale = dock.scale_factor;
-            let phys_width = (dock_width as f64 * dock_scale).round() as u32;
-            let phys_height = (dock_height as f64 * dock_scale).round() as u32;
-            let stride = phys_width * 4;
-
-            if phys_width == 0 || phys_height == 0 {
-                continue;
-            }
-
-            dock.current_buffer = None;
-
-            let (buffer, canvas) = self
-                .pool
-                .create_buffer(
-                    phys_width as i32,
-                    phys_height as i32,
-                    stride as i32,
-                    wl_shm::Format::Argb8888,
-                )
-                .expect("Failed to allocate SHM buffer");
-
-            let render_windows_map: HashMap<ObjectId, WindowDiagnostics> = filtered_windows.iter()
-                .map(|(k, v)| ((*k).clone(), (*v).clone()))
-                .collect();
-
-            render::render_windows(
-                canvas, 
-                phys_width,
-                phys_height,
-                dock_scale,
-                &render_windows_map,
-                &self.pinned_apps,
-                &self.icon_cache,
-                &self.menu_state,
-                &self.hover_state,
-                &self.font_manager,
-                self.is_dragging,
-                self.dragged_app_id.as_ref(),
-                self.pointer_x,
-                self.pointer_y,
-                &self.fallback_anim,
-                &self.badges,
-            );
-
-            surface.wl_surface().set_buffer_scale(1);
-            buffer.attach_to(surface.wl_surface()).expect("Buffer attach failed");
-            surface.wl_surface().damage_buffer(0, 0, phys_width as i32, phys_height as i32);
-            surface.wl_surface().commit();
-
-            dock.current_buffer = Some(buffer);
         }
     }
 }

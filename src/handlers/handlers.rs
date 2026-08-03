@@ -33,6 +33,9 @@ use wayland_client::{
 
 use wayland_client::backend::ObjectData;
 
+
+use wayland_client::protocol::wl_subcompositor::WlSubcompositor;
+use wayland_client::protocol::wl_subsurface::WlSubsurface;
 use wayland_client::protocol::wl_data_device::{Event as DndEvent, WlDataDevice};
 use wayland_client::protocol::wl_data_device_manager::{DndAction, WlDataDeviceManager};
 use wayland_client::protocol::wl_data_offer::{self, WlDataOffer};
@@ -129,6 +132,28 @@ fn percent_decode(input: &str) -> Option<String> {
     }
 
     String::from_utf8(bytes).ok()
+}
+
+impl wayland_client::Dispatch<WlSubcompositor, ()> for AppState {
+    fn event(
+        _state: &mut Self,
+        _proxy: &WlSubcompositor,
+        _event: <WlSubcompositor as wayland_client::Proxy>::Event,
+        _data: &(),
+        _conn: &wayland_client::Connection,
+        _qhandle: &wayland_client::QueueHandle<Self>,
+    ) {}
+}
+
+impl wayland_client::Dispatch<WlSubsurface, ()> for AppState {
+    fn event(
+        _state: &mut Self,
+        _proxy: &WlSubsurface,
+        _event: <WlSubsurface as wayland_client::Proxy>::Event,
+        _data: &(),
+        _conn: &wayland_client::Connection,
+        _qhandle: &wayland_client::QueueHandle<Self>,
+    ) {}
 }
 
 impl Dispatch<wayland_client::protocol::wl_region::WlRegion, ()> for AppState {
@@ -401,13 +426,12 @@ impl LayerShellHandler for AppState {
         _: u32,
     ) {
         // Capture the structural allocations chosen by sctk/compositor
-        self.width = configure.new_size.0.max(100);
+        self.width = configure.new_size.0.max(100) as i32;
         
-        // Dynamically track what our height should be based on UI overlays
-        let target_height = if self.menu_state.is_open || self.hover_state.is_visible { 200 } else { 60 };
-        self.height = target_height;
+        // Keep height strictly fixed at 60px (popups render via subsurfaces)
+        self.height = 60;
         
-        layer.set_size(self.width, self.height);
+        layer.set_size(self.width as u32, self.height as u32);
         layer.set_anchor(Anchor::BOTTOM);
         
         // Flag for redraw instead of calling draw(qh) directly to prevent borrow checker conflicts

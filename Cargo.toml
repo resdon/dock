@@ -1,6 +1,6 @@
 [package]
 name = "dock"
-version = "1.2.8"
+version = "1.2.9"
 edition = "2021"
 default-run = "dock"
 
@@ -51,3 +51,5 @@ zbus = { version = "4.0", features = ["tokio"] }
 tokio = { version = "1.0", features = ["full"] }
 cairo-rs = "0.19"
 futures-util = "0.3"
+usvg = "0.48.1"
+tiny-skia = "0.12.0"
