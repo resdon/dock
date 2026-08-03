@@ -28,7 +28,6 @@ use smithay_client_toolkit::shm::slot::SlotPool;
 use wayland_client::Connection;
 use wayland_client::protocol::wl_data_device_manager::WlDataDeviceManager;
 use wayland_client::protocol::wl_subcompositor::WlSubcompositor;
-use wayland_client::protocol::wl_subsurface::WlSubsurface;
 use wayland_client::globals::registry_queue_init;
 
 use wayland_protocols::wp::fractional_scale::v1::client::{
@@ -112,7 +111,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let shm_state = Shm::bind(&globals, &qh).expect("wl_shm required");
     let seat_state = SeatState::new(&globals, &qh);
     // Bind fractional scale manager after registry_state and qh are available
-    let fractional_scale_manager: Option<WpFractionalScaleManagerV1> = registry_state.bind_one(&qh, 1..=1, ()).ok();
+    let _fractional_scale_manager: Option<WpFractionalScaleManagerV1> = registry_state.bind_one(&qh, 1..=1, ()).ok();
     let subcompositor = registry_state
         .bind_one::<WlSubcompositor, _, _>(&qh, 1..=1, ())
         .expect("wp_subcompositor not available");
@@ -224,6 +223,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         icon_load: icon_loader,
         animations: HashMap::new(),
         hide_state: AutoHideState::new(),
+        is_pointer_inside: false,
     };
 
     state.data_device_manager = state.registry_state
@@ -306,15 +306,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             state.needs_redraw = true;
         }
 
-        // 3. Advance animations and hover timers
+        // 3. Advance animations, hover timers, and auto-hide transitions
         state.fallback_anim.is_active = state.is_animating();
         let frame_advanced = state.fallback_anim.update();
+        let timers_changed = state.update_hover_and_hide_timers();
 
-        // Advance dynamic per-app animations (such as connecting states or missing icon fallbacks)
+        // Advance dynamic per-app animations
         for (app_id, anim) in state.animations.iter_mut() {
             if anim.update() {
                 if let Some(frame) = anim.current_frame() {
-                    // Update the icon cache with the new frame's RGBA data and trigger a redraw
                     state.icon_cache.insert(app_id.clone(), (frame.rgba.clone(), frame.width));
                     state.needs_redraw = true;
                 }
@@ -322,14 +322,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // 4. Determine socket poll timeout dynamically
-        let timeout_ms = if state.fallback_anim.is_active {
-            state.fallback_anim.time_until_next_frame().as_millis().min(1000) as i32
+        let timeout_ms = if state.fallback_anim.is_active || state.needs_redraw {
+            15
         } else {
-            // Force a constant ~15-16ms frame poll interval instead of falling back to 50ms
-            15 
+            50 
         };
+
         // 5. Prepare Wayland Socket Read & Poll
-        let _ = state.connection.flush(); // Flush any pending outgoing requests first
+        let _ = state.connection.flush();
         if let Some(guard) = state.connection.prepare_read() {
             let raw_fd = std::os::unix::io::AsRawFd::as_raw_fd(&guard.connection_fd());
             let mut pfd = libc::pollfd {
@@ -352,13 +352,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // 7. Redraw surfaces if needed and FLUSH immediately
-        // Force redraw every frame loop iteration (~15ms)
-        //state.needs_redraw = true; // Nonstop redraw
-
-        if frame_advanced || state.needs_redraw {
+        if frame_advanced || timers_changed || state.needs_redraw {
             state.draw(&qh);
             state.needs_redraw = false;
-            let _ = state.connection.flush(); // Ensure updates hit display server NOW
+            let _ = state.connection.flush();
         }
     }
     Ok(())

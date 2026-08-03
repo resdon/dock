@@ -166,18 +166,18 @@ pub fn prepare_window_list<'a>(
 
 pub fn get_hover_menu_bounds(
     dock_width: i32,
-    dock_height: i32,
+    _dock_height: i32,
     total_apps: usize,
     hovered_app_index: usize,
     menu_width: i32,
     menu_height: i32,
-    scale_factor: i32,
+    _scale_factor: i32,
 ) -> (i32, i32, i32, i32) {
     // Divide total dock width evenly among all apps in the dock
     let slot_width = dock_width / std::cmp::max(1, total_apps as i32);
     
     // Center the menu horizontally above the hovered app icon
-    let mut menu_x = (hovered_app_index as i32 * slot_width) + (slot_width / 2) - (menu_width / 2);
+    let menu_x = (hovered_app_index as i32 * slot_width) + (slot_width / 2) - (menu_width / 2);
 
     // Position the menu vertically right above the dock
     let menu_y = -menu_height;

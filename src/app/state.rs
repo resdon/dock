@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use dockman_lib::animations::IconAnimation;
 
+use smithay_client_toolkit::shell::WaylandSurface;
 use smithay_client_toolkit::{
     compositor::CompositorState,
     output::OutputState,
@@ -23,7 +24,7 @@ use wayland_client::protocol::{
     wl_seat::WlSeat,
     wl_subcompositor::WlSubcompositor,
 };
-use wayland_client::Connection;
+use wayland_client::{Connection, QueueHandle};
 
 use wayland_protocols::wp::fractional_scale::v1::client::{
     wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1,
@@ -34,7 +35,6 @@ use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_m
 use crate::graphics::hide::AutoHideState;
 use crate::models::{WindowDiagnostics, BadgeUpdate};
 use crate::render::font::FontManager;
-use crate::resolvers::search_icon_list_file;
 
 use super::icon_load::IconLoader;
 use super::types::{DndState, DockInstance, HoverState, MenuState};
@@ -103,6 +103,7 @@ pub struct AppState {
     pub animations: HashMap<String, IconAnimation>,
     // Autohide
     pub hide_state: AutoHideState,
+    pub is_pointer_inside: bool,
 }
 
 /// Generates a blank/generic 48x48 RGBA fallback icon when an icon cannot be found anywhere
@@ -324,6 +325,32 @@ impl AppState {
         self.icon_load.request(app_id);
     }
 
+    pub fn set_dock_input_region(
+        &self,
+        is_hidden: bool,
+        _container_start_x: i32,
+        _container_width: i32,
+        qh: &QueueHandle<AppState>,
+    ) {
+        let Some(ref layer_surface) = self.layer_surface else { return };
+        let surface = layer_surface.wl_surface();
+
+        if is_hidden {
+            let region = self.compositor_state.wl_compositor().create_region(qh, ());
+            
+            // Explicitly cover 0 -> self.width across the full height (or trigger height)
+            region.add(0, 0, self.width as i32, self.height as i32);
+            
+            surface.set_input_region(Some(&region));
+            region.destroy();
+        } else {
+            // Restore full surface input region when visible
+            surface.set_input_region(None);
+        }
+
+        surface.commit();
+    }
+
     /// Polls background load queue and returns true if any new icons were inserted
     pub fn process_loaded_icons(&mut self) -> bool {
         let mut updated = false;
@@ -338,6 +365,53 @@ impl AppState {
         }
 
         updated
+    }
+
+    pub fn update_hover_and_hide_timers(&mut self) -> bool {
+        let mut state_changed = false;
+
+        // 1. Expire hover grace timer when pointer is outside
+        if !self.is_pointer_inside {
+            if let Some(leave_time) = self.hover_state.last_leave_time {
+                if leave_time.elapsed() >= std::time::Duration::from_millis(300) {
+                    // Dismiss active hover popup
+                    self.hover_state.is_visible = false;
+                    self.hover_state.app_id = None;
+                    self.hover_state.last_leave_time = None;
+                    self.needs_redraw = true;
+                    state_changed = true;
+                }
+            }
+        }
+
+        // 2. Re-evaluate auto-hide proximity state
+        // Popups only keep proximity active if the pointer is physically inside
+        let popup_active = self.is_pointer_inside && (
+            self.menu_state.is_open || 
+            self.hover_state.is_visible
+        );
+        
+        let margin = 5;
+
+        let is_near = popup_active || (self.is_pointer_inside && {
+            let within_x = self.pointer_x >= 0 && self.pointer_x <= self.width;
+            let within_y = if self.hide_state.is_fully_hidden() {
+                self.pointer_y >= 0 && self.pointer_y <= self.height
+            } else {
+                self.pointer_y >= -margin && self.pointer_y <= self.height
+            };
+            within_x && within_y
+        });
+
+        self.hide_state.update_proximity(is_near);
+
+        // 3. Advance fade animation
+        if self.hide_state.tick() {
+            self.needs_redraw = true;
+            state_changed = true;
+        }
+
+        state_changed
     }
 
     pub fn update_window_icon(&mut self, window_id: ObjectId) {
@@ -434,6 +508,47 @@ impl AppState {
                     window.icon_resolved = true;
                 }
             }
+        }
+    }
+    
+    // --- Hide & Show Logic ---
+    pub fn update_window_list(&mut self, active_app_ids: &[String]) {
+        let mut state_changed = false;
+
+        // Clear hover popup if the hovered app is no longer running
+        if let Some(ref hovered_id) = self.hover_state.app_id {
+            if !active_app_ids.iter().any(|id| id == hovered_id) {
+                self.hover_state.is_visible = false;
+                self.hover_state.app_id = None;
+                state_changed = true;
+            }
+        }
+
+        // Only set needs_redraw if a state change occurred AND dock is visible/interactive
+        if state_changed && (self.is_pointer_inside || !self.hide_state.is_fully_hidden()) {
+            self.needs_redraw = true;
+        }
+    }
+
+    /// Advances animation timers and updates compositor input regions on visibility changes.
+    pub fn update_animations(&mut self, qh: &QueueHandle<AppState>) {
+        let state_changed = self.hide_state.tick(); 
+
+        // Full surface horizontal bounds
+        let container_start_x = 0;
+        let content_width = self.width as i32;
+
+        // Synchronize Wayland input regions when transitioning between hidden and visible
+        if self.hide_state.just_became_hidden {
+            self.set_dock_input_region(true, container_start_x, content_width, qh);
+            self.hide_state.just_became_hidden = false;
+        } else if self.hide_state.just_became_visible {
+            self.set_dock_input_region(false, 0, 0, qh);
+            self.hide_state.just_became_visible = false;
+        }
+        
+        if state_changed {
+            self.needs_redraw = true;
         }
     }
 }

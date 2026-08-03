@@ -113,65 +113,54 @@ impl PointerHandler for AppState {
         for event in events {
             match event.kind {
                 PointerEventKind::Enter { .. } | PointerEventKind::Motion { .. } => {
+                    self.is_pointer_inside = true;
+                    self.needs_redraw = true;
                     let (mapped_x, mapped_y) = map_coordinates(event, self, &running_by_app);
                     self.pointer_x = mapped_x as i32;
                     self.pointer_y = mapped_y as i32;
 
-                    // =========================================================
-                    // AUTO-HIDE PROXIMITY CHECK
-                    // =========================================================
-                    let proximity_margin = 20;
-                    let is_near = self.pointer_x >= 0 
-                        && self.pointer_x <= self.width 
-                        && self.pointer_y >= -proximity_margin 
-                        && self.pointer_y <= self.height;
+                    // ONLY activate hover tooltips / window list previews if dock is unhidden
+                    let is_dock_visible = !self.hide_state.is_fully_hidden();
 
-                    self.hide_state.update_proximity(is_near);
-                    self.needs_redraw = true;
-                    // =========================================================
-                    
+                    if is_dock_visible {
+                        // ... Your existing icon hover & window list preview update logic here ...
+                    } else {
+                        // Suppress tooltips/previews while hidden so they don't lock transparency
+                        self.hover_state.is_visible = false;
+                        self.hover_state.app_id = None;
+                    }
+
                     if self.dragged_app_id.is_some() {
                         let dx = mapped_x - self.drag_start_x as f32;
                         let dy = mapped_y - self.drag_start_y as f32;
-                        if (dx * dx + dy * dy).sqrt() > 5.0 {
+                        if (dx * dx + dy * dy) > 25.0 {
                             self.is_dragging = true;
                         }
-                        if self.is_dragging {
-                            let now = std::time::Instant::now();
-                            if now.duration_since(self.last_drag_draw).as_millis() >= 4 {
-                                self.last_drag_draw = now;
-                                layer_changed = true;
-                            }
-                        }
-                    } else {
-                        layer_changed = true;
                     }
                 }
+
                 PointerEventKind::Leave { .. } => {
-                    // Cursor left surface boundaries entirely
-                    self.hide_state.update_proximity(false);
-                    self.needs_redraw = true;
-                    
                     if let Some(dock_surf) = dock_surface_ptr {
                         if event.surface == *dock_surf {
-                            // Defer dismissal to STEP 3 geometry/leeway checks 
-                            // to allow smooth mouse transition into subsurfaces.
+                            self.is_pointer_inside = false;
+                            
+                            // Start leave grace timer if hover popup is visible
+                            if self.hover_state.is_visible && self.hover_state.last_leave_time.is_none() {
+                                self.hover_state.last_leave_time = Some(std::time::Instant::now());
+                            }
                         } else {
-                            if self.hover_state.is_visible {
-                                self.hover_state.is_visible = false;
-                                self.hover_state.app_id = None;
-                                layer_changed = true;
-                                self.needs_redraw = true; // Force redraw to clear old frames
-                            }
+                            // Pointer left a subsurface (popup, context menu, tooltip)
+                            self.hover_state.is_visible = false;
+                            self.hover_state.app_id = None;
                             self.hover_state.last_leave_time = None;
-
-                            if self.menu_state.is_open {
-                                self.menu_state.is_open = false;
-                                layer_changed = true;
-                                self.needs_redraw = true; // Force redraw to clear old frames
-                            }
+                            self.menu_state.is_open = false;
+                            self.is_pointer_inside = false;
                         }
+                    } else {
+                        self.is_pointer_inside = false;
                     }
+
+                    self.needs_redraw = true;
                 }
                 _ => {}
             }
@@ -234,6 +223,41 @@ impl PointerHandler for AppState {
         let content_width: i32 = if total_items > 0 { total_items * box_size + (total_items + 1) * spacing } else { 0 }; 
         let start_offset_x: i32 = if (self.width as i32) > content_width { (self.width as i32 - content_width) / 2 } else { 0 }; 
         
+        // =========================================================
+        // AUTO-HIDE PROXIMITY CHECK (Container & Top Margin Aware)
+        // =========================================================
+        let margin = 5;
+
+        let popup_active = self.menu_state.is_open || self.hover_state.is_visible;
+
+        let is_near = popup_active || (self.is_pointer_inside && {
+            let is_hidden = self.hide_state.is_fully_hidden();
+
+            // 1. Horizontal Check:
+            // When hidden: allow triggering anywhere across the surface width (0..width)
+            // When unhidden: restrict tolerance to dock container bounds + margin
+            let within_x = if is_hidden {
+                self.pointer_x >= 0 && self.pointer_x <= self.width as i32
+            } else {
+                let container_start_x = (start_offset_x - margin).max(0);
+                let container_end_x = (start_offset_x + content_width + margin).min(self.width as i32);
+                self.pointer_x >= container_start_x && self.pointer_x <= container_end_x
+            };
+
+            // 2. Vertical Check:
+            let within_y = if is_hidden {
+                self.pointer_y >= 0 && self.pointer_y <= self.height as i32
+            } else {
+                self.pointer_y >= -margin && self.pointer_y <= self.height as i32
+            };
+
+            within_x && within_y
+        });
+
+        self.hide_state.update_proximity(is_near);
+        self.needs_redraw = true;
+        // =========================================================
+
         let phys_surface_height = (self.height as f32 * scale_factor as f32).round() as i32;
         let dock_top_bound = phys_surface_height.saturating_sub(dock_height as i32);
 
@@ -253,7 +277,7 @@ impl PointerHandler for AppState {
                 
                 if self.pointer_x >= hit_start_x && self.pointer_x <= hit_end_x {
                     should_be_visible = true;
-                    let new_x: i32 = start_x as i32 + box_size as i32 / 2;
+                    let _new_x: i32 = start_x as i32 + box_size as i32 / 2;
                     new_app_id = Some(app_id.clone());
                     break;
                 }
@@ -262,7 +286,7 @@ impl PointerHandler for AppState {
 
         if !should_be_visible && self.hover_state.is_visible {
             if let Some(ref app_id) = self.hover_state.app_id {
-                if let Some(windows) = running_by_app.get(app_id) {
+                if let Some(_windows) = running_by_app.get(app_id) {
                     // Use `self.` instead of `state.`
                     let apps_in_dock = &self.pinned_apps; 
 
@@ -401,7 +425,7 @@ impl PointerHandler for AppState {
                     // 2. Check if hovering over the hover preview popup menu
                     if target_app.is_none() && self.hover_state.is_visible {
                         if let Some(ref app_id) = self.hover_state.app_id {
-                            if let Some(windows) = running_by_app.get(app_id) {
+                            if let Some(_windows) = running_by_app.get(app_id) {
                                 // Use `self.` instead of `state.`
                                 let apps_in_dock = &self.pinned_apps; 
 

@@ -10,7 +10,7 @@ pub mod window_list;
 
 use std::collections::HashMap;
 use crate::models::{BadgeUpdate, WindowDiagnostics};
-use crate::{FontManager, HoverState, MenuState};
+use crate::FontManager;
 
 // Import dock rendering functions
 use dock::{render_dock_background, render_dock_items, render_dragged_icon};

@@ -90,11 +90,6 @@ impl AppState {
 
             // Update main dock surface size & input region
             surface.set_size(dock_width, dock_height);
-            let compositor = self.compositor_state.wl_compositor();
-            let region = compositor.create_region(qh, ());
-            region.add(0, 0, dock_width as i32, dock_height as i32);
-            surface.wl_surface().set_input_region(Some(&region));
-            region.destroy();
 
             // =========================================================================
             // HOVER WINDOW LIST SUBSURFACE MANAGEMENT & RENDERING
@@ -126,11 +121,11 @@ impl AppState {
                         let hovered_app_index = apps_in_dock.iter().position(|id| id == app_id).unwrap_or(0);
 
                         // Explicitly mark literals as _f64 to fix the E0689 rounding error
-                        let menu_w = (180.0_f64 * self.scale_factor).round() as i32;
-                        let menu_h = (win_count as f64 * 30.0_f64 * self.scale_factor).round() as i32;
-                        let scale_i32 = self.scale_factor.round() as i32;
+                        let menu_w = (180.0_f64 * dock_scale).round() as i32;
+                        let menu_h = (win_count as f64 * 30.0_f64 * dock_scale).round() as i32;
+                        let scale_i32 = dock_scale.round() as i32;
 
-                        let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
+                        let (menu_x, menu_y, _menu_width, _menu_height) = get_hover_menu_bounds(
                             self.width as i32,
                             self.height as i32,
                             total_apps,
@@ -382,7 +377,21 @@ impl AppState {
             // 2. Apply auto-hide transparency overlay
             self.hide_state.apply_alpha_to_canvas(canvas);
 
-            // 3. Request next frame BEFORE commit if animation is active
+            // 3. Update input region for THIS dock using disjoint field borrows
+            let is_hidden = self.hide_state.is_fully_hidden();
+            // Pass container_start_x and content_width (or 0, self.width as i32 if full surface)
+            let container_start = 0;             // Or your local offset variable if present in draw
+            let container_w = self.width as i32;  // Surface width
+
+            dock.update_input_region(
+                &self.compositor_state, 
+                is_hidden, 
+                container_start, 
+                container_w, 
+                qh
+            );
+
+            // 4. Request next frame BEFORE commit if animation is active
             if is_animating {
                 surface.wl_surface().frame(qh, surface.wl_surface().clone());
             }
@@ -390,6 +399,8 @@ impl AppState {
             surface.wl_surface().set_buffer_scale(scale_int);
             buffer.attach_to(surface.wl_surface()).expect("Buffer attach failed");
             surface.wl_surface().damage_buffer(0, 0, phys_width as i32, phys_height as i32);
+
+            // 5. Single atomic commit for buffer + transparency input region
             surface.wl_surface().commit();
 
             dock.current_buffer = Some(buffer);

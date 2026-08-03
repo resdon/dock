@@ -7,14 +7,15 @@ use wayland_client::protocol::{
 // SCTK Types
 use smithay_client_toolkit::shell::wlr_layer::LayerSurface;
 use smithay_client_toolkit::shm::slot::Buffer; // Or wayland_client::protocol::wl_buffer::WlBuffer if using raw wayland buffers
+use smithay_client_toolkit::shell::WaylandSurface;
 
 // Wayland Protocols
 use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1;
 use wayland_client::protocol::wl_subsurface::WlSubsurface;
-use wayland_client::protocol::wl_subcompositor::WlSubcompositor;
 
 // Project Types
 use crate::DesktopAction;
+use crate::app::state::AppState;
 
 // To hold subsurface handles
 pub struct PopupSurface {
@@ -37,7 +38,40 @@ pub struct DockInstance {
     pub hover_popup: Option<PopupSurface>,
     pub menu_popup: Option<PopupSurface>,
 }
-// -----
+
+impl DockInstance {
+    pub fn update_input_region(
+        &self,
+        compositor_state: &smithay_client_toolkit::compositor::CompositorState,
+        is_hidden: bool,
+        container_start_x: i32,
+        container_width: i32,
+        qh: &wayland_client::QueueHandle<AppState>,
+    ) {
+        let surface = self.surface.wl_surface();
+
+        if is_hidden {
+            let region = compositor_state.wl_compositor().create_region(qh, ());
+            
+            // 5px trigger zone confined to the horizontal width of the dock container
+            // plus 5px margin tolerance on the sides
+            let margin = 5;
+            let trigger_x = (container_start_x - margin).max(0);
+            let trigger_w = container_width + (margin * 2);
+
+            region.add(trigger_x, 0, trigger_w, 5);
+
+            surface.set_input_region(Some(&region));
+            region.destroy();
+        } else {
+            // Restore full surface input region when visible
+            surface.set_input_region(None);
+        }
+
+        // Commit surface so compositor applies the new input region immediately
+        surface.commit();
+    }
+}
 
 // Drag and drop
 #[derive(Default)]
