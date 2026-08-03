@@ -178,13 +178,6 @@ pub fn get_hover_menu_bounds(
     
     // Center the menu horizontally above the hovered app icon
     let mut menu_x = (hovered_app_index as i32 * slot_width) + (slot_width / 2) - (menu_width / 2);
-    
-    // Clamp coordinates to keep the menu inside the dock boundaries
-    if menu_x < 0 {
-        menu_x = 0;
-    } else if menu_x + menu_width > dock_width {
-        menu_x = dock_width - menu_width;
-    }
 
     // Position the menu vertically right above the dock
     let menu_y = -menu_height;

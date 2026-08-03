@@ -229,8 +229,11 @@ pub fn render_dragged_icon(
                 let src_idx = (src_y * img_size + src_x) * 4;
 
                 if src_idx + 3 < icon_pixels.len() as i32
+                    && src_idx + 3 < icon_pixels.len() as i32
                     && canvas_x < phys_width as i32
                     && canvas_y < phys_height as i32
+                    && canvas_x >= 0
+                    && canvas_y >= 0
                 {
                     let canvas_idx = ((canvas_y * (phys_width as i32) + canvas_x) * 4) as usize;
                     let alpha = (icon_pixels[(src_idx + 3) as usize] as f32 / 255.0) * 0.85;
