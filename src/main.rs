@@ -176,8 +176,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         font_manager: FontManager::from_file(&font_path).expect("Failed to memory-map font file"),
         wl_seat: None,
         wl_pointer: None,
-        pointer_x: 0,
-        pointer_y: 0,
         open_windows: HashMap::new(),
         pinned_apps: pinned_vector,
         icon_cache: permanent_icon_cache,
@@ -223,7 +221,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         icon_load: icon_loader,
         animations: HashMap::new(),
         hide_state: AutoHideState::new(),
-        is_pointer_inside: false,
+        interaction: InteractionState::new(),
     };
 
     state.data_device_manager = state.registry_state

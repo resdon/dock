@@ -188,8 +188,8 @@ impl AppState {
                                     .then_with(|| std::ptr::from_ref(*a).cmp(&std::ptr::from_ref(*b)))
                             });
                             
-                            let local_ptr_x = ((self.pointer_x as f32 * dock_scale as f32) - menu_x as f32).max(0.0) as usize;
-                            let local_ptr_y = ((self.pointer_y as f32 * dock_scale as f32) - menu_y as f32).max(0.0) as usize;
+                            let local_ptr_x = ((self.interaction.pointer_position.x as f32 * dock_scale as f32) - menu_x as f32).max(0.0) as usize;
+                            let local_ptr_y = ((self.interaction.pointer_position.y as f32 * dock_scale as f32) - menu_y as f32).max(0.0) as usize;
                             
                             render::window_list::render_window_list_surface(
                                 canvas,
@@ -291,8 +291,8 @@ impl AppState {
                         wl_shm::Format::Argb8888,
                     ).expect("Failed to allocate context menu buffer");
 
-                    let local_ptr_x = ((self.pointer_x as f64 * dock_scale) - menu_x as f64).max(0.0) as usize;
-                    let local_ptr_y = ((self.pointer_y as f64 * dock_scale) - menu_y as f64).max(0.0) as usize;
+                    let local_ptr_x = ((self.interaction.pointer_position.x as f64 * dock_scale) - menu_x as f64).max(0.0) as usize;
+                    let local_ptr_y = ((self.interaction.pointer_position.y as f64 * dock_scale) - menu_y as f64).max(0.0) as usize;
                     
                     render::context_menu::render_context_menu_surface(
                         canvas,
@@ -376,8 +376,8 @@ impl AppState {
                 &self.font_manager,
                 self.is_dragging,
                 self.dragged_app_id.as_ref(),
-                self.pointer_x,
-                self.pointer_y,
+                self.interaction.pointer_position.x as i32,
+                self.interaction.pointer_position.y as i32,
                 &self.fallback_anim,
                 &self.badges,
             );

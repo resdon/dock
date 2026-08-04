@@ -17,6 +17,43 @@ use wayland_client::protocol::wl_subsurface::WlSubsurface;
 use crate::DesktopAction;
 use crate::app::state::AppState;
 
+// --- Unified Interaction State ---
+
+#[derive(Clone, Debug)]
+pub struct Point {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MenuId {
+    ContextMenu,
+    AppMenu,
+}
+
+#[derive(Clone, Debug)]
+pub struct InteractionState {
+    pub hovered_icon: Option<usize>,
+    pub hovered_menu: Option<MenuId>,
+    pub dragging_icon: Option<usize>,
+    pub pointer_position: Point,
+    pub pointer_inside: bool,
+}
+
+impl InteractionState {
+    pub fn new() -> Self {
+        Self {
+            hovered_icon: None,
+            hovered_menu: None,
+            dragging_icon: None,
+            pointer_position: Point { x: 0.0, y: 0.0 },
+            pointer_inside: false,
+        }
+    }
+}
+
+// --- Surfaces & Layouts ---
+
 pub struct PopupSurface {
     pub subsurface: WlSubsurface,
     pub surface: wayland_client::protocol::wl_surface::WlSurface,

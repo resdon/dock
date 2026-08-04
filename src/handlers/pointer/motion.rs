@@ -18,8 +18,8 @@ pub fn handle_motion_events(
     for event in events {
         match event.kind {
             PointerEventKind::Enter { .. } | PointerEventKind::Motion { .. } => {
-                if !state.is_pointer_inside {
-                    state.is_pointer_inside = true;
+                if !state.interaction.pointer_inside {
+                    state.interaction.pointer_inside = true;
                     layer_changed = true;
                 }
 
@@ -27,11 +27,11 @@ pub fn handle_motion_events(
                 let new_x = mapped_x as i32;
                 let new_y = mapped_y as i32;
 
-                if state.pointer_x != new_x || state.pointer_y != new_y {
-                    state.pointer_x = new_x;
-                    state.pointer_y = new_y;
-                    layer_changed = true;
-                }
+				if state.interaction.pointer_position.x != new_x as f64 || state.interaction.pointer_position.y != new_y as f64 {
+				    state.interaction.pointer_position.x = new_x as f64;
+				    state.interaction.pointer_position.y = new_y as f64;
+				    layer_changed = true;
+				}
 
                 let is_dock_visible = !state.hide_state.is_fully_hidden();
                 if !is_dock_visible && state.hover_state.is_visible {
@@ -53,7 +53,7 @@ pub fn handle_motion_events(
                 // 1. Mark pointer as outside by default.
                 // If the mouse moved into a popup subsurface in this frame, a subsequent
                 // Enter event in the same event batch will immediately set this back to true.
-                state.is_pointer_inside = false;
+                state.interaction.pointer_inside = false;
 
                 if let Some(dock_surf) = dock_surface_ptr {
                     if event.surface == *dock_surf {
@@ -112,7 +112,7 @@ pub fn update_hover_and_proximity(
     let mut should_be_visible = false;
     let mut new_app_id = None;
     let mut new_x = state.hover_state.x;
-    let is_over_icons = state.pointer_y >= dock_top_bound && state.pointer_y <= dock_bottom_bound;
+    let is_over_icons = state.interaction.pointer_position.y >= dock_top_bound.into() && state.interaction.pointer_position.y <= dock_bottom_bound.into();
 
     if is_over_icons {
         for (index, app_id) in apps_in_dock.iter().enumerate() {
@@ -120,7 +120,7 @@ pub fn update_hover_and_proximity(
             let hit_start_x = start_x.saturating_sub(spacing / 2);
             let hit_end_x = start_x + box_size + (spacing / 2);
 
-            if state.pointer_x >= hit_start_x && state.pointer_x <= hit_end_x {
+            if state.interaction.pointer_position.x >= hit_start_x.into() && state.interaction.pointer_position.x <= hit_end_x.into() {
                 should_be_visible = true;
                 new_app_id = Some(app_id.clone());
                 break;
@@ -149,8 +149,8 @@ pub fn update_hover_and_proximity(
                     scale_i32,
                 );
 
-                let ptr_x = (state.pointer_x as f32 * scale_factor) as i32;
-                let ptr_y = (state.pointer_y as f32 * scale_factor) as i32;
+                let ptr_x = (state.interaction.pointer_position.x as f32 * scale_factor) as i32;
+                let ptr_y = (state.interaction.pointer_position.y as f32 * scale_factor) as i32;
 
                 if ptr_x >= menu_x && ptr_x <= (menu_x + menu_width) && ptr_y >= menu_y && ptr_y <= (menu_y + menu_height) {
                     should_be_visible = true;
@@ -167,8 +167,8 @@ pub fn update_hover_and_proximity(
         let phys_height = (state.height as f32 * scale_factor).round() as i32;
         let (menu_x, menu_y, menu_width, total_menu_h) = state.get_context_menu_bounds(phys_width, phys_height, scale_factor);
 
-        let ptr_x = (state.pointer_x as f32 * scale_factor) as i32;
-        let ptr_y = (state.pointer_y as f32 * scale_factor) as i32;
+        let ptr_x = (state.interaction.pointer_position.x as f32 * scale_factor) as i32;
+        let ptr_y = (state.interaction.pointer_position.y as f32 * scale_factor) as i32;
         let leeway = (20.0 * scale_factor).round() as i32;
 
         let inside_extended = ptr_x >= (menu_x - leeway)
@@ -184,10 +184,10 @@ pub fn update_hover_and_proximity(
 
     // --- Leave Detection against DOCK BOUNDS (+ 10px margin) ---
     let margin = (10.0 * scale_factor).round() as i32;
-    let pointer_on_dock = state.pointer_x >= (dock_left_bound - margin)
-        && state.pointer_x <= (dock_right_bound + margin)
-        && state.pointer_y >= (dock_top_bound - margin)
-        && state.pointer_y <= (dock_bottom_bound + margin);
+	let pointer_on_dock = state.interaction.pointer_position.x >= (dock_left_bound - margin).into()
+	    && state.interaction.pointer_position.x <= (dock_right_bound + margin).into()
+	    && state.interaction.pointer_position.y >= (dock_top_bound - margin).into()
+	    && state.interaction.pointer_position.y <= (dock_bottom_bound + margin).into();
 
     let mut effective_should_be_visible = should_be_visible;
 

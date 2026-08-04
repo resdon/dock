@@ -19,7 +19,7 @@ pub fn handle_click_events(
 
     let phys_surface_height = (state.height as f32 * scale_factor).round() as i32;
     let dock_top_bound = phys_surface_height.saturating_sub(dock_height);
-    let is_over_icons = state.pointer_y >= dock_top_bound;
+    let is_over_icons = state.interaction.pointer_position.y >= dock_top_bound.into();
 
     for event in events {
         match event.kind {
@@ -32,10 +32,10 @@ pub fn handle_click_events(
                             let hit_start_x = start_x.saturating_sub(spacing / 2);
                             let hit_end_x = end_x + (spacing / 2);
 
-                            if state.pointer_x >= hit_start_x && state.pointer_x <= hit_end_x {
+                            if state.interaction.pointer_position.x >= hit_start_x.into() && state.interaction.pointer_position.x <= hit_end_x.into() {
                                 state.dragged_app_id = Some(app_id.clone());
-                                state.drag_start_x = state.pointer_x;
-                                state.drag_start_y = state.pointer_y;
+                                state.drag_start_x = state.interaction.pointer_position.x as i32;
+                                state.drag_start_y = state.interaction.pointer_position.y as i32;
                                 state.is_dragging = false;
                                 break;
                             }
@@ -49,13 +49,13 @@ pub fn handle_click_events(
                             let hit_start_x = start_x.saturating_sub(spacing / 2);
                             let hit_end_x = start_x + box_size + (spacing / 2);
 
-                            if state.pointer_x >= hit_start_x && state.pointer_x <= hit_end_x {
+                            if state.interaction.pointer_position.x >= hit_start_x.into() && state.interaction.pointer_position.x <= hit_end_x.into() {
                                 state.hover_state.is_visible = false;
                                 state.hover_state.app_id = None;
                                 state.menu_state.is_open = true;
                                 state.needs_redraw = true;
-                                state.menu_state.x = state.pointer_x as usize;
-                                state.menu_state.y = state.pointer_y as usize;
+                                state.menu_state.x = state.interaction.pointer_position.x as usize;
+                                state.menu_state.y = state.interaction.pointer_position.y as usize;
                                 state.menu_state.target_app_id = Some(app_id.clone());
 
                                 let windows = running_by_app.get(app_id).cloned().unwrap_or_default();
@@ -112,8 +112,8 @@ pub fn handle_click_events(
                                 let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
                                     state.width as i32, state.height as i32, total_apps, hovered_app_index, menu_w, menu_h, scale_i32,
                                 );
-                                let ptr_x = (state.pointer_x as f32 * scale_factor) as i32;
-                                let ptr_y = (state.pointer_y as f32 * scale_factor) as i32;
+                                let ptr_x = (state.interaction.pointer_position.x as f32 * scale_factor) as i32;
+                                let ptr_y = (state.interaction.pointer_position.y as f32 * scale_factor) as i32;
                                 let item_h = (30.0 * scale_factor).round() as i32;
 
                                 if ptr_x >= menu_x && ptr_x <= menu_x + menu_width && ptr_y >= menu_y && ptr_y <= menu_y + menu_height {
@@ -136,7 +136,7 @@ pub fn handle_click_events(
                             let hit_start_x = start_x.saturating_sub(spacing / 2);
                             let hit_end_x = start_x + box_size + (spacing / 2);
 
-                            if state.pointer_x >= hit_start_x && state.pointer_x <= hit_end_x {
+                            if state.interaction.pointer_position.x >= hit_start_x.into() && state.interaction.pointer_position.x <= hit_end_x.into() {
                                 launch_app(app_id);
                                 layer_changed = true;
                                 break;
@@ -155,8 +155,8 @@ pub fn handle_click_events(
                         let item_h = (30.0 * scale_factor).round() as i32;
 
                         let (menu_x, menu_y, menu_width, total_menu_h) = state.get_context_menu_bounds(phys_width, phys_height, scale_factor);
-                        let ptr_x = (state.pointer_x as f32 * scale_factor).round() as i32;
-                        let ptr_y = (state.pointer_y as f32 * scale_factor).round() as i32;
+                        let ptr_x = (state.interaction.pointer_position.x as f32 * scale_factor).round() as i32;
+                        let ptr_y = (state.interaction.pointer_position.y as f32 * scale_factor).round() as i32;
 
                         if ptr_x >= menu_x && ptr_x <= (menu_x + menu_width) && ptr_y >= menu_y && ptr_y <= (menu_y + total_menu_h) {
                             let clicked_item_idx = (ptr_y - menu_y) / item_h;
@@ -194,8 +194,8 @@ pub fn handle_click_events(
                                 let (menu_x, menu_y, menu_width, menu_height) = get_hover_menu_bounds(
                                     state.width as i32, state.height as i32, total_apps, hovered_app_index, menu_w, menu_h, scale_i32,
                                 );
-                                let ptr_x = (state.pointer_x as f32 * scale_factor).round() as i32;
-                                let ptr_y = (state.pointer_y as f32 * scale_factor).round() as i32;
+                                let ptr_x = (state.interaction.pointer_position.x as f32 * scale_factor).round() as i32;
+                                let ptr_y = (state.interaction.pointer_position.y as f32 * scale_factor).round() as i32;
                                 let item_h = (30.0 * scale_factor).round() as i32;
 
                                 if ptr_x >= menu_x && ptr_x <= menu_x + menu_width && ptr_y >= menu_y && ptr_y <= menu_y + menu_height {
@@ -240,7 +240,7 @@ pub fn handle_click_events(
                             let hit_start_x = start_x.saturating_sub(spacing / 2);
                             let hit_end_x = end_x + (spacing / 2);
 
-                            if state.pointer_x >= hit_start_x && state.pointer_x <= hit_end_x {
+                            if state.interaction.pointer_position.x >= hit_start_x.into() && state.interaction.pointer_position.x <= hit_end_x.into() {
                                 if let Some(windows) = running_by_app.get(app_id) {
                                     if let Some(handle_id) = windows.first() {
                                         let was_active = state.open_windows.get(handle_id).map(|w| w.is_activated).unwrap_or(false);

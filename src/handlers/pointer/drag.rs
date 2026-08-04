@@ -16,12 +16,12 @@ pub fn handle_drag_release(
             let start_x = start_offset_x + spacing + index as i32 * (box_size + spacing);
             let hit_start_x = start_x.saturating_sub(spacing / 2);
             let hit_end_x = start_x + box_size + (spacing / 2);
-            if state.pointer_x >= hit_start_x && state.pointer_x <= hit_end_x {
+            if state.interaction.pointer_position.x >= hit_start_x.into() && state.interaction.pointer_position.x <= hit_end_x.into() {
                 dropped_idx = Some(index as i32);
                 break;
             }
         }
-        if dropped_idx.is_none() && state.pointer_x >= start_offset_x {
+        if dropped_idx.is_none() && state.interaction.pointer_position.x as i32 >= start_offset_x {
             dropped_idx = Some(apps_in_dock.len().saturating_sub(1) as i32);
         }
 
