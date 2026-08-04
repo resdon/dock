@@ -50,22 +50,31 @@ pub fn handle_motion_events(
                 }
             }
             PointerEventKind::Leave { .. } => {
+                // 1. Mark pointer as outside by default.
+                // If the mouse moved into a popup subsurface in this frame, a subsequent
+                // Enter event in the same event batch will immediately set this back to true.
+                state.is_pointer_inside = false;
+
                 if let Some(dock_surf) = dock_surface_ptr {
                     if event.surface == *dock_surf {
-                        state.is_pointer_inside = false;
+                        // 2. Pointer left the main dock surface -> start the hover leave grace timer
                         if state.hover_state.is_visible && state.hover_state.last_leave_time.is_none() {
                             state.hover_state.last_leave_time = Some(std::time::Instant::now());
                         }
                     } else {
-                        state.hover_state.is_visible = false;
-                        state.hover_state.app_id = None;
-                        state.hover_state.last_leave_time = None;
-                        state.menu_state.is_open = false;
-                        state.is_pointer_inside = false;
+                        // 3. Pointer left a subsurface (e.g. hover list or context menu)
+                        // Do NOT force menu_state.is_open = false here! Let click/proximity logic manage menus.
+                        if !state.menu_state.is_open && state.hover_state.is_visible && state.hover_state.last_leave_time.is_none() {
+                            state.hover_state.last_leave_time = Some(std::time::Instant::now());
+                        }
                     }
                 } else {
-                    state.is_pointer_inside = false;
+                    // Fallback if dock surface pointer is not available
+                    if !state.menu_state.is_open && state.hover_state.is_visible && state.hover_state.last_leave_time.is_none() {
+                        state.hover_state.last_leave_time = Some(std::time::Instant::now());
+                    }
                 }
+
                 layer_changed = true;
             }
             _ => {}
@@ -85,14 +94,25 @@ pub fn update_hover_and_proximity(
     let (dock_height, box_size, spacing, start_offset_x) = layout;
     let mut layer_changed = false;
 
-    // --- Hover Tracking ---
+    // --- Compute Exact Rendered Dock Bounds ---
     let phys_surface_height = (state.height as f32 * scale_factor).round() as i32;
-    let dock_top_bound = phys_surface_height.saturating_sub(dock_height);
+    let total_items = apps_in_dock.len();
+    let calculated_dock_width = if total_items > 0 {
+        total_items as i32 * box_size + (total_items as i32 + 1) * spacing
+    } else {
+        100
+    };
 
+    let dock_top_bound = phys_surface_height.saturating_sub(dock_height);
+    let dock_bottom_bound = phys_surface_height;
+    let dock_left_bound = start_offset_x;
+    let dock_right_bound = start_offset_x + calculated_dock_width;
+
+    // --- Hover Tracking ---
     let mut should_be_visible = false;
     let mut new_app_id = None;
     let mut new_x = state.hover_state.x;
-    let is_over_icons = state.pointer_y >= dock_top_bound;
+    let is_over_icons = state.pointer_y >= dock_top_bound && state.pointer_y <= dock_bottom_bound;
 
     if is_over_icons {
         for (index, app_id) in apps_in_dock.iter().enumerate() {
@@ -108,6 +128,7 @@ pub fn update_hover_and_proximity(
         }
     }
 
+    // --- Hover Window List Bounds Check ---
     if !should_be_visible && state.hover_state.is_visible {
         if let Some(ref app_id) = state.hover_state.app_id {
             if running_by_app.contains_key(app_id) {
@@ -161,20 +182,27 @@ pub fn update_hover_and_proximity(
         }
     }
 
-    // Leave Delay Logic
+    // --- Leave Detection against DOCK BOUNDS (+ 10px margin) ---
+    let margin = (10.0 * scale_factor).round() as i32;
+    let pointer_on_dock = state.pointer_x >= (dock_left_bound - margin)
+        && state.pointer_x <= (dock_right_bound + margin)
+        && state.pointer_y >= (dock_top_bound - margin)
+        && state.pointer_y <= (dock_bottom_bound + margin);
+
     let mut effective_should_be_visible = should_be_visible;
-    let pointer_on_main_dock = state.pointer_x >= 0 && state.pointer_x <= state.width as i32 && state.pointer_y >= 0 && state.pointer_y <= state.height as i32;
 
     if !effective_should_be_visible && state.hover_state.is_visible {
-        if !pointer_on_main_dock {
+        if !pointer_on_dock {
+            // Pointer is outside the rendered dock rectangle -> start/check leave timer
             let leave_time = *state.hover_state.last_leave_time.get_or_insert_with(std::time::Instant::now);
-            if leave_time.elapsed() < std::time::Duration::from_secs(1) {
+            if leave_time.elapsed() < std::time::Duration::from_millis(300) {
                 effective_should_be_visible = true;
                 layer_changed = true;
             } else {
                 state.hover_state.last_leave_time = None;
             }
         } else {
+            // Pointer is still inside dock icon area/padding -> reset leave timer
             state.hover_state.last_leave_time = None;
         }
     } else if effective_should_be_visible {

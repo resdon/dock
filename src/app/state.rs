@@ -349,18 +349,17 @@ impl AppState {
 
     /// Single authoritative check for mouse proximity over dock surface or active popups
     pub fn check_dock_proximity(&self) -> bool {
-        // 1. Active popups (context menu or window hover list) keep the dock visible
-        let popup_active = self.menu_state.is_open || self.hover_state.is_visible;
-        if popup_active {
+        // 1. Context menu explicitly keeps the dock open while open
+        if self.menu_state.is_open {
             return true;
         }
 
-        // 2. Early exit if pointer isn't inside the surface at all
+        // 2. If the pointer is not inside the Wayland surface, proximity is false
         if !self.is_pointer_inside {
             return false;
         }
 
-        // 3. Calculate actual dock width and alignment
+        // 3. Compute actual rendered dock bounding box (in logical coordinates)
         let apps_in_dock = self.get_apps_in_dock();
         let total_items = apps_in_dock.len();
         if total_items == 0 {
@@ -374,7 +373,7 @@ impl AppState {
 
         let calculated_width = (total_items as f64 * box_size + (total_items + 1) as f64 * spacing).min(max_dock_width);
 
-        // Compute centered horizontal bounds
+        // Centered horizontal bounds
         let start_x = if (self.width as f64) > calculated_width {
             ((self.width as f64) - calculated_width) / 2.0
         } else {
@@ -382,11 +381,11 @@ impl AppState {
         };
         let end_x = start_x + calculated_width;
 
-        // Compute vertical bounds (bottom-anchored)
+        // Bottom-anchored vertical bounds
         let top_y = ((self.height as f64) - dock_height).max(0.0);
         let bottom_y = self.height as f64;
 
-        // 4. Test pointer coordinates against the dock rectangle + 15px margin
+        // 4. Test pointer coordinates with a 15px margin tolerance
         let margin = 15.0;
         let px = self.pointer_x as f64;
         let py = self.pointer_y as f64;
@@ -429,21 +428,18 @@ impl AppState {
     pub fn update_hover_and_hide_timers(&mut self) -> bool {
         let mut state_changed = false;
 
-        // 1. Expire hover grace timer when pointer is outside
+        // 1. Immediately dismiss hover popup when pointer leaves surface
         if !self.is_pointer_inside {
-            if let Some(leave_time) = self.hover_state.last_leave_time {
-                if leave_time.elapsed() >= std::time::Duration::from_millis(300) {
-                    // Dismiss active hover popup
-                    self.hover_state.is_visible = false;
-                    self.hover_state.app_id = None;
-                    self.hover_state.last_leave_time = None;
-                    self.needs_redraw = true;
-                    state_changed = true;
-                }
+            if self.hover_state.is_visible {
+                self.hover_state.is_visible = false;
+                self.hover_state.app_id = None;
+                self.hover_state.last_leave_time = None;
+                self.needs_redraw = true;
+                state_changed = true;
             }
         }
 
-        // 2. Re-evaluate auto-hide proximity state
+        // 2. Evaluate proximity (sole authority for proximity updates)
         let is_near = self.check_dock_proximity();
         self.hide_state.update_proximity(is_near);
 
@@ -455,7 +451,7 @@ impl AppState {
 
         state_changed
     }
-
+    
     pub fn update_window_icon(&mut self, window_id: ObjectId) {
         if let Some(window) = self.open_windows.get_mut(&window_id) {
             if window.icon_resolved { return; }
