@@ -83,10 +83,6 @@ pub fn update_hover_and_proximity(
     layout: (i32, i32, i32, i32), // (dock_height, box_size, spacing, start_offset_x)
 ) -> bool {
     let (dock_height, box_size, spacing, start_offset_x) = layout;
-
-    // --- Proximity Check ---
-    let is_near = state.check_dock_proximity();
-    state.hide_state.update_proximity(is_near);
     let mut layer_changed = false;
 
     // --- Hover Tracking ---
@@ -165,7 +161,7 @@ pub fn update_hover_and_proximity(
         }
     }
 
-    // 1-Second Leave Delay
+    // Leave Delay Logic
     let mut effective_should_be_visible = should_be_visible;
     let pointer_on_main_dock = state.pointer_x >= 0 && state.pointer_x <= state.width as i32 && state.pointer_y >= 0 && state.pointer_y <= state.height as i32;
 

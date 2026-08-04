@@ -349,18 +349,50 @@ impl AppState {
 
     /// Single authoritative check for mouse proximity over dock surface or active popups
     pub fn check_dock_proximity(&self) -> bool {
+        // 1. Active popups (context menu or window hover list) keep the dock visible
         let popup_active = self.menu_state.is_open || self.hover_state.is_visible;
         if popup_active {
             return true;
         }
 
+        // 2. Early exit if pointer isn't inside the surface at all
         if !self.is_pointer_inside {
             return false;
         }
 
-        let margin = 5;
-        let within_x = self.pointer_x >= -margin && self.pointer_x <= (self.width + margin);
-        let within_y = self.pointer_y >= -margin && self.pointer_y <= (self.height + margin);
+        // 3. Calculate actual dock width and alignment
+        let apps_in_dock = self.get_apps_in_dock();
+        let total_items = apps_in_dock.len();
+        if total_items == 0 {
+            return false;
+        }
+
+        let box_size = 48.0;
+        let spacing = 12.0;
+        let max_dock_width = 800.0;
+        let dock_height = 60.0;
+
+        let calculated_width = (total_items as f64 * box_size + (total_items + 1) as f64 * spacing).min(max_dock_width);
+
+        // Compute centered horizontal bounds
+        let start_x = if (self.width as f64) > calculated_width {
+            ((self.width as f64) - calculated_width) / 2.0
+        } else {
+            0.0
+        };
+        let end_x = start_x + calculated_width;
+
+        // Compute vertical bounds (bottom-anchored)
+        let top_y = ((self.height as f64) - dock_height).max(0.0);
+        let bottom_y = self.height as f64;
+
+        // 4. Test pointer coordinates against the dock rectangle + 15px margin
+        let margin = 15.0;
+        let px = self.pointer_x as f64;
+        let py = self.pointer_y as f64;
+
+        let within_x = px >= (start_x - margin) && px <= (end_x + margin);
+        let within_y = py >= (top_y - margin) && py <= (bottom_y + margin);
 
         within_x && within_y
     }

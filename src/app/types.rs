@@ -6,7 +6,7 @@ use wayland_client::protocol::{
 
 // SCTK Types
 use smithay_client_toolkit::shell::wlr_layer::LayerSurface;
-use smithay_client_toolkit::shm::slot::Buffer; // Or wayland_client::protocol::wl_buffer::WlBuffer if using raw wayland buffers
+use smithay_client_toolkit::shm::slot::Buffer;
 use smithay_client_toolkit::shell::WaylandSurface;
 
 // Wayland Protocols
@@ -17,7 +17,6 @@ use wayland_client::protocol::wl_subsurface::WlSubsurface;
 use crate::DesktopAction;
 use crate::app::state::AppState;
 
-// To hold subsurface handles
 pub struct PopupSurface {
     pub subsurface: WlSubsurface,
     pub surface: wayland_client::protocol::wl_surface::WlSurface,
@@ -26,7 +25,6 @@ pub struct PopupSurface {
     pub height: u32,
 }
 
-// Store notifiers per-dock in DockInstance
 pub struct DockInstance {
     pub surface: LayerSurface,
     pub output: WlOutput,
@@ -53,13 +51,16 @@ impl DockInstance {
         if is_hidden {
             let region = compositor_state.wl_compositor().create_region(qh, ());
             
-            // 5px trigger zone confined to the horizontal width of the dock container
-            // plus 5px margin tolerance on the sides
             let margin = 5;
             let trigger_x = (container_start_x - margin).max(0);
             let trigger_w = container_width + (margin * 2);
 
-            region.add(trigger_x, 0, trigger_w, 5);
+            // Anchor trigger region to the bottom of the dock surface
+            let trigger_h = 5;
+            let surface_h = self.height as i32;
+            let trigger_y = (surface_h - trigger_h).max(0);
+
+            region.add(trigger_x, trigger_y, trigger_w, trigger_h);
 
             surface.set_input_region(Some(&region));
             region.destroy();
@@ -68,7 +69,6 @@ impl DockInstance {
             surface.set_input_region(None);
         }
 
-        // Commit surface so compositor applies the new input region immediately
         surface.commit();
     }
 }
@@ -76,16 +76,13 @@ impl DockInstance {
 // Drag and drop
 #[derive(Default)]
 pub struct DndState {
-    /// Currently active data offer being dragged over our surface
     pub current_offer: Option<WlDataOffer>,
-    /// MIME types supported by the current offer
     pub mime_types: Vec<String>,
-    /// Current pointer position during drag
     pub drag_x: f64,
     pub drag_y: f64,
-    /// Index of dock item currently hovered during drag
     pub hovered_dock_index: Option<usize>,
 }
+
 // Context Menu
 #[derive(Clone, Debug, PartialEq)]
 pub enum MenuItemType {
@@ -112,7 +109,6 @@ pub struct MenuState {
     pub items: Vec<ContextMenuItem>,
 }
 
-// ------
 pub struct HoverState {
     pub x: usize,
     pub app_id: Option<String>,
