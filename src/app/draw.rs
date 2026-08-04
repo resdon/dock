@@ -22,13 +22,8 @@ impl AppState {
         let spacing = 12;
         let max_dock_width = 800;
 
-        // 1. Gather all dock apps & queue missing icons
-        let mut apps_in_dock = self.pinned_apps.clone();
-        for win in self.open_windows.values() {
-            if !apps_in_dock.contains(&win.app_id) {
-                apps_in_dock.push(win.app_id.clone());
-            }
-        }
+        // ✅ 1. Compute complete app list ONCE before mutably iterating over self.docks
+        let apps_in_dock = self.get_apps_in_dock();
 
         for app_id in &apps_in_dock {
             if !self.icon_cache.contains_key(app_id) {
@@ -40,7 +35,7 @@ impl AppState {
         // PRE-RENDER TICK (Run ONCE before iterating over surfaces/docks)
         // =========================================================================
         self.needs_redraw = false;
-        let is_animating = self.hide_state.tick();
+        let is_animating = (self.hide_state.current_alpha - self.hide_state.target_alpha).abs() >= 0.001;
 
         // 2. Process each dock display output
         for dock in &mut self.docks {
@@ -84,11 +79,14 @@ impl AppState {
             dock.width = dock_width;
             dock.height = dock_height;
 
+            // Update AppState dimensions
+            self.width = dock_width as i32;
+            self.height = dock_height as i32;
+
             let surface = &dock.surface;
             let dock_scale = dock.scale_factor;
             let scale_int = dock_scale.round() as i32;
 
-            // Update main dock surface size & input region
             surface.set_size(dock_width, dock_height);
 
             // =========================================================================
@@ -106,28 +104,33 @@ impl AppState {
                         .count();
 
                     if count > 0 {
-                        // Use `self.` instead of `state.`
-                        let apps_in_dock = &self.pinned_apps; 
+                        // 1. Retrieve the complete dock app list (pinned + active unpinned)
+                        let total_apps = apps_in_dock.len();
+                        let hovered_app_index = apps_in_dock
+                            .iter()
+                            .position(|id| id == app_id)
+                            .unwrap_or(0);
 
-                        // Safely calculate the number of open windows for this specific app
-                        // Note: Adjust `w.app_id` to whatever the actual field name is in WindowDiagnostics
-                        let win_count = self.open_windows
+                        // 2. Count open windows for this app (handling empty app_id fallback)
+                        let win_count = self
+                            .open_windows
                             .values()
-                            .filter(|w| w.app_id == *app_id)
+                            .filter(|w| {
+                                let win_id = if !w.app_id.is_empty() { &w.app_id } else { "Unknown" };
+                                win_id == app_id
+                            })
                             .count()
                             .max(1);
 
-                        let total_apps = apps_in_dock.len();
-                        let hovered_app_index = apps_in_dock.iter().position(|id| id == app_id).unwrap_or(0);
-
-                        // Explicitly mark literals as _f64 to fix the E0689 rounding error
+                        // 3. Scale menu dimensions
                         let menu_w = (180.0_f64 * dock_scale).round() as i32;
                         let menu_h = (win_count as f64 * 30.0_f64 * dock_scale).round() as i32;
                         let scale_i32 = dock_scale.round() as i32;
 
+                        // 4. Calculate popup placement using dynamic dock dimensions instead of hardcoded 100x60
                         let (menu_x, menu_y, _menu_width, _menu_height) = get_hover_menu_bounds(
-                            self.width as i32,
-                            self.height as i32,
+                            dock_width as i32,  // Or self.width if updated to dynamic dock_width
+                            dock_height as i32, // Or self.height if updated to dynamic dock_height
                             total_apps,
                             hovered_app_index,
                             menu_w,
@@ -135,6 +138,7 @@ impl AppState {
                             scale_i32,
                         );
 
+                        // 5. Lazily initialize Wayland subsurface popup
                         let popup = dock.hover_popup.get_or_insert_with(|| {
                             let surf = self.compositor_state.create_surface(qh);
                             let sub = self.subcompositor.get_subsurface(&surf, surface.wl_surface(), qh, ());
@@ -150,12 +154,16 @@ impl AppState {
                             }
                         });
 
-                        popup.subsurface.set_position((menu_x as f32 / dock_scale as f32).round() as i32, (menu_y as f32 / dock_scale as f32).round() as i32);
-                        popup.width = (menu_w as f32 / dock_scale as f32).round() as u32;
-                        popup.height = (menu_h as f32 / dock_scale as f32).round() as u32;
+                        // 6. Convert physical positions back to surface coordinates
+                        popup.subsurface.set_position(
+                            (menu_x as f64 / dock_scale).round() as i32,
+                            (menu_y as f64 / dock_scale).round() as i32,
+                        );
+                        popup.width = (menu_w as f64 / dock_scale).round() as u32;
+                        popup.height = (menu_h as f64 / dock_scale).round() as u32;
 
-                        let p_width = menu_w as i32;
-                        let p_height = menu_h as i32;
+                        let p_width = menu_w;
+                        let p_height = menu_h;
 
                         if p_width > 0 && p_height > 0 {
                             let (buffer, canvas) = self.pool.create_buffer(
@@ -379,9 +387,8 @@ impl AppState {
 
             // 3. Update input region for THIS dock using disjoint field borrows
             let is_hidden = self.hide_state.is_fully_hidden();
-            // Pass container_start_x and content_width (or 0, self.width as i32 if full surface)
-            let container_start = 0;             // Or your local offset variable if present in draw
-            let container_w = self.width as i32;  // Surface width
+            let container_start = 0;             
+            let container_w = dock_width as i32; // ✅ Use dynamic dock_width instead of self.width
 
             dock.update_input_region(
                 &self.compositor_state, 

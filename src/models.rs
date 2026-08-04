@@ -86,4 +86,14 @@ impl WindowDiagnostics {
             outputs: Vec::new(),
         }
     }
+    /// Returns the active app_id, falling back to window title or "Unknown".
+    pub fn resolved_app_id(&self) -> &str {
+        if !self.app_id.is_empty() {
+            &self.app_id
+        } else if !self.title.is_empty() {
+            &self.title
+        } else {
+            "Unknown"
+        }
+    }
 }

@@ -5,7 +5,6 @@ use std::path::PathBuf;
 
 use dockman_lib::animations::IconAnimation;
 
-use smithay_client_toolkit::shell::WaylandSurface;
 use smithay_client_toolkit::{
     compositor::CompositorState,
     output::OutputState,
@@ -115,9 +114,41 @@ pub(crate) fn load_generic_fallback_bytes() -> Option<(Vec<u8>, u32)> {
 }
 
 impl AppState {
+    /// Returns the current ordered list of app IDs in the dock (pinned + unpinned running).
+    pub fn get_apps_in_dock(&self) -> Vec<String> {
+        let mut apps_in_dock = self.pinned_apps.clone();
+        for window in self.open_windows.values() {
+            let id = window.resolved_app_id().to_string();
+            if !apps_in_dock.contains(&id) {
+                apps_in_dock.push(id);
+            }
+        }
+        apps_in_dock
+    }
+
+    /// Builds a map of App IDs to their sorted open window ObjectIds.
+    pub fn get_running_by_app(&self) -> HashMap<String, Vec<ObjectId>> {
+        let mut running_by_app: HashMap<String, Vec<ObjectId>> = HashMap::new();
+
+        for (id, window) in &self.open_windows {
+            running_by_app
+                .entry(window.resolved_app_id().to_string())
+                .or_default()
+                .push(id.clone());
+        }
+
+        for windows in running_by_app.values_mut() {
+            windows.sort_by(|a, b| {
+                let title_a = self.open_windows.get(a).map(|w| w.title.as_str()).unwrap_or("");
+                let title_b = self.open_windows.get(b).map(|w| w.title.as_str()).unwrap_or("");
+                title_a.cmp(title_b)
+            });
+        }
+
+        running_by_app
+    }
+
     pub fn get_app_id_at_location(&self, x: f64, y: f64) -> Option<String> {
-        let box_size = 48.0;
-        let spacing = 12.0;
         let dock_height = 60.0;
         let dock_top_bound = (self.height as f64) - dock_height;
 
@@ -125,43 +156,35 @@ impl AppState {
             return None;
         }
 
-        let mut apps_in_dock: Vec<String> = self.pinned_apps.clone();
-        for window in self.open_windows.values() {
-            let id = if !window.app_id.is_empty() {
-                window.app_id.clone()
-            } else if !window.title.is_empty() {
-                window.title.clone()
-            } else {
-                "Unknown".to_string()
-            };
-            if !apps_in_dock.contains(&id) {
-                apps_in_dock.push(id);
-            }
-        }
-
+        let apps_in_dock = self.get_apps_in_dock();
         let total_items = apps_in_dock.len();
-        let content_width = if total_items > 0 { 
-            total_items as f64 * box_size + (total_items + 1) as f64 * spacing
-        } else { 
-            0.0 
-        };
-        
-        let start_offset_x = if (self.width as f64) > content_width { 
-            ((self.width as f64) - content_width) / 2.0 
-        } else { 
-            0.0 
-        };
-
-        for (index, app_id) in apps_in_dock.iter().enumerate() {
-            let start_x = start_offset_x + spacing + index as f64 * (box_size + spacing);
-            let hit_start_x = start_x - (spacing / 2.0);
-            let hit_end_x = start_x + box_size + (spacing / 2.0);
-
-            if x >= hit_start_x && x <= hit_end_x {
-                return Some(app_id.clone());
-            }
+        if total_items == 0 {
+            return None;
         }
-        None
+
+        let box_size = 48.0;
+        let spacing = 12.0;
+        let slot_width = box_size + spacing;
+
+        let content_width = total_items as f64 * box_size + (total_items + 1) as f64 * spacing;
+        let start_offset_x = if (self.width as f64) > content_width {
+            ((self.width as f64) - content_width) / 2.0
+        } else {
+            0.0
+        };
+
+        let hit_start_min = start_offset_x + (spacing / 2.0);
+        let hit_end_max = hit_start_min + (total_items as f64 * slot_width);
+
+        if x < hit_start_min || x > hit_end_max {
+            return None;
+        }
+
+        // Direct O(1) slot calculation
+        let index = ((x - hit_start_min) / slot_width) as usize;
+        let index = index.min(total_items - 1);
+
+        apps_in_dock.get(index).cloned()
     }
 
     pub fn update_dnd_hover_target(&mut self, x: f64, y: f64) {
@@ -196,18 +219,17 @@ impl AppState {
         }
     }
 
-    pub fn get_context_menu_bounds(&self, _phys_width: i32, _phys_height: i32, scale_factor: f32) -> (i32, i32, i32, i32) {
+    pub fn get_context_menu_bounds(&self, phys_width: i32, phys_height: i32, scale_factor: f32) -> (i32, i32, i32, i32) {
         let (x, y, w, h) = crate::render::context_menu::get_context_menu_bounds(
             self.menu_state.x as i32,
             self.menu_state.y as i32,
-            self.width as i32,
-            self.height as i32,
+            phys_width,  // ✅ Matches parameter name
+            phys_height, // ✅ Matches parameter name
             self.menu_state.items.len() as i32,
             scale_factor as f32,
         );
         ((x as f32).round() as i32, (y as f32).round() as i32, (w as f32).round() as i32, (h as f32).round() as i32)
     }
-
     /// Returns true if at least one window, pinned app, or background icon search is active
     pub fn is_animating(&self) -> bool {
         let windows_loading = self.open_windows
@@ -325,30 +347,35 @@ impl AppState {
         self.icon_load.request(app_id);
     }
 
+    /// Single authoritative check for mouse proximity over dock surface or active popups
+    pub fn check_dock_proximity(&self) -> bool {
+        let popup_active = self.menu_state.is_open || self.hover_state.is_visible;
+        if popup_active {
+            return true;
+        }
+
+        if !self.is_pointer_inside {
+            return false;
+        }
+
+        let margin = 5;
+        let within_x = self.pointer_x >= -margin && self.pointer_x <= (self.width + margin);
+        let within_y = self.pointer_y >= -margin && self.pointer_y <= (self.height + margin);
+
+        within_x && within_y
+    }
+
     pub fn set_dock_input_region(
         &self,
         is_hidden: bool,
-        _container_start_x: i32,
-        _container_width: i32,
+        container_start_x: i32,
+        container_width: i32,
         qh: &QueueHandle<AppState>,
     ) {
-        let Some(ref layer_surface) = self.layer_surface else { return };
-        let surface = layer_surface.wl_surface();
-
-        if is_hidden {
-            let region = self.compositor_state.wl_compositor().create_region(qh, ());
-            
-            // Explicitly cover 0 -> self.width across the full height (or trigger height)
-            region.add(0, 0, self.width as i32, self.height as i32);
-            
-            surface.set_input_region(Some(&region));
-            region.destroy();
-        } else {
-            // Restore full surface input region when visible
-            surface.set_input_region(None);
+        // Iterate through active output dock instances
+        for dock in &self.docks {
+            dock.update_input_region(&self.compositor_state, is_hidden, container_start_x, container_width, qh);
         }
-
-        surface.commit();
     }
 
     /// Polls background load queue and returns true if any new icons were inserted
@@ -366,7 +393,7 @@ impl AppState {
 
         updated
     }
-
+    
     pub fn update_hover_and_hide_timers(&mut self) -> bool {
         let mut state_changed = false;
 
@@ -385,24 +412,7 @@ impl AppState {
         }
 
         // 2. Re-evaluate auto-hide proximity state
-        // Popups only keep proximity active if the pointer is physically inside
-        let popup_active = self.is_pointer_inside && (
-            self.menu_state.is_open || 
-            self.hover_state.is_visible
-        );
-        
-        let margin = 5;
-
-        let is_near = popup_active || (self.is_pointer_inside && {
-            let within_x = self.pointer_x >= 0 && self.pointer_x <= self.width;
-            let within_y = if self.hide_state.is_fully_hidden() {
-                self.pointer_y >= 0 && self.pointer_y <= self.height
-            } else {
-                self.pointer_y >= -margin && self.pointer_y <= self.height
-            };
-            within_x && within_y
-        });
-
+        let is_near = self.check_dock_proximity();
         self.hide_state.update_proximity(is_near);
 
         // 3. Advance fade animation

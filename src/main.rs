@@ -310,6 +310,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         state.fallback_anim.is_active = state.is_animating();
         let frame_advanced = state.fallback_anim.update();
         let timers_changed = state.update_hover_and_hide_timers();
+        state.update_animations(&qh);
 
         // Advance dynamic per-app animations
         for (app_id, anim) in state.animations.iter_mut() {
@@ -322,7 +323,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // 4. Determine socket poll timeout dynamically
-        let timeout_ms = if state.fallback_anim.is_active || state.needs_redraw {
+        let is_hide_animating = (state.hide_state.current_alpha - state.hide_state.target_alpha).abs() >= 0.001;
+        let timeout_ms = if state.fallback_anim.is_active || is_hide_animating || state.needs_redraw {
             15
         } else {
             50 

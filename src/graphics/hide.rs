@@ -17,9 +17,9 @@ impl AutoHideState {
             current_alpha: 1.0,
             target_alpha: 1.0,
             last_update: Instant::now(),
-            duration_secs: 3.0,
-            min_alpha: 0.25, // 25% opacity when hidden
-            max_alpha: 1.0,  // 100% opacity when active
+            duration_secs: 0.25, // Fast, responsive 250ms fade
+            min_alpha: 0.25,     // 25% opacity when hidden
+            max_alpha: 1.0,      // 100% opacity when active
             just_became_hidden: false,
             just_became_visible: false,
         }
@@ -37,7 +37,7 @@ impl AutoHideState {
 
         let is_hidden = self.target_alpha <= self.min_alpha + f32::EPSILON;
 
-        // Reset timer baseline to prevent delta time jumps after idle periods
+        // Reset timer baseline to prevent delta time jumps after state transitions
         if was_hidden != is_hidden {
             self.last_update = Instant::now();
         }
@@ -61,12 +61,13 @@ impl AutoHideState {
         }
 
         let now = Instant::now();
-        let delta = now.duration_since(self.last_update).as_secs_f32();
+        // Clamp delta to 100ms max to prevent jumps after long idle times
+        let delta = now.duration_since(self.last_update).as_secs_f32().min(0.1);
         self.last_update = now;
 
-        // Calculate step rate based on active alpha range (0.75 span)
+        // Calculate step rate based on active alpha range
         let alpha_range = self.max_alpha - self.min_alpha;
-        let step = (alpha_range / self.duration_secs) * delta;
+        let step = (alpha_range / self.duration_secs.max(0.01)) * delta;
 
         if self.current_alpha < self.target_alpha {
             self.current_alpha = (self.current_alpha + step).min(self.target_alpha);

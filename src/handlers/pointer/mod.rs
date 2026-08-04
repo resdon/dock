@@ -1,0 +1,69 @@
+pub mod click;
+pub mod coordinates;
+pub mod drag;
+pub mod motion;
+pub mod scroll;
+
+use smithay_client_toolkit::seat::pointer::{PointerEvent, PointerHandler};
+use smithay_client_toolkit::shell::WaylandSurface;
+use wayland_client::{Connection, QueueHandle};
+
+use crate::app::AppState;
+
+impl PointerHandler for AppState {
+    fn pointer_frame(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _pointer: &wayland_client::protocol::wl_pointer::WlPointer,
+        events: &[PointerEvent],
+    ) {
+        if events.is_empty() {
+            return;
+        }
+
+        self.last_interact_time = std::time::Instant::now();
+        let mut layer_changed = false;
+        let scale_factor = self.docks.first().map(|d| d.scale_factor).unwrap_or(1.0) as f32;
+        let dock_surface_ptr = self.docks.first().map(|d| d.surface.wl_surface().clone());
+
+        // --- STEP 1: Motion Coordinates & Leave Tracking ---
+        // (If motion handling doesn't use running_by_app, remove it as a parameter)
+        layer_changed |= motion::handle_motion_events(self, events, dock_surface_ptr.as_ref(), scale_factor);
+
+        // --- STEP 2: State Retrieval & Layout Metrics ---
+        let running_by_app = self.get_running_by_app();
+        let apps_in_dock = self.get_apps_in_dock();
+
+        let dock_height = 60;
+        let box_size = 48;
+        let spacing = 12;
+
+        let total_items = apps_in_dock.len() as i32;
+        let content_width = if total_items > 0 {
+            total_items * box_size + (total_items + 1) * spacing
+        } else {
+            0
+        };
+        let start_offset_x = if (self.width as i32) > content_width {
+            (self.width as i32 - content_width) / 2
+        } else {
+            0
+        };
+        let layout = (dock_height, box_size, spacing, start_offset_x);
+
+        // --- STEP 3: Hover & Proximity Checks ---
+        layer_changed |= motion::update_hover_and_proximity(self, &apps_in_dock, &running_by_app, scale_factor, layout);
+
+        // --- STEP 4: Scroll Events ---
+        layer_changed |= scroll::handle_scroll_events(self, events, &apps_in_dock, &running_by_app, scale_factor, layout);
+
+        // --- STEP 5: Click & Drag Release ---
+        layer_changed |= click::handle_click_events(self, events, &apps_in_dock, &running_by_app, scale_factor, layout);
+
+        // --- STEP 6: Render Sync ---
+        if layer_changed {
+            self.needs_redraw = true;
+        }
+    }
+}
