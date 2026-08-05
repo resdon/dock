@@ -2,27 +2,62 @@ use wayland_client::backend::ObjectId;
 use wayland_client::protocol::{
     wl_data_offer::WlDataOffer,
     wl_output::WlOutput,
+    wl_subsurface::WlSubsurface,
+    wl_surface::WlSurface,
 };
 
 // SCTK Types
 use smithay_client_toolkit::shell::wlr_layer::LayerSurface;
-use smithay_client_toolkit::shm::slot::Buffer;
 use smithay_client_toolkit::shell::WaylandSurface;
+use smithay_client_toolkit::shm::slot::Buffer;
 
 // Wayland Protocols
 use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1;
-use wayland_client::protocol::wl_subsurface::WlSubsurface;
 
 // Project Types
-use crate::DesktopAction;
 use crate::app::state::AppState;
+use crate::geometry::{Point, Rect};
+use crate::DesktopAction;
 
 // --- Unified Interaction State ---
+#[derive(Clone, Debug)] // <-- Add Clone here
+pub struct DockState {
+    pub pins: Vec<PinItem>,
+    pub hovered_index: Option<usize>,
+    pub current_visibility_alpha: f32,
+    pub panel_rect: Rect,
+}
 
 #[derive(Clone, Debug)]
-pub struct Point {
-    pub x: f64,
-    pub y: f64,
+pub struct PinItem {
+    pub app_id: String,
+    pub x: i32,
+    pub y: i32,
+    pub size: usize,
+    pub scale_factor: f32,
+    pub is_running: bool,
+    pub is_activated: bool,
+    pub running_count: usize,
+    pub badge_count: Option<u32>,
+}
+
+
+pub struct DockRenderState<'a> {
+    pub phys_width: u32,
+    pub phys_height: u32,
+    pub scale_factor: f64,
+    pub dock_height: usize,
+    pub alpha: f32,
+    pub apps_in_dock: &'a [String],
+    pub running_by_app: &'a std::collections::HashMap<String, Vec<&'a crate::models::WindowDiagnostics>>,
+    pub open_windows: &'a std::collections::HashMap<ObjectId, crate::models::WindowDiagnostics>,
+    pub icon_cache: &'a std::collections::HashMap<String, (Vec<u8>, u32)>,
+    pub badges: &'a std::collections::HashMap<String, crate::models::BadgeUpdate>,
+    pub font_manager: &'a mut crate::FontManager,
+    pub fallback_anim: &'a dockman_lib::animations::IconAnimation,
+    pub is_dragging: bool,
+    pub dragged_app_id: Option<&'a String>,
+    pub pointer_position: (i32, i32),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -38,6 +73,7 @@ pub struct InteractionState {
     pub dragging_icon: Option<usize>,
     pub pointer_position: Point,
     pub pointer_inside: bool,
+    pub is_pointer_near: bool,
 }
 
 impl InteractionState {
@@ -48,7 +84,14 @@ impl InteractionState {
             dragging_icon: None,
             pointer_position: Point { x: 0.0, y: 0.0 },
             pointer_inside: false,
+            is_pointer_near: false,
         }
+    }
+}
+
+impl Default for InteractionState {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -56,7 +99,7 @@ impl InteractionState {
 
 pub struct PopupSurface {
     pub subsurface: WlSubsurface,
-    pub surface: wayland_client::protocol::wl_surface::WlSurface,
+    pub surface: WlSurface,
     pub current_buffer: Option<Buffer>,
     pub width: u32,
     pub height: u32,
@@ -72,6 +115,9 @@ pub struct DockInstance {
     pub scale_factor: f64,
     pub hover_popup: Option<PopupSurface>,
     pub menu_popup: Option<PopupSurface>,
+    pub configured: bool,
+    pub context_menu_popup: Option<PopupSurface>,
+	pub dock_state: Option<DockState>,
 }
 
 impl DockInstance {
@@ -87,7 +133,7 @@ impl DockInstance {
 
         if is_hidden {
             let region = compositor_state.wl_compositor().create_region(qh, ());
-            
+
             let margin = 5;
             let trigger_x = (container_start_x - margin).max(0);
             let trigger_w = container_width + (margin * 2);
@@ -144,6 +190,9 @@ pub struct MenuState {
     pub target_app_id: Option<String>,
     pub is_open: bool,
     pub items: Vec<ContextMenuItem>,
+	pub opened_by_button: Option<u32>,      // Track which button opened it
+    pub waiting_for_initial_release: bool, // Guard against the opening click
+	pub just_opened: bool,
 }
 
 pub struct HoverState {

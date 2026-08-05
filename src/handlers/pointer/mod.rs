@@ -1,8 +1,11 @@
 pub mod click;
+pub mod context_menu;
 pub mod coordinates;
+pub mod dock;
 pub mod drag;
 pub mod motion;
 pub mod scroll;
+pub mod window_list;
 
 use smithay_client_toolkit::seat::pointer::{PointerEvent, PointerHandler};
 use smithay_client_toolkit::shell::WaylandSurface;
@@ -27,11 +30,10 @@ impl PointerHandler for AppState {
         let scale_factor = self.docks.first().map(|d| d.scale_factor).unwrap_or(1.0) as f32;
         let dock_surface_ptr = self.docks.first().map(|d| d.surface.wl_surface().clone());
 
-        // --- STEP 1: Motion Coordinates & Leave Tracking ---
-        // (If motion handling doesn't use running_by_app, remove it as a parameter)
+        // Step 1: Motion Coordinates & Leave Tracking
         layer_changed |= motion::handle_motion_events(self, events, dock_surface_ptr.as_ref(), scale_factor);
 
-        // --- STEP 2: State Retrieval & Layout Metrics ---
+        // Step 2: State Retrieval & Layout Metrics
         let running_by_app = self.get_running_by_app();
         let apps_in_dock = self.get_apps_in_dock();
 
@@ -52,16 +54,16 @@ impl PointerHandler for AppState {
         };
         let layout = (dock_height, box_size, spacing, start_offset_x);
 
-        // --- STEP 3: Hover & Proximity Checks ---
+        // Step 3: Hover & Proximity Checks
         layer_changed |= motion::update_hover_and_proximity(self, &apps_in_dock, &running_by_app, scale_factor, layout);
 
-        // --- STEP 4: Scroll Events ---
+        // Step 4: Scroll Events
         layer_changed |= scroll::handle_scroll_events(self, events, &apps_in_dock, &running_by_app, scale_factor, layout);
 
-        // --- STEP 5: Click & Drag Release ---
+        // Step 5: Click & Drag Release
         layer_changed |= click::handle_click_events(self, events, &apps_in_dock, &running_by_app, scale_factor, layout);
 
-        // --- STEP 6: Render Sync ---
+        // Step 6: Render Sync
         if layer_changed {
             self.needs_redraw = true;
         }

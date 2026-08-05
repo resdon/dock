@@ -234,7 +234,7 @@ impl AppState {
                 popup.surface.commit();
             }
 
-			// =========================================================================
+            // =========================================================================
             // CONTEXT MENU SUBSURFACE MANAGEMENT & RENDERING
             // =========================================================================
             let show_menu = self.menu_state.is_open && !self.menu_state.items.is_empty();
@@ -293,15 +293,20 @@ impl AppState {
                     }
                 });
 
-				popup.subsurface.set_position(geom.x, geom.y);
+                popup.subsurface.set_position(
+                    (geom.x as f64 / dock_scale).round() as i32,
+                    (geom.y as f64 / dock_scale).round() as i32,
+                );
 
-                popup.width = geom.logical_width as u32;
-                popup.height = geom.logical_height as u32;
-                
-                if geom.phys_width > 0 && geom.phys_height > 0 {
+                let logical_w = (geom.width as f64 / dock_scale).round() as u32;
+                let logical_h = (geom.height as f64 / dock_scale).round() as u32;
+                popup.width = logical_w;
+                popup.height = logical_h;
+
+                if geom.width > 0 && geom.height > 0 {
                     let (buffer, canvas) = self
                         .pool
-                        .create_buffer(geom.phys_width, geom.phys_height, geom.phys_width * 4, wl_shm::Format::Argb8888)
+                        .create_buffer(geom.width, geom.height, geom.width * 4, wl_shm::Format::Argb8888)
                         .expect("Failed to allocate context menu popup buffer");
 
                     let local_ptr_x = ((self.interaction.pointer_position.x * dock_scale) - geom.x as f64).max(0.0) as i32;
@@ -309,8 +314,8 @@ impl AppState {
 
                     render::context_menu::render_context_menu_surface(
                         canvas,
-                        geom.phys_width,
-                        geom.phys_height,
+                        geom.width,
+                        geom.height,
                         dock_scale as f32,
                         &self.menu_state,
                         &mut self.font_manager,
@@ -322,11 +327,11 @@ impl AppState {
                     buffer
                         .attach_to(&popup.surface)
                         .expect("Failed to attach context menu buffer");
-                    popup.surface.damage_buffer(0, 0, geom.phys_width, geom.phys_height);
+                    popup.surface.damage_buffer(0, 0, geom.width, geom.height);
 
                     let compositor = self.compositor_state.wl_compositor();
                     let region = compositor.create_region(qh, ());
-                    region.add(0, 0, geom.logical_width as i32, geom.logical_height as i32);
+                    region.add(0, 0, logical_w as i32, logical_h as i32);
                     popup.surface.set_input_region(Some(&region));
                     region.destroy();
 
@@ -340,6 +345,7 @@ impl AppState {
                 popup.surface.attach(None, 0, 0);
                 popup.surface.commit();
             }
+
             // =========================================================================
             // MAIN DOCK RENDER
             // =========================================================================

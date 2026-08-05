@@ -1,5 +1,3 @@
-// src/render/text.rs
-
 use crate::FontManager;
 
 pub fn draw_text(

@@ -13,6 +13,13 @@ pub struct IconLoader {
     tx: mpsc::Sender<IconLoadRequest>,
 }
 
+fn rgba_to_bgra(mut data: Vec<u8>) -> Vec<u8> {
+    for pixel in data.chunks_exact_mut(4) {
+        pixel.swap(0, 2); // Swap Red (0) and Blue (2)
+    }
+    data
+}
+
 impl IconLoader {
     pub fn new(result_tx: mpsc::Sender<IconLoadResult>) -> Self {
         let (tx, rx) = mpsc::channel::<IconLoadRequest>();
@@ -29,11 +36,8 @@ impl IconLoader {
 
         let anim_dir_str = anim_dir.to_str().unwrap_or("assets/24").to_string();        
         
-        // A single background worker thread processes the queue sequentially 
-        // with zero mutex locking overhead or thread contention.
         thread::spawn(move || {
             while let Ok(req) = rx.recv() {
-                // Step 1: Try standard XDG lookup first
                 let mut source_used = "none";
                 let icon_path = match crate::resolvers::get_icon_path(&req.app_id) {
                     Some(path) => {
@@ -41,7 +45,6 @@ impl IconLoader {
                         Some(path)
                     }
                     None => {
-                        // Step 2: Fallback to parallel chunked icon_list.txt search
                         match crate::resolvers::search_icon_list_file(&req.app_id) {
                             Some(path) => {
                                 source_used = "icon_list.txt cache";
@@ -52,7 +55,6 @@ impl IconLoader {
                     }
                 };
 
-                // Step 3: Attempt to load and decode image (Raster or SVG)
                 if let Some(ref path) = icon_path {
                     println!("[ICON LOADER] App '{}' resolved via [{}] -> path: {:?}", req.app_id, source_used, path);
                     
@@ -61,7 +63,6 @@ impl IconLoader {
                         .map_or(false, |e| e.eq_ignore_ascii_case("svg"));
 
                     if is_svg {
-                        // Use resvg's internal re-exported usvg to avoid version mismatch errors
                         let opt = resvg::usvg::Options::default();
                         if let Ok(svg_data) = std::fs::read(path) {
                             if let Ok(rtree) = resvg::usvg::Tree::from_data(&svg_data, &opt) {
@@ -72,7 +73,7 @@ impl IconLoader {
                                     resvg::render(&rtree, tiny_skia::Transform::default(), &mut pixmap.as_mut());
                                     let _ = result_tx.send(IconLoadResult {
                                         app_id: req.app_id.clone(),
-                                        rgba: pixmap.data().to_vec(),
+                                        rgba: rgba_to_bgra(pixmap.data().to_vec()),
                                         size: w,
                                         animation: None,
                                     });
@@ -87,7 +88,7 @@ impl IconLoader {
 
                             let _ = result_tx.send(IconLoadResult {
                                 app_id: req.app_id.clone(),
-                                rgba: rgba_img.into_raw(),
+                                rgba: rgba_to_bgra(rgba_img.into_raw()),
                                 size: w,
                                 animation: None,
                             });
@@ -95,19 +96,19 @@ impl IconLoader {
                         }
                     }
                 }
-                // Final generic fallback (or fallback to animation if standard icon is missing)
+
                 let anim = IconAnimation::new(&anim_dir_str, 48, 12);
                 if let Some(frame) = anim.current_frame() {
                     let _ = result_tx.send(IconLoadResult {
                         app_id: req.app_id.clone(),
-                        rgba: frame.rgba.clone(),
+                        rgba: rgba_to_bgra(frame.rgba.clone()),
                         size: frame.width,
                         animation: Some(anim),
                     });
                 } else if let Some((default_bytes, size)) = super::state::load_generic_fallback_bytes() {
                     let _ = result_tx.send(IconLoadResult {
                         app_id: req.app_id.clone(),
-                        rgba: default_bytes,
+                        rgba: rgba_to_bgra(default_bytes),
                         size,
                         animation: None,
                     });

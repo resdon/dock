@@ -374,7 +374,6 @@ impl World {
         eprintln!("[DrawText] Rendering string: \"{}\"", text);
 
         for c in text.chars() {
-            // Skip zero-width spaces and non-printable control characters
             if c == '\u{200b}' || c.is_control() {
                 continue;
             }

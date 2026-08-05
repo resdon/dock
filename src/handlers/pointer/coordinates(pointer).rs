@@ -26,18 +26,11 @@ pub fn map_coordinates(
 
     // Subsurface offset mapping: Context Menu
     if state.menu_state.is_open && !state.menu_state.items.is_empty() {
-        let total_items = state.menu_state.items.len();
-        let geom = ContextMenuGeometry::default().compute_bounds(
-            phys_width / 2,
-            phys_height,
-            phys_width,
-            phys_height,
-            total_items,
-            scale_factor as f64,
-        );
+        let (menu_x, menu_y, _, _) =
+            state.get_context_menu_bounds(phys_width, phys_height, scale_factor);
         return (
-            px + (geom.x as f32 / scale_factor),
-            py + (geom.y as f32 / scale_factor),
+            px + (menu_x as f32 / scale_factor),
+            py + (menu_y as f32 / scale_factor),
         );
     }
 

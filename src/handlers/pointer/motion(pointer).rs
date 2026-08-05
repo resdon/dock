@@ -75,40 +75,19 @@ pub fn handle_motion_events(
                         }
                     }
 
-                    // Map coordinates if event occurs on the open context menu surface, accounting for dock height and screen position
+                    // Map coordinates if event occurs on the open context menu surface
                     if state.menu_state.is_open && !state.menu_state.items.is_empty() {
                         let phys_width = (dock.width as f64 * scale).round() as i32;
                         let phys_height = (dock.height as f64 * scale).round() as i32;
                         let menu_item_count = state.menu_state.items.len();
-                        
-                        let mut anchor_x = phys_width / 2;
-                        if let Some(ref target_app) = state.menu_state.target_app_id {
-                            for d in &state.docks {
-                                if let Some(ref dock_state) = d.dock_state {
-                                    for pin in &dock_state.pins {
-                                        if &pin.app_id == target_app {
-                                            let pin_center_logical = pin.x as f32 + (pin.size as f32 / 2.0);
-                                            anchor_x = (pin_center_logical * scale as f32).round() as i32;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        let mut geom = ContextMenuGeometry::default().compute_bounds(
-                            anchor_x,
+                        let geom = ContextMenuGeometry::default().compute_bounds(
+                            phys_width / 2,
                             phys_height,
                             phys_width,
                             phys_height,
                             menu_item_count,
                             scale,
                         );
-
-                        // Account for dock height and screen position offset
-                        let screen_height_phys = (state.height as f64 * scale).round() as i32;
-                        let dock_top_phys = screen_height_phys - phys_height;
-                        geom.y = dock_top_phys - geom.phys_height;
 
                         let is_menu_surface = dock.context_menu_popup.as_ref().map_or(false, |p| p.surface == event.surface);
 
@@ -153,27 +132,8 @@ pub fn handle_motion_events(
                 }
             }
             PointerEventKind::Leave { .. } => {
-                for dock in &state.docks {
-                    let is_menu_surface = dock.context_menu_popup.as_ref().map_or(false, |p| p.surface == event.surface);
-                    if is_menu_surface {
-                        state.menu_state.is_open = false;
-                        state.menu_state.items.clear();
-                        state.menu_state.target_app_id = None;
-                        layer_changed = true;
-                    }
-
-                    let is_hover_surface = dock.hover_popup.as_ref().map_or(false, |p| p.surface == event.surface);
-                    if is_hover_surface {
-                        state.hover_state.is_visible = false;
-                        state.hover_state.app_id = None;
-                        layer_changed = true;
-                    }
-                }
-
-                if dock_surface_ptr.map_or(true, |ptr| ptr == &event.surface) {
-                    state.interaction.pointer_inside = false;
-                    layer_changed = true;
-                }
+                state.interaction.pointer_inside = false;
+                layer_changed = true;
             }
             _ => {}
         }
@@ -221,34 +181,14 @@ pub fn update_hover_and_proximity(
     // 1. If context menu is open, calculate its bounds using ContextMenuGeometry and suppress hover popups
     if state.menu_state.is_open && !state.menu_state.items.is_empty() {
         let menu_item_count = state.menu_state.items.len();
-        
-        let mut anchor_x = phys_width / 2;
-        if let Some(ref target_app) = state.menu_state.target_app_id {
-            for d in &state.docks {
-                if let Some(ref dock_state) = d.dock_state {
-                    for pin in &dock_state.pins {
-                        if &pin.app_id == target_app {
-                            let pin_center_logical = pin.x as f32 + (pin.size as f32 / 2.0);
-                            anchor_x = (pin_center_logical * dock_scale as f32).round() as i32;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        let mut geom = ContextMenuGeometry::default().compute_bounds(
-            anchor_x,
+        let geom = ContextMenuGeometry::default().compute_bounds(
+            phys_width / 2,
             phys_height,
             phys_width,
             phys_height,
             menu_item_count,
             dock_scale,
         );
-
-        let screen_height_phys = (state.height as f64 * dock_scale).round() as i32;
-        let dock_top_phys = screen_height_phys - phys_height;
-        geom.y = dock_top_phys - geom.phys_height;
 
         if ptr_x_scaled >= geom.x
             && ptr_x_scaled <= (geom.x + geom.phys_width)

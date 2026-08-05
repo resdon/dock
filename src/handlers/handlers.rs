@@ -18,7 +18,10 @@ use smithay_client_toolkit::{
     seat::{
         Capability, SeatHandler, SeatState,
     },
-    shell::wlr_layer::{Anchor, LayerShellHandler, LayerSurface, LayerSurfaceConfigure},
+    shell::{
+        wlr_layer::{LayerShellHandler, LayerSurface, LayerSurfaceConfigure},
+        WaylandSurface,
+    },
     shm::{Shm, ShmHandler},
 };
 
@@ -53,13 +56,11 @@ use wayland_protocols::wp::fractional_scale::v1::client::{
 
 // Resolved launcher.sh path
 pub fn get_launcher_path() -> String {
-    // 1. Dev Mode: Only if launched directly from repo root
     let dev_script = Path::new("./scripts/launcher.sh");
     if dev_script.exists() {
         return dev_script.to_string_lossy().into_owned();
     }
 
-    // 2. User Local Install ($XDG_DATA_HOME/dock/launcher.sh or ~/.local/share/dock/launcher.sh)
     let data_home = env::var("XDG_DATA_HOME").unwrap_or_else(|_| {
         let home = env::var("HOME").unwrap_or_default();
         format!("{}/.local/share", home)
@@ -70,7 +71,6 @@ pub fn get_launcher_path() -> String {
         return user_path;
     }
 
-    // 3. System-wide Install (/usr/share/dock/launcher.sh)
     "/usr/share/dock/launcher.sh".to_string()
 }
 
@@ -78,19 +78,17 @@ fn parse_window_states(state_bytes: &[u8]) -> (bool, bool) {
     let mut activated = false;
     let mut minimized = false;
     
-    // The state event sends a list of u32s. 
-    // Protocol zwlr_foreign_toplevel_handle_v1::State:
-    // 0 = Maximize, 1 = Minimize, 2 = Activated, 3 = Fullscreen
     for chunk in state_bytes.chunks_exact(4) {
         let value = u32::from_ne_bytes(chunk.try_into().unwrap());
         match value {
             2 => activated = true, 
             1 => minimized = true, 
-            _ => {} // Ignore Maximize (0) and Fullscreen (3) for now
+            _ => {} 
         }
     }
     (activated, minimized)
 }
+
 /// Parses a `text/uri-list` string into valid local PathBuf instances.
 pub fn parse_uri_list(buffer: &str) -> Vec<PathBuf> {
     buffer
@@ -110,7 +108,7 @@ pub fn parse_uri_list(buffer: &str) -> Vec<PathBuf> {
         })
         .collect()
 }
-// Helper
+
 fn percent_decode(input: &str) -> Option<String> {
     let mut bytes = Vec::new();
     let mut chars = input.bytes();
@@ -120,7 +118,6 @@ fn percent_decode(input: &str) -> Option<String> {
             let h1 = chars.next()?;
             let h2 = chars.next()?;
             
-            // Store array in a local variable so the borrow lasts long enough for `from_utf8`
             let hex_bytes = [h1, h2];
             let hex_str = std::str::from_utf8(&hex_bytes).ok()?;
             let byte = u8::from_str_radix(hex_str, 16).ok()?;
@@ -164,11 +161,9 @@ impl Dispatch<wayland_client::protocol::wl_region::WlRegion, ()> for AppState {
         _data: &(),
         _conn: &wayland_client::Connection,
         _qhandle: &wayland_client::QueueHandle<Self>,
-    ) {
-        // WlRegion has no events, so this body can remain empty.
-    }
+    ) {}
 }
-// --- Dispatch for WlDataDeviceManager ---
+
 impl Dispatch<WlDataDeviceManager, ()> for AppState {
     fn event(
         _state: &mut Self,
@@ -180,7 +175,6 @@ impl Dispatch<WlDataDeviceManager, ()> for AppState {
     ) {}
 }
 
-// --- Collect MIME types as they arrive ---
 impl Dispatch<WlDataOffer, ()> for AppState {
     fn event(
         state: &mut Self,
@@ -196,7 +190,6 @@ impl Dispatch<WlDataOffer, ()> for AppState {
     }
 }
 
-// --- Dispatch for WlDataDevice (Full DnD Handler) ---
 impl Dispatch<WlDataDevice, ()> for AppState {
     fn event(
         state: &mut Self,
@@ -249,8 +242,6 @@ impl Dispatch<WlDataDevice, ()> for AppState {
                 let drop_x = state.dnd_state.drag_x;
                 let drop_y = state.dnd_state.drag_y;
 
-                eprintln!("[DnD DEBUG] Drop event received at x={:.1}, y={:.1}", drop_x, drop_y);
-
                 if let Some(offer) = state.dnd_state.current_offer.take() {
                     let has_uri_list = state.dnd_state.mime_types.iter().any(|m| m == "text/uri-list");
 
@@ -263,33 +254,19 @@ impl Dispatch<WlDataDevice, ()> for AppState {
 
                             let mut reader = read_pipe;
                             let mut buffer = String::new();
-                            match reader.read_to_string(&mut buffer) {
-                                Ok(bytes_read) => {
-                                    eprintln!("[DnD DEBUG] Read {} bytes from pipe", bytes_read);
-                                    eprintln!("[DnD DEBUG] Raw URI payload:\n--- START ---\n{}\n--- END ---", buffer.trim());
-                                    
-                                    let paths = parse_uri_list(&buffer);
-                                    eprintln!("[DnD DEBUG] Parsed {} path(s): {:?}", paths.len(), paths);
-
-                                    if !paths.is_empty() {
-                                        state.handle_file_drop_on_icon(drop_x, drop_y, paths);
-                                    } else {
-                                        eprintln!("[DnD DEBUG] Warning: Parsed paths list was empty!");
-                                    }
+                            if let Ok(_bytes_read) = reader.read_to_string(&mut buffer) {
+                                let paths = parse_uri_list(&buffer);
+                                if !paths.is_empty() {
+                                    state.handle_file_drop_on_icon(drop_x, drop_y, paths);
                                 }
-                                Err(e) => eprintln!("[DnD DEBUG] Error reading pipe: {}", e),
                             }
                         }
 
                         if offer.version() >= 3 {
                             offer.finish();
                         }
-                    } else {
-                        eprintln!("[DnD DEBUG] Dropped data does not contain 'text/uri-list' MIME type");
                     }
                     offer.destroy();
-                } else {
-                    eprintln!("[DnD DEBUG] No active offer found on drop!");
                 }
 
                 state.dnd_state.hovered_dock_index = None;
@@ -300,7 +277,6 @@ impl Dispatch<WlDataDevice, ()> for AppState {
         }
     }
 
-    // Required so wayland-client can instantiate incoming WlDataOffer proxies (opcode 0)
     fn event_created_child(
         opcode: u16,
         qh: &QueueHandle<Self>,
@@ -311,7 +287,7 @@ impl Dispatch<WlDataDevice, ()> for AppState {
         }
     }
 }
-// -----Fractional scale manager handler--------
+
 impl Dispatch<WpFractionalScaleManagerV1, ()> for AppState {
     fn event(
         _state: &mut Self,
@@ -320,59 +296,55 @@ impl Dispatch<WpFractionalScaleManagerV1, ()> for AppState {
         _data: &(),
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
-    ) {
-        // Manager object emits no events directly
-    }
+    ) {}
 }
 
-// -----Fractional scale notifier handler--------
 impl Dispatch<WpFractionalScaleV1, WlOutput> for AppState {
     fn event(
         state: &mut Self,
         _proxy: &WpFractionalScaleV1,
         event: wp_fractional_scale_v1::Event,
-        data: &WlOutput, // `data` is now the WlOutput bound to this notifier
+        data: &WlOutput,
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
     ) {
-        match event {
-            wp_fractional_scale_v1::Event::PreferredScale { scale } => {
-                // Scale is provided in 120ths (120 = 1.0x, 150 = 1.25x, 180 = 1.5x)
-                let new_scale = scale as f64 / 120.0;
-                
-                // Find the specific dock instance attached to this WlOutput
-                if let Some(dock) = state.docks.iter_mut().find(|d| d.output == *data) {
-                    if (dock.scale_factor - new_scale).abs() > f64::EPSILON {
-                        dock.scale_factor = new_scale;
-                        state.needs_redraw = true;
-                    }
+        if let wp_fractional_scale_v1::Event::PreferredScale { scale } = event {
+            let new_scale = scale as f64 / 120.0;
+            if let Some(dock) = state.docks.iter_mut().find(|d| d.output == *data) {
+                if (dock.scale_factor - new_scale).abs() > f64::EPSILON {
+                    dock.scale_factor = new_scale;
+                    state.needs_redraw = true;
                 }
             }
-            _ => {}
         }
     }
 }
 
-// =========================================================================
-// Registry Handler to Bind Globals
-// =========================================================================
 impl RegistryHandler<AppState> for AppState {
     fn new_global(
-        _data: &mut AppState,
+        state: &mut AppState,
         _conn: &Connection,
-        _qh: &QueueHandle<AppState>,
-        _name: u32,
+        qh: &QueueHandle<AppState>,
+        name: u32,
         interface: &str,
         version: u32,
     ) {
         eprintln!("[DEBUG] Global detected: {} (v{})", interface, version);
+
+        if interface == WlSubcompositor::interface().name {
+            let subcompositor = state.registry_state.registry().bind::<WlSubcompositor, _, _>(
+                name,
+                version.min(1),
+                qh,
+                (),
+            );
+            state.subcompositor = Some(subcompositor);
+        }
     }
+
     fn remove_global(_data: &mut AppState, _conn: &Connection, _qh: &QueueHandle<AppState>, _name: u32, _interface: &str) {}
 }
 
-// =========================================================================
-// Existing SCTK Registry Glue Implementations
-// =========================================================================
 impl ProvidesRegistryState for AppState {
     fn registry(&mut self) -> &mut RegistryState {
         &mut self.registry_state
@@ -380,12 +352,8 @@ impl ProvidesRegistryState for AppState {
     smithay_client_toolkit::registry_handlers!(OutputState, SeatState);
 }
 
-// =========================================================================
-// Compositor Handler - Track dock surface output
-// =========================================================================
 impl CompositorHandler for AppState {
     fn surface_enter(&mut self, _: &Connection, _qh: &QueueHandle<Self>, _: &wayland_client::protocol::wl_surface::WlSurface, output: &WlOutput) {
-        println!("[DOCK MONITOR] Surface entered output: {:?}", output);
         self.current_output = Some(output.clone());
         self.needs_redraw = true;
     }
@@ -417,27 +385,27 @@ impl OutputHandler for AppState {
 }
 
 impl LayerShellHandler for AppState {
-    fn closed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &LayerSurface) {}
-
     fn configure(
         &mut self,
         _: &Connection,
-        _: &QueueHandle<Self>,
+        _qh: &QueueHandle<Self>,
         layer: &LayerSurface,
         configure: LayerSurfaceConfigure,
         _: u32,
     ) {
-        // Capture the structural allocations chosen by sctk/compositor
-        self.width = configure.new_size.0.max(100) as i32;
-        
-        // Keep height strictly fixed at 60px (popups render via subsurfaces)
-        self.height = 60;
-        
-        layer.set_size(self.width as u32, self.height as u32);
-        layer.set_anchor(Anchor::BOTTOM);
-        
-        // Flag for redraw instead of calling draw(qh) directly to prevent borrow checker conflicts
-        self.needs_redraw = true;
+        for dock in &mut self.docks {
+            if dock.surface.wl_surface() == layer.wl_surface() {
+                dock.width = configure.new_size.0;
+                dock.height = configure.new_size.1;
+                dock.configured = true;
+                self.needs_redraw = true;
+                break;
+            }
+        }
+    }
+
+    fn closed(&mut self, _: &Connection, _: &QueueHandle<Self>, layer: &LayerSurface) {
+        self.docks.retain(|d| d.surface.wl_surface() != layer.wl_surface());
     }
 }
 impl ShmHandler for AppState {
@@ -456,8 +424,6 @@ impl SeatHandler for AppState {
 
     fn new_capability(&mut self, _conn: &Connection, qh: &QueueHandle<Self>, seat: WlSeat, cap: Capability) {
         if cap == Capability::Pointer {
-            println!("[INPUT DETECTOR] Mouse Pointer Capability Registered!");
-
             if let Some(ref ddm) = self.data_device_manager {
                 self.data_device = Some(ddm.get_data_device(&seat, qh, ()));
             }
@@ -473,16 +439,12 @@ impl SeatHandler for AppState {
 
     fn remove_capability(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _seat: WlSeat, cap: Capability) {
         if cap == Capability::Pointer {
-            println!("[INPUT DETECTOR] Mouse Pointer Capability Unplugged!");
             self.wl_pointer = None;
             self.data_device = None;
         }
     }
 }
 
-// =========================================================================
-// Foreign Toplevel Event Handlers
-// =========================================================================
 impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for AppState {
     fn event(
         state: &mut Self,
@@ -504,9 +466,7 @@ impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for AppState {
         0 => (ZwlrForeignToplevelHandleV1, ()),
     ]);
 }
-// =========================================================================
-// ZwlrForeignToplevelHandleV1 Dispatcher
-// =========================================================================
+
 impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for AppState {
     fn event(
         state: &mut Self,
@@ -528,21 +488,21 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for AppState {
                         window.outputs.push(output);
                     }
                 }
-                state.needs_redraw = true; // ✅ Changed from state.draw(qh)
+                state.needs_redraw = true;
             }
             zwlr_foreign_toplevel_handle_v1::Event::OutputLeave { output } => {
                 if let Some(window) = state.open_windows.get_mut(&handle.id()) {
                     window.outputs.retain(|o| o != &output);
                 }
-                state.needs_redraw = true; // ✅ Changed from state.draw(qh)
+                state.needs_redraw = true;
             }
             zwlr_foreign_toplevel_handle_v1::Event::Closed => {
                 state.open_windows.remove(&handle.id());
-                state.needs_redraw = true; // ✅ Changed from state.draw(qh)
+                state.needs_redraw = true;
             }
             zwlr_foreign_toplevel_handle_v1::Event::Done => {
                 state.update_window_icon(handle.id());
-                state.needs_redraw = true; // ✅ Changed from state.draw(qh)
+                state.needs_redraw = true;
             }
             zwlr_foreign_toplevel_handle_v1::Event::Title { title } => {
                 if let Some(window) = state.open_windows.get_mut(&handle.id()) {
@@ -550,7 +510,7 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for AppState {
                     window.icon_resolved = false;
                 }
                 state.update_window_icon(handle.id());
-                state.needs_redraw = true; // ✅ Changed from state.draw(qh)
+                state.needs_redraw = true;
             }
             zwlr_foreign_toplevel_handle_v1::Event::AppId { app_id } => {
                 if let Some(window) = state.open_windows.get_mut(&handle.id()) {
@@ -558,7 +518,6 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for AppState {
                     window.app_name = app_id.clone();
                     window.icon_resolved = false;
                 }
-                // Kick off the icon load asynchronously without blocking state updates
                 state.request_icon_load(app_id.clone());
                 state.needs_redraw = true;
             }
@@ -569,16 +528,13 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for AppState {
                     window.is_minimized = minimized;
                     window.is_pending = false; 
                 }
-                state.needs_redraw = true; // ✅ Changed from state.draw(qh)
+                state.needs_redraw = true;
             }
             _ => {}
         }
     }
 }
 
-// =========================================================================
-// Standard SCTK Macro Framework Delegates
-// =========================================================================
 delegate_registry!(AppState);
 delegate_compositor!(AppState);
 delegate_output!(AppState);

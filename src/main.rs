@@ -1,11 +1,11 @@
 pub mod app;
 pub mod cache;
+pub mod geometry;
 pub mod graphics;
 pub mod handlers;
 pub mod listeners;
 pub mod render;
 pub mod resolvers;
-
 
 use app::AppState;
 
@@ -13,12 +13,13 @@ pub use dockman_lib::models;
 pub use dockman_lib::icon_utils;
 pub use dockman_lib::terminal_graphics;
 pub use dockman_lib::get_icon_path;
+pub use geometry::*;
 
 use smithay_client_toolkit::shell::WaylandSurface;
 use smithay_client_toolkit::{
     compositor::CompositorState,
     output::OutputState,
-    registry::{RegistryState},
+    registry::RegistryState,
     seat::SeatState,
     shm::Shm,
 };
@@ -37,8 +38,10 @@ use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_m
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::fs::{self, File, OpenOptions};
+use std::io::{BufRead, BufReader, Write};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use libc; // for loop and animation
 
@@ -84,6 +87,47 @@ fn load_icon_index_map() -> HashMap<String, PathBuf> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // --- DUAL LOGGER INITIALIZATION ---
+    let home = std::env::var("HOME").unwrap_or_default();
+    let log_dir = PathBuf::from(format!("{}/.local/share/dock", home));
+    let _ = fs::create_dir_all(&log_dir);
+
+    // 1. Internal App Log Stream
+    let app_log_path = log_dir.join("app.log");
+    let mut app_logger = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&app_log_path)
+        .expect("Failed to initialize app.log");
+    
+    writeln!(app_logger, "[{}] INFO: Dock application starting up.", Instant::now().elapsed().as_secs())?;
+
+    // 2. External Mouse Position Log Stream (Option A Thread)
+    let mouse_log_path = log_dir.join("mouse.log");
+    thread::spawn(move || {
+        let mut mouse_logger = match OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&mouse_log_path)
+        {
+            Ok(file) => file,
+            Err(_) => return,
+        };
+
+        loop {
+            // Capture or sample global pointer coordinates (stubbed for evdev/compositor integration)
+            let (x, y) = (0, 0); 
+            let _ = writeln!(
+                mouse_logger,
+                "pos_x: {}, pos_y: {}, time: {:?}",
+                x,
+                y,
+                Instant::now()
+            );
+            thread::sleep(Duration::from_millis(20)); // Sample at ~50Hz
+        }
+    });
+
     // 1. Kick off background indexer
     crate::cache::icon_indexer::spawn_startup_indexer();
 
@@ -118,7 +162,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let pool = SlotPool::new(1024 * 1024 * 16, &shm_state).expect("Failed to create memory pool");
     
-    let home = std::env::var("HOME").unwrap_or_default();
     let user_data_font = format!("{}/.local/share/dock/font.ttf", home);
 
     let font_path = [
@@ -189,6 +232,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             target_app_id: None,
             is_open: false,
             items: Vec::new(),
+			opened_by_button: None,
+		    waiting_for_initial_release: false,
+		    just_opened: false,
         },
         hover_state: HoverState {
             x: 0,
@@ -196,14 +242,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             is_visible: false,
             last_leave_time: None,
         },
-        last_interact_time: std::time::Instant::now(),
+        last_interact_time: Instant::now(),
         needs_redraw: false,
         last_mouse_pos: None,
         is_dragging: false,
         drag_start_x: 0,
         drag_start_y: 0,
         dragged_app_id: None,
-        last_drag_draw: std::time::Instant::now(),
+        last_drag_draw: Instant::now(),
         sys_scanner: sysinfo::System::new_with_specifics(
             sysinfo::RefreshKind::nothing().with_processes(sysinfo::ProcessRefreshKind::everything()),
         ),
@@ -217,11 +263,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         data_device_manager: None,
         data_device: None,
         badges: HashMap::new(),
-        subcompositor,
+        subcompositor: Some(subcompositor),
         icon_load: icon_loader,
         animations: HashMap::new(),
         hide_state: AutoHideState::new(),
-        interaction: InteractionState::new(),
+        interaction: InteractionState::new(),   
     };
 
     state.data_device_manager = state.registry_state
@@ -278,20 +324,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             scale_factor,
             hover_popup: None,
             menu_popup: None,
+            configured: false,
+			context_menu_popup: None,
+			dock_state: None,
         });
     }
 
-    // --- MAIN EVENT LOOP ---
+	// --- MAIN EVENT LOOP ---
     loop {
-        // 1. Dispatch any events already in the client queue
+        // 1. INPUT: Dispatch Wayland socket events from event queue
         if let Err(e) = event_queue.dispatch_pending(&mut state) {
             eprintln!("[WARN] Dispatch error: {}", e);
             break;
         }
 
-        // 2. Drain background channels (Icons & DBus Badges)
+        // 2. INTERACTION: Evaluate hitboxes, pointer proximity, and active drag targets
+        let is_near = state.check_dock_proximity();
+        state.interaction.is_pointer_near = is_near;
+
+        // 3. STATE UPDATE: Drain background channels (Icons & DBus) & update flags
+        let mut state_changed = false;
         if state.process_loaded_icons() {
-            state.needs_redraw = true;
+            state_changed = true;
         }
 
         while let Ok(update) = badge_rx.try_recv() {
@@ -301,16 +355,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .to_lowercase();
 
             state.badges.insert(clean_id, update);
+            state_changed = true;
+        }
+
+        if state_changed {
             state.needs_redraw = true;
         }
 
-        // 3. Advance animations, hover timers, and auto-hide transitions
+        // 4. ANIMATION: Step timers, opacity transitions, and active frame tickers
         state.fallback_anim.is_active = state.is_animating();
         let frame_advanced = state.fallback_anim.update();
         let timers_changed = state.update_hover_and_hide_timers();
         state.update_animations(&qh);
 
-        // Advance dynamic per-app animations
         for (app_id, anim) in state.animations.iter_mut() {
             if anim.update() {
                 if let Some(frame) = anim.current_frame() {
@@ -320,15 +377,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        // 4. Determine socket poll timeout dynamically
+		// 5. RENDER: Pass visual snapshot to render functions
+        if frame_advanced || timers_changed || state.needs_redraw {
+            state.draw(&qh); 
+
+            // Only draw context menu here if it's open; 
+            // the initial display is handled safely inside the configure callback.
+
+            state.needs_redraw = false;
+            let _ = state.connection.flush();
+        }
+
+        // 6. POLL: Calculate dynamic timeout and wait for socket readiness
         let is_hide_animating = (state.hide_state.current_alpha - state.hide_state.target_alpha).abs() >= 0.001;
         let timeout_ms = if state.fallback_anim.is_active || is_hide_animating || state.needs_redraw {
             15
         } else {
-            50 
+            50
         };
 
-        // 5. Prepare Wayland Socket Read & Poll
         let _ = state.connection.flush();
         if let Some(guard) = state.connection.prepare_read() {
             let raw_fd = std::os::unix::io::AsRawFd::as_raw_fd(&guard.connection_fd());
@@ -343,19 +410,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if poll_res > 0 && (pfd.revents & libc::POLLIN) != 0 {
                 let _ = guard.read();
             }
-        }
-
-        // 6. Dispatch events newly read from socket
-        if let Err(e) = event_queue.dispatch_pending(&mut state) {
-            eprintln!("[WARN] Dispatch error: {}", e);
-            break;
-        }
-
-        // 7. Redraw surfaces if needed and FLUSH immediately
-        if frame_advanced || timers_changed || state.needs_redraw {
-            state.draw(&qh);
-            state.needs_redraw = false;
-            let _ = state.connection.flush();
         }
     }
     Ok(())

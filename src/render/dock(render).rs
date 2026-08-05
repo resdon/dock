@@ -175,11 +175,9 @@ pub fn render_dock_items(
             );
         }
 
-		// Render tracking indicator dash(es) with configurable thickness
+        // Render tracking indicator dash(es) with group-wide app highlighting[cite: 2]
         if pin.is_running {
-            let indicator_y = start_y + box_size + 2; // 4 pixels below the icon box
-            let dash_height = 3;                      // Height (thickness) in pixels (e.g., 4px)
-
+            let indicator_y = start_y + box_size + (4.0f32 * pin.scale_factor).round() as usize;
             if indicator_y < phys_height {
                 let num_dashes = if pin.running_count > 0 {
                     pin.running_count.min(5)
@@ -187,13 +185,14 @@ pub fn render_dock_items(
                     1
                 };
 
-                let total_line_width = 28.0f32; // Fixed total width of the indicator group
-                let dash_spacing = 3.0f32;      // Spacing between multiple dashes
+                let total_line_width = 32.0f32 * pin.scale_factor;
+                let dash_spacing = (2.0f32 * pin.scale_factor).round();
                 let total_spacing = dash_spacing * (num_dashes as f32 - 1.0f32).max(0.0f32);
-                let dash_width = ((total_line_width - total_spacing) / num_dashes as f32).max(4.0f32);
+                let dash_width = ((total_line_width - total_spacing) / num_dashes as f32).max(1.0f32);
 
                 let indicator_start_x = start_x as f32 + (box_size as f32 - total_line_width) / 2.0f32;
 
+                // Highlight all dashes for the app if any window of the app is active or pin.is_activated is true
                 let is_app_active = windows.map_or(pin.is_activated, |wins| {
                     wins.iter().any(|w| w.is_activated)
                 }) || pin.is_activated;
@@ -205,27 +204,22 @@ pub fn render_dock_items(
                     let x_start = dash_start_x.round() as usize;
                     let x_end = dash_end_x.round() as usize;
 
-                    for dy in 0..dash_height {
-                        let canvas_y = indicator_y + dy;
-                        if canvas_y < phys_height {
-                            for canvas_x in x_start..x_end {
-                                if canvas_x < phys_width {
-                                    let canvas_idx = (canvas_y * phys_width + canvas_x) * 4;
-                                    if canvas_idx + 3 < canvas.len() {
-                                        if is_app_active {
-                                            // Cyan indicator in [B, G, R, A] format: B=0xFF, G=0xFF, R=0x00
-                                            canvas[canvas_idx]     = 0xFF;
-                                            canvas[canvas_idx + 1] = 0xFF;
-                                            canvas[canvas_idx + 2] = 0x00;
-                                        } else {
-                                            let brightness = 0x66;
-                                            canvas[canvas_idx]     = brightness;
-                                            canvas[canvas_idx + 1] = brightness;
-                                            canvas[canvas_idx + 2] = brightness;
-                                        }
-                                        canvas[canvas_idx + 3] = 0xFF;
-                                    }
+                    for canvas_x in x_start..x_end {
+                        if canvas_x < phys_width {
+                            let canvas_idx = (indicator_y * phys_width + canvas_x) * 4;
+                            if canvas_idx + 3 < canvas.len() {
+                                if is_app_active {
+                                    // Cyan indicator in [B, G, R, A] format: B=0xFF, G=0xFF, R=0x00
+                                    canvas[canvas_idx]     = 0xFF;
+                                    canvas[canvas_idx + 1] = 0xFF;
+                                    canvas[canvas_idx + 2] = 0x00;
+                                } else {
+                                    let brightness = 0x66;
+                                    canvas[canvas_idx]     = brightness;
+                                    canvas[canvas_idx + 1] = brightness;
+                                    canvas[canvas_idx + 2] = brightness;
                                 }
+                                canvas[canvas_idx + 3] = 0xFF;
                             }
                         }
                     }

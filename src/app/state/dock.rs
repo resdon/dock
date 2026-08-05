@@ -3,6 +3,11 @@ use wayland_client::backend::ObjectId;
 use wayland_client::QueueHandle;
 use super::AppState;
 
+const BOX_SIZE: f64 = 48.0;
+const SPACING: f64 = 12.0;
+const MAX_DOCK_WIDTH: f64 = 800.0;
+pub const DOCK_HEIGHT: f64 = 60.0;
+
 impl AppState {
     /// Returns the current ordered list of app IDs in the dock (pinned + unpinned running).
     pub fn get_apps_in_dock(&self) -> Vec<String> {
@@ -39,10 +44,11 @@ impl AppState {
     }
 
     pub fn get_app_id_at_location(&self, x: f64, y: f64) -> Option<String> {
-        let dock_height = 60.0;
-        let dock_top_bound = (self.height as f64) - dock_height;
+        let screen_height = self.height as f64;
+        let dock_top_bound = screen_height - DOCK_HEIGHT;
 
-        if y < dock_top_bound {
+        // Check vertical boundaries (top and bottom)
+        if y < dock_top_bound || y > screen_height {
             return None;
         }
 
@@ -52,25 +58,24 @@ impl AppState {
             return None;
         }
 
-        let box_size = 48.0;
-        let spacing = 12.0;
-        let slot_width = box_size + spacing;
+        let slot_width = BOX_SIZE + SPACING;
+        let calculated_width = (total_items as f64 * BOX_SIZE + (total_items + 1) as f64 * SPACING)
+            .min(MAX_DOCK_WIDTH);
 
-        let content_width = total_items as f64 * box_size + (total_items + 1) as f64 * spacing;
-        let start_offset_x = if (self.width as f64) > content_width {
-            ((self.width as f64) - content_width) / 2.0
+        let start_offset_x = if (self.width as f64) > calculated_width {
+            ((self.width as f64) - calculated_width) / 2.0
         } else {
             0.0
         };
 
-        let hit_start_min = start_offset_x + (spacing / 2.0);
-        let hit_end_max = hit_start_min + (total_items as f64 * slot_width);
+        let hit_start_min = start_offset_x + (SPACING / 2.0);
+        let hit_end_max = start_offset_x + calculated_width - (SPACING / 2.0);
 
         if x < hit_start_min || x > hit_end_max {
             return None;
         }
 
-        // Direct O(1) slot calculation
+        // Direct O(1) slot calculation relative to hit region
         let index = ((x - hit_start_min) / slot_width) as usize;
         let index = index.min(total_items - 1);
 
@@ -89,9 +94,6 @@ impl AppState {
             return false;
         }
 
-        let _px = self.interaction.pointer_position.x;
-        let _py = self.interaction.pointer_position.y;
-
         // 3. Compute actual rendered dock bounding box (in logical coordinates)
         let apps_in_dock = self.get_apps_in_dock();
         let total_items = apps_in_dock.len();
@@ -99,12 +101,8 @@ impl AppState {
             return false;
         }
 
-        let box_size = 48.0;
-        let spacing = 12.0;
-        let max_dock_width = 800.0;
-        let dock_height = 60.0;
-
-        let calculated_width = (total_items as f64 * box_size + (total_items + 1) as f64 * spacing).min(max_dock_width);
+        let calculated_width = (total_items as f64 * BOX_SIZE + (total_items + 1) as f64 * SPACING)
+            .min(MAX_DOCK_WIDTH);
 
         // Centered horizontal bounds
         let start_x = if (self.width as f64) > calculated_width {
@@ -115,13 +113,13 @@ impl AppState {
         let end_x = start_x + calculated_width;
 
         // Bottom-anchored vertical bounds
-        let top_y = ((self.height as f64) - dock_height).max(0.0);
+        let top_y = ((self.height as f64) - DOCK_HEIGHT).max(0.0);
         let bottom_y = self.height as f64;
 
         // 4. Test pointer coordinates with a 15px margin tolerance
         let margin = 15.0;
-		let px = self.interaction.pointer_position.x;
-		let py = self.interaction.pointer_position.y;
+        let px = self.interaction.pointer_position.x;
+        let py = self.interaction.pointer_position.y;
 
         let within_x = px >= (start_x - margin) && px <= (end_x + margin);
         let within_y = py >= (top_y - margin) && py <= (bottom_y + margin);

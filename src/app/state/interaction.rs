@@ -40,17 +40,40 @@ impl AppState {
         }
     }
 
-    pub fn get_context_menu_bounds(&self, phys_width: i32, phys_height: i32, scale_factor: f32) -> (i32, i32, i32, i32) {
-        let (x, y, w, h) = crate::render::context_menu::get_context_menu_bounds(
-            self.menu_state.x as i32,
-            self.menu_state.y as i32,
-            phys_width,  
-            phys_height, 
-            self.menu_state.items.len() as i32,
-            scale_factor as f32,
-        );
-        ((x as f32).round() as i32, (y as f32).round() as i32, (w as f32).round() as i32, (h as f32).round() as i32)
-    }
+	pub fn get_context_menu_bounds(&self, phys_width: i32, phys_height: i32, scale_factor: f32) -> (i32, i32, i32, i32) {
+	    let screen_w = (self.width as f32 * scale_factor).round() as i32;
+	    let screen_h = (self.height as f32 * scale_factor).round() as i32;
+
+	    let monitor_width = if phys_width < 200 { screen_w.max(1) } else { phys_width };
+	    let monitor_height = if phys_height < 100 { screen_h.max(1) } else { phys_height };
+
+	    let click_x = if self.menu_state.x != 0 {
+	        self.menu_state.x as i32
+	    } else {
+	        (self.interaction.pointer_position.x * scale_factor as f64).round() as i32
+	    };
+
+	    let click_y = if self.menu_state.y != 0 {
+	        self.menu_state.y as i32
+	    } else {
+	        // Account for the dock's position at the bottom of the screen
+	        let dock_height = self.docks.first().map_or(60.0, |d| d.height as f64);
+	        let dock_top_logical = (self.height as f64 - dock_height).max(0.0);
+	        ((dock_top_logical + self.interaction.pointer_position.y) * scale_factor as f64).round() as i32
+	    };
+
+		let item_count = self.menu_state.items.len() as i32;
+		let (x, y, _phys_w, _phys_h, w, h) = crate::render::context_menu::get_context_menu_bounds(
+		    click_x,
+		    click_y,
+		    monitor_width,
+		    monitor_height,
+		    item_count,
+		    scale_factor,
+		);
+	    // Return i32 values directly without calling floating-point round()
+	    (x, y, w, h)
+	}
 
     /// Sends an icon load request to the background worker pool asynchronously
     pub fn request_icon_load(&mut self, app_id: String) {
@@ -114,7 +137,7 @@ impl AppState {
 
         // Full surface horizontal bounds
         let container_start_x = 0;
-        let content_width = self.width as i32;
+        let content_width = self.width;
 
         // Synchronize Wayland input regions when transitioning between hidden and visible
         if self.hide_state.just_became_hidden {

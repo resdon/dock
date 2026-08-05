@@ -1,11 +1,19 @@
-// src/render/badges.rs
-
-use cairo;
-use image::GenericImageView;
+use std::sync::OnceLock;
 use crate::models::{BadgeUpdate, DockItem};
 
 // dbus_unity notifications badge asset
 static BADGE_ICON_BYTES: &[u8] = include_bytes!("../../assets/dialog-warning.png");
+static BADGE_ICON_CACHE: OnceLock<Option<(u32, u32, Vec<u8>)>> = OnceLock::new();
+
+fn get_badge_icon() -> Option<&'static (u32, u32, Vec<u8>)> {
+    BADGE_ICON_CACHE
+        .get_or_init(|| {
+            image::load_from_memory(BADGE_ICON_BYTES)
+                .ok()
+                .map(|img| (img.width(), img.height(), img.to_rgba8().into_raw()))
+        })
+        .as_ref()
+}
 
 pub fn draw_canvas_badge(
     canvas: &mut [u8],
@@ -20,46 +28,51 @@ pub fn draw_canvas_badge(
         return;
     }
 
-    let Ok(img) = image::load_from_memory(BADGE_ICON_BYTES) else {
+    let Some(&(badge_w, badge_h, ref raw_bytes)) = get_badge_icon() else {
         return;
     };
-    
-    let (badge_w, badge_h) = img.dimensions();
-    let badge_rgba = img.to_rgba8();
-    let raw_bytes = badge_rgba.as_raw();
 
     let overlay_x = (start_x + box_size).saturating_sub(badge_w as i32);
     let overlay_y = start_y;
 
-    for y in 0..badge_h as usize {
-        let canvas_y = overlay_y + y as i32;
-        if canvas_y >= canvas_height as i32 { break; }
+    let x_min = overlay_x.clamp(0, canvas_width as i32);
+    let x_max = (overlay_x + badge_w as i32).clamp(0, canvas_width as i32);
+    let y_min = overlay_y.clamp(0, canvas_height as i32);
+    let y_max = (overlay_y + badge_h as i32).clamp(0, canvas_height as i32);
 
-        for x in 0..badge_w as i32 {
-            let canvas_x = overlay_x + x as i32;
-            if canvas_x >= canvas_width as i32 { break; }
+    for canvas_y in y_min..y_max {
+        let src_y = canvas_y - overlay_y;
+        for canvas_x in x_min..x_max {
+            let src_x = canvas_x - overlay_x;
+            let src_idx = ((src_y * badge_w as i32 + src_x) * 4) as usize;
 
-            let src_idx = (y * badge_w as usize + x as usize) * 4;
+            if src_idx + 3 >= raw_bytes.len() {
+                continue;
+            }
+
             let src_r = raw_bytes[src_idx] as u32;
             let src_g = raw_bytes[src_idx + 1] as u32;
             let src_b = raw_bytes[src_idx + 2] as u32;
             let src_a = raw_bytes[src_idx + 3] as u32;
 
-            if src_a == 0 { continue; }
+            if src_a == 0 {
+                continue;
+            }
 
-            let dst_idx = ((canvas_y as usize * canvas_width as usize + canvas_x as usize) * 4) as usize;
+            let dst_idx = ((canvas_y * canvas_width as i32 + canvas_x) * 4) as usize;
+            if dst_idx + 3 < canvas.len() {
+                let alpha = src_a;
+                let inv_alpha = 255 - alpha;
 
-            let alpha = src_a;
-            let inv_alpha = 255 - alpha;
+                let dst_r = canvas[dst_idx] as u32;
+                let dst_g = canvas[dst_idx + 1] as u32;
+                let dst_b = canvas[dst_idx + 2] as u32;
 
-            let dst_b = canvas[(dst_idx) as usize] as u32;
-            let dst_g = canvas[(dst_idx + 1) as usize] as u32;
-            let dst_r = canvas[(dst_idx + 2) as usize] as u32;
-
-            canvas[(dst_idx) as usize]     = ((src_b * alpha + dst_b * inv_alpha) / 255) as u8;
-            canvas[(dst_idx + 1) as usize] = ((src_g * alpha + dst_g * inv_alpha) / 255) as u8;
-            canvas[(dst_idx + 2) as usize] = ((src_r * alpha + dst_r * inv_alpha) / 255) as u8;
-            canvas[(dst_idx + 3) as usize] = 255;
+                canvas[dst_idx]     = ((src_r * alpha + dst_r * inv_alpha) / 255) as u8;
+                canvas[dst_idx + 1] = ((src_g * alpha + dst_g * inv_alpha) / 255) as u8;
+                canvas[dst_idx + 2] = ((src_b * alpha + dst_b * inv_alpha) / 255) as u8;
+                canvas[dst_idx + 3] = 255;
+            }
         }
     }
 }
@@ -106,13 +119,13 @@ pub fn draw_dock_item_badge(
         cr.set_source_rgb(1.0, 1.0, 1.0);
         cr.set_font_size(10.0);
         cr.select_font_face("Sans", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
-        
-        let extents = cr.text_extents(&badge_text).unwrap();
-        
-        let text_x = badge_cx - (extents.width() / 2.0 + extents.x_bearing());
-        let text_y = badge_cy - (extents.height() / 2.0 + extents.y_bearing());
 
-        cr.move_to(text_x, text_y);
-        let _ = cr.show_text(&badge_text);
+        if let Ok(extents) = cr.text_extents(&badge_text) {
+            let text_x = badge_cx - (extents.width() / 2.0 + extents.x_bearing());
+            let text_y = badge_cy - (extents.height() / 2.0 + extents.y_bearing());
+
+            cr.move_to(text_x, text_y);
+            let _ = cr.show_text(&badge_text);
+        }
     }
 }

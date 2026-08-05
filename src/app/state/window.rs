@@ -1,6 +1,19 @@
 use wayland_client::backend::ObjectId;
 use super::AppState;
 
+/// Strips trailing numeric instance identifiers (e.g., "app_1234" -> "app") while leaving Steam app IDs untouched.
+fn normalize_app_id(app_id: &str) -> &str {
+    if app_id.starts_with("steam_icon_") {
+        return app_id;
+    }
+    if let Some(idx) = app_id.rfind('_') {
+        if app_id[idx + 1..].chars().all(|c| c.is_numeric()) {
+            return &app_id[..idx];
+        }
+    }
+    app_id
+}
+
 impl AppState {
     /// Returns true if at least one window, pinned app, or background icon search is active
     pub fn is_animating(&self) -> bool {
@@ -45,24 +58,26 @@ impl AppState {
                 .spawn();
         }
 
+        // Safely terminate window-associated PIDs
         for pid in &pids_to_kill {
-            unsafe { libc::kill(*pid as i32, libc::SIGTERM); }
-        }
-
-        self.sys_scanner.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
-        let mut clean_name = target_app_lower.as_str();
-        if !clean_name.starts_with("steam_icon_") {
-            if let Some(idx) = clean_name.rfind('_') {
-                if clean_name[idx+1..].chars().all(|c| c.is_numeric()) {
-                    clean_name = &clean_name[..idx];
-                }
+            if *pid > 1 {
+                unsafe { libc::kill(*pid as i32, libc::SIGTERM); }
             }
         }
 
+        self.sys_scanner.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+        let clean_name = normalize_app_id(&target_app_lower);
+
+        // Strict process name match to avoid accidental terminations of short-named binaries
         for (pid, proc_) in self.sys_scanner.processes() {
+            let pid_u32 = pid.as_u32();
+            if pid_u32 <= 1 { continue; }
+
             let proc_name = proc_.name().to_string_lossy().to_lowercase();
-            if proc_name == clean_name || proc_name.contains(clean_name) || clean_name.contains(&proc_name) {
-                unsafe { libc::kill(pid.as_u32() as i32, libc::SIGTERM); }
+            let proc_stem = proc_name.split('.').next().unwrap_or(&proc_name);
+
+            if proc_name == clean_name || proc_stem == clean_name {
+                unsafe { libc::kill(pid_u32 as i32, libc::SIGTERM); }
             }
         }
 
@@ -70,7 +85,7 @@ impl AppState {
     }
 
     pub fn cycle_window_for_app(&mut self, target_app_id: &str, reverse: bool) {
-        let mut matching_windows: Vec<(&wayland_client::backend::ObjectId, &crate::models::WindowDiagnostics)> = self
+        let mut matching_windows: Vec<(&ObjectId, &crate::models::WindowDiagnostics)> = self
             .open_windows
             .iter()
             .filter(|(_, win)| win.resolved_app_id() == target_app_id)
@@ -112,13 +127,7 @@ impl AppState {
                 search_id = "taskman".to_string();
             }
             
-            if !search_id.starts_with("steam_icon_") {
-                if let Some(idx) = search_id.rfind('_') {
-                    if search_id[idx+1..].chars().all(|c| c.is_numeric()) {
-                        search_id = search_id[..idx].to_string();
-                    }
-                }
-            }
+            search_id = normalize_app_id(&search_id).to_string();
 
             self.sys_scanner.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
 
@@ -126,7 +135,7 @@ impl AppState {
                 let target_app = search_id.to_lowercase();
                 if let Some((pid, _)) = self.sys_scanner.processes().iter().find(|(_, p)| {
                     let proc_name = p.name().to_string_lossy().to_lowercase();
-                    proc_name.contains(&target_app) || target_app.contains(&proc_name)
+                    proc_name == target_app || proc_name.contains(&target_app)
                 }) {
                     window.matched_pid = Some(pid.as_u32());
                 }
@@ -162,7 +171,7 @@ impl AppState {
                 }
             }
 
-            if !search_id.is_empty() && !crate::icon_utils::get_icon_from_desktop(&search_id).is_some() {
+            if !search_id.is_empty() && crate::icon_utils::get_icon_from_desktop(&search_id).is_none() {
                 if let Some(resolved_id) = crate::icon_utils::find_desktop_file_by_exec(&search_id) {
                     search_id = resolved_id;
                     window.app_id = search_id.clone();
@@ -199,7 +208,7 @@ impl AppState {
 
         // Clear hover popup if the hovered app is no longer running
         if let Some(ref hovered_id) = self.hover_state.app_id {
-            if !active_app_ids.iter().any(|id| id == hovered_id) {
+            if !active_app_ids.contains(hovered_id) {
                 self.hover_state.is_visible = false;
                 self.hover_state.app_id = None;
                 state_changed = true;
