@@ -68,31 +68,31 @@ pub fn render_context_menu_surface(
         return;
     }
 
-    let geometry = ContextMenuGeometry::default();
     let item_count = menu_state.items.len();
-
-    // Physical item height for buffer rendering and hit testing
-    let item_h_phys = (geometry.base_item_height as f32 * scale_factor).round() as i32;
-    if item_h_phys <= 0 {
+    if item_count == 0 {
         return;
     }
 
-    // Evaluate hovered item using physical coordinates matching the physical buffer bounds (`width` and `height`)
-    let hovered_item_idx = if local_pointer_x >= 0
-        && local_pointer_x < width
-        && local_pointer_y >= 0
-        && local_pointer_y < height
+    // Logical height of the menu and proportional item height
+    let logical_menu_h = height as f32 / scale_factor;
+    let item_h_log = logical_menu_h / item_count as f32;
+
+    // Evaluate hovered item using logical coordinates matching handle_menu_release
+    let hovered_item_idx = if (local_pointer_x as f32) >= 0.0
+        && (local_pointer_x as f32) < (width as f32 / scale_factor)
+        && (local_pointer_y as f32) >= 0.0
+        && (local_pointer_y as f32) < logical_menu_h
     {
-        let idx = (local_pointer_y / item_h_phys) as usize;
-        (idx < item_count).then_some(idx)
+        let idx = ((local_pointer_y as f32 / item_h_log) as i32).clamp(0, (item_count - 1) as i32) as usize;
+        Some(idx)
     } else {
         None
     };
 
-    // 1. Fill entire background and hover state using physical row/column loops
+    // 1. Fill background and hover state using exact proportional row divisions
     for y in 0..height {
-        let item_idx = (y / item_h_phys) as usize;
-        let is_hovered = item_idx < item_count && Some(item_idx) == hovered_item_idx;
+        let item_idx = ((y as usize * item_count) / height as usize).min(item_count - 1);
+        let is_hovered = Some(item_idx) == hovered_item_idx;
 
         let bg_color = if is_hovered {
             [0x3A, 0x3A, 0x3A, 0xFF]
@@ -110,7 +110,7 @@ pub fn render_context_menu_surface(
 
     // 2. Render separator lines between items
     for i in 1..item_count {
-        let line_y = i as i32 * item_h_phys;
+        let line_y = (i as i32 * height) / item_count as i32;
         if line_y < height {
             for x in 0..width {
                 let idx = ((line_y * width + x) * 4) as usize;
@@ -124,10 +124,15 @@ pub fn render_context_menu_surface(
     // 3. Render Text labels
     let font_size = (14.0 * scale_factor) as i32;
     let text_x = (12.0 * scale_factor).round() as i32;
-    let text_offset_y = ((item_h_phys as f32 - 14.0 * scale_factor) / 2.0).max(0.0) as i32;
 
     for (i, item) in menu_state.items.iter().enumerate() {
-        let text_y = (i as i32 * item_h_phys) + text_offset_y;
+        let item_top_phys = (i as i32 * height) / item_count as i32;
+        let next_item_top_phys = ((i as i32 + 1) * height) / item_count as i32;
+        let current_item_h_phys = next_item_top_phys - item_top_phys;
+
+        let text_offset_y = ((current_item_h_phys as f32 - 14.0 * scale_factor) / 2.0).max(0.0) as i32;
+        let text_y = item_top_phys + text_offset_y;
+
         if text_y >= height {
             break;
         }

@@ -5,6 +5,8 @@ use wayland_client::protocol::{
     wl_subsurface::WlSubsurface,
     wl_surface::WlSurface,
 };
+use crate::graphics::fade::FadeAnimation;
+
 
 // SCTK Types
 use smithay_client_toolkit::shell::wlr_layer::LayerSurface;
@@ -14,8 +16,10 @@ use smithay_client_toolkit::shm::slot::Buffer;
 // Wayland Protocols
 use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1::WpFractionalScaleV1;
 
+use std::time::Instant;
+
 // Project Types
-use crate::app::state::AppState;
+use crate::state::AppState;
 use crate::geometry::{Point, Rect};
 use crate::DesktopAction;
 
@@ -26,6 +30,7 @@ pub struct DockState {
     pub hovered_index: Option<usize>,
     pub current_visibility_alpha: f32,
     pub panel_rect: Rect,
+    pub fade: FadeAnimation,
 }
 
 #[derive(Clone, Debug)]
@@ -118,6 +123,8 @@ pub struct DockInstance {
     pub configured: bool,
     pub context_menu_popup: Option<PopupSurface>,
 	pub dock_state: Option<DockState>,
+	pub hover_fade: FadeAnimation,
+	pub menu_fade: FadeAnimation,
 }
 
 impl DockInstance {
@@ -193,6 +200,20 @@ pub struct MenuState {
 	pub opened_by_button: Option<u32>,      // Track which button opened it
     pub waiting_for_initial_release: bool, // Guard against the opening click
 	pub just_opened: bool,
+	pub fade: FadeAnimation,
+	pub consecutive_false_count: u32,
+	pub cursor_moved: bool,
+	pub last_pointer_x: f64,
+	pub last_pointer_y: f64,
+	pub last_debug_print: std::time::Instant,
+	pub consecutive_no_motion_count: i32,
+	pub consecutive_on_dock_count: i32,
+	pub consecutive_on_window_list_count: i32,
+	pub consecutive_on_context_menu_count: i32,
+	pub no_motion_timer: Option<Instant>,
+    pub dock_timer: Option<Instant>,
+    pub context_menu_timer: Option<Instant>,
+    pub window_list_timer: Option<Instant>,	
 }
 
 pub struct HoverState {

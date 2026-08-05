@@ -1,4 +1,7 @@
 pub mod handlers;
-pub mod pointer;
+
+pub mod context_menu;
+pub mod dock;
+pub mod window_list;
 
 pub use handlers::*;

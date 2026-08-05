@@ -13,8 +13,9 @@ use crate::models::WindowDiagnostics;
 use crate::Rect;
 use crate::render;
 use crate::render::dock::DockRenderResources;
+use crate::graphics::fade::FadeAnimation;
 
-use super::state::AppState;
+use crate::state::AppState;
 
 impl AppState {
     pub fn draw(&mut self, qh: &QueueHandle<Self>) {
@@ -121,24 +122,23 @@ impl AppState {
             let phys_width = (dock_width as f64 * dock_scale).round() as u32;
             let phys_height = (dock_height as f64 * dock_scale).round() as u32;
 
-            // =========================================================================
+			// =========================================================================
             // HOVER WINDOW LIST SUBSURFACE MANAGEMENT & RENDERING
             // =========================================================================
-            let show_hover = self.hover_state.is_visible;
-            if show_hover {
+            if !dock.hover_fade.is_fully_hidden() {
                 if let Some(ref app_id) = self.hover_state.app_id {
                     let app_windows: Vec<&WindowDiagnostics> = running_by_app
                         .get(app_id)
                         .cloned()
                         .unwrap_or_default();
-            
+
                     if !app_windows.is_empty() {
                         let total_apps = apps_in_dock_ptrs.len();
                         let hovered_app_index = apps_in_dock_ptrs
                             .iter()
                             .position(|id| id == app_id)
                             .unwrap_or(0);
-            
+
                         let geometry = crate::geometry::WindowListGeometry::default();
                         let (menu_x, menu_y, p_width, p_height, logical_w, logical_h) = geometry.compute_bounds(
                             phys_width as i32,
@@ -149,7 +149,7 @@ impl AppState {
                             dock_scale,
                         );
                         let scale_i32 = dock_scale.round() as i32;
-            
+
                         let popup = dock.hover_popup.get_or_insert_with(|| {
                             let surf = self.compositor_state.create_surface(qh);
                             let sub = self
@@ -158,7 +158,7 @@ impl AppState {
                                 .expect("Subcompositor global not bound")
                                 .get_subsurface(&surf, surface.wl_surface(), qh, ());
                             sub.set_desync();
-            
+
                             PopupSurface {
                                 subsurface: sub,
                                 surface: surf,
@@ -167,15 +167,15 @@ impl AppState {
                                 height: 0,
                             }
                         });
-            
+
                         popup.subsurface.set_position(
                             (menu_x as f64 / dock_scale).round() as i32,
                             (menu_y as f64 / dock_scale).round() as i32,
                         );
-            
+
                         popup.width = logical_w;
                         popup.height = logical_h;
-            
+
                         if p_width > 0 && p_height > 0 {
                             let (buffer, canvas) = self.pool.create_buffer(
                                 p_width,
@@ -183,17 +183,17 @@ impl AppState {
                                 p_width * 4,
                                 wl_shm::Format::Argb8888,
                             ).expect("Failed to allocate hover popup buffer");
-            
+
                             let mut sorted_windows = app_windows;
                             sorted_windows.sort_by(|a, b| {
                                 a.title
                                     .cmp(&b.title)
                                     .then_with(|| std::ptr::from_ref(*a).cmp(&std::ptr::from_ref(*b)))
                             });
-            
+
                             let local_ptr_x = ((self.interaction.pointer_position.x * dock_scale) - menu_x as f64).max(0.0) as usize;
                             let local_ptr_y = ((self.interaction.pointer_position.y * dock_scale) - menu_y as f64).max(0.0) as usize;
-            
+
                             render::window_list::render_window_list_surface(
                                 canvas,
                                 p_width,
@@ -204,17 +204,21 @@ impl AppState {
                                 local_ptr_x as i32,
                                 local_ptr_y as i32,
                             );
-            
+
+                            // --- APPLY HOVER FADE ALPHA TO POPUP CANVAS ---
+                            dock.hover_fade.apply_alpha_to_canvas(canvas);
+
                             popup.surface.set_buffer_scale(scale_i32);
                             buffer.attach_to(&popup.surface).expect("Failed to attach hover buffer");
                             popup.surface.damage_buffer(0, 0, p_width, p_height);
-            
+
                             let compositor = self.compositor_state.wl_compositor();
                             let region = compositor.create_region(qh, ());
-                            region.add(0, 0, logical_w as i32, logical_h as i32);
+                            // Use physical dimensions (p_width, p_height) to match buffer scale space
+                            region.add(0, 0, p_width, p_height);
                             popup.surface.set_input_region(Some(&region));
                             region.destroy();
-            
+
                             popup.surface.commit();
                             popup.current_buffer = Some(buffer);
                         } else if let Some(popup) = dock.hover_popup.take() {
@@ -233,7 +237,6 @@ impl AppState {
                 popup.surface.attach(None, 0, 0);
                 popup.surface.commit();
             }
-
 			// =========================================================================
             // CONTEXT MENU SUBSURFACE MANAGEMENT & RENDERING
             // =========================================================================
@@ -293,7 +296,10 @@ impl AppState {
                     }
                 });
 
-				popup.subsurface.set_position(geom.x, geom.y);
+				popup.subsurface.set_position(
+				    (geom.x as f64 / dock_scale).round() as i32,
+				    (geom.y as f64 / dock_scale).round() as i32,
+				);	    
 
                 popup.width = geom.logical_width as u32;
                 popup.height = geom.logical_height as u32;
@@ -326,7 +332,8 @@ impl AppState {
 
                     let compositor = self.compositor_state.wl_compositor();
                     let region = compositor.create_region(qh, ());
-                    region.add(0, 0, geom.logical_width as i32, geom.logical_height as i32);
+                    // Use physical dimensions (geom.phys_width, geom.phys_height) to match buffer scale space
+                    region.add(0, 0, geom.phys_width, geom.phys_height);
                     popup.surface.set_input_region(Some(&region));
                     region.destroy();
 
@@ -406,6 +413,7 @@ impl AppState {
                     width: phys_width as f64,
                     height: scaled_dock_height as f64,
                 },
+                fade: FadeAnimation::new(0.0, 1.0, 0.25),
             };
 
             dock.dock_state = Some(dock_state.clone());

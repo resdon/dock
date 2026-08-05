@@ -2,6 +2,7 @@
 
 pub mod animation;
 pub mod hide;
+pub mod fade;
 
 pub use animation::{load_svg_animation_sequence, Frame, IconAnimation};
 pub use hide::AutoHideState;

@@ -10,35 +10,40 @@ pub mod render;
 pub mod resolvers;
 pub mod state;
 
-use crate::graphics::fade::FadeAnimation;
 use crate::state::AppState;
+use crate::graphics::fade::FadeAnimation;
 
-pub use dockman_lib::get_icon_path;
-pub use dockman_lib::icon_utils;
 pub use dockman_lib::models;
+pub use dockman_lib::icon_utils;
 pub use dockman_lib::terminal_graphics;
+pub use dockman_lib::get_icon_path;
 pub use geometry::*;
 
-use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer, LayerShell};
 use smithay_client_toolkit::shell::WaylandSurface;
-use smithay_client_toolkit::shm::slot::SlotPool;
 use smithay_client_toolkit::{
-    compositor::CompositorState, output::OutputState, registry::RegistryState, seat::SeatState,
+    compositor::CompositorState,
+    output::OutputState,
+    registry::RegistryState,
+    seat::SeatState,
     shm::Shm,
 };
+use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer, LayerShell};
+use smithay_client_toolkit::shm::slot::SlotPool;
 
-use wayland_client::globals::registry_queue_init;
+use wayland_client::Connection;
 use wayland_client::protocol::wl_data_device_manager::WlDataDeviceManager;
 use wayland_client::protocol::wl_subcompositor::WlSubcompositor;
-use wayland_client::Connection;
+use wayland_client::globals::registry_queue_init;
 
-use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1;
+use wayland_protocols::wp::fractional_scale::v1::client::{
+    wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1,
+};
 use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1;
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -57,7 +62,7 @@ use app::types::*;
 fn load_icon_index_map() -> HashMap<String, PathBuf> {
     let mut map = HashMap::new();
     let home = std::env::var("HOME").unwrap_or_default();
-
+    
     let candidate_paths = [
         PathBuf::from(format!("{}/.cache/dockman/icon_list.txt", home)),
         PathBuf::from("./icon_list.txt"),
@@ -98,12 +103,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .append(true)
         .open(&app_log_path)
         .expect("Failed to initialize app.log");
-
-    writeln!(
-        app_logger,
-        "[{}] INFO: Dock application starting up.",
-        Instant::now().elapsed().as_secs()
-    )?;
+    
+    writeln!(app_logger, "[{}] INFO: Dock application starting up.", Instant::now().elapsed().as_secs())?;
 
     // 2. External Mouse Position Log Stream (Option A Thread)
     let mouse_log_path = log_dir.join("mouse.log");
@@ -119,7 +120,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         loop {
             // Capture or sample global pointer coordinates (stubbed for evdev/compositor integration)
-            let (x, y) = (0, 0);
+            let (x, y) = (0, 0); 
             let _ = writeln!(
                 mouse_logger,
                 "pos_x: {}, pos_y: {}, time: {:?}",
@@ -139,7 +140,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 3. Setup DBus Channel
     let (badge_tx, mut badge_rx) = tokio::sync::mpsc::unbounded_channel();
-
+    
     // 4. Spawn async DBus listener
     let runtime = tokio::runtime::Runtime::new()?;
     runtime.spawn(async move {
@@ -152,21 +153,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let qh = event_queue.handle();
     let registry_state = RegistryState::new(&globals);
-    let compositor_state =
-        CompositorState::bind(&globals, &qh).expect("Failed to bind compositor");
+    let compositor_state = CompositorState::bind(&globals, &qh).expect("Failed to bind compositor");
     let output_state = OutputState::new(&globals, &qh);
     let layer_shell = LayerShell::bind(&globals, &qh).expect("wlr_layer_shell required");
     let shm_state = Shm::bind(&globals, &qh).expect("wl_shm required");
     let seat_state = SeatState::new(&globals, &qh);
     // Bind fractional scale manager after registry_state and qh are available
-    let _fractional_scale_manager: Option<WpFractionalScaleManagerV1> =
-        registry_state.bind_one(&qh, 1..=1, ()).ok();
+    let _fractional_scale_manager: Option<WpFractionalScaleManagerV1> = registry_state.bind_one(&qh, 1..=1, ()).ok();
     let subcompositor = registry_state
         .bind_one::<WlSubcompositor, _, _>(&qh, 1..=1, ())
         .expect("wp_subcompositor not available");
 
     let pool = SlotPool::new(1024 * 1024 * 16, &shm_state).expect("Failed to create memory pool");
-
+    
     let user_data_font = format!("{}/.local/share/dock/font.ttf", home);
 
     let font_path = [
@@ -218,11 +217,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         seat_state,
         layer_surface: None,
         current_buffer: None,
-        width: 100,
+        width: 100, 
         height: 60,
         toplevel_manager: None,
-        font_manager: FontManager::from_file(&font_path)
-            .expect("Failed to memory-map font file"),
+        font_manager: FontManager::from_file(&font_path).expect("Failed to memory-map font file"),
         wl_seat: None,
         wl_pointer: None,
         open_windows: HashMap::new(),
@@ -238,23 +236,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             target_app_id: None,
             is_open: false,
             items: Vec::new(),
-            opened_by_button: None,
-            waiting_for_initial_release: false,
-            just_opened: false,
-            fade: FadeAnimation::new(0.0, 1.0, 0.15),
-            consecutive_false_count: 0,
-            cursor_moved: false,
-            last_pointer_x: 0.0,
-            last_pointer_y: 0.0,
-            last_debug_print: std::time::Instant::now(),
-            consecutive_no_motion_count: 0,
-            consecutive_on_dock_count: 0,
-            consecutive_on_context_menu_count: 0,
-            consecutive_on_window_list_count: 0,
-			no_motion_timer: None,
-			dock_timer: None,
-			context_menu_timer: None,
-			window_list_timer: None,
+			opened_by_button: None,
+		    waiting_for_initial_release: false,
+		    just_opened: false,
+		    fade: FadeAnimation::new(0.0, 1.0, 0.15),
         },
         hover_state: HoverState {
             x: 0,
@@ -271,8 +256,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         dragged_app_id: None,
         last_drag_draw: Instant::now(),
         sys_scanner: sysinfo::System::new_with_specifics(
-            sysinfo::RefreshKind::nothing()
-                .with_processes(sysinfo::ProcessRefreshKind::everything()),
+            sysinfo::RefreshKind::nothing().with_processes(sysinfo::ProcessRefreshKind::everything()),
         ),
         current_output: None,
         docks: Vec::new(),
@@ -288,21 +272,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         icon_load: icon_loader,
         animations: HashMap::new(),
         hide_state: AutoHideState::new(),
-        interaction: InteractionState::new(),
+        interaction: InteractionState::new(),   
     };
 
-    state.data_device_manager = state
-        .registry_state
+    state.data_device_manager = state.registry_state
         .bind_one::<WlDataDeviceManager, _, _>(&qh, 1..=3, ())
         .ok();
 
-    state.toplevel_manager = state
-        .registry_state
+    state.toplevel_manager = state.registry_state
         .bind_one::<ZwlrForeignToplevelManagerV1, _, _>(&qh, 1..=3, ())
         .ok();
 
-    state.fractional_scale_manager = state
-        .registry_state
+    state.fractional_scale_manager = state.registry_state
         .bind_one::<WpFractionalScaleManagerV1, _, _>(&qh, 1..=1, ())
         .ok();
 
@@ -332,7 +313,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let phys_height = (dock_height as f64 * scale_factor).round() as u32;
 
         layer_surface.set_keyboard_interactivity(
-            smithay_client_toolkit::shell::wlr_layer::KeyboardInteractivity::None,
+            smithay_client_toolkit::shell::wlr_layer::KeyboardInteractivity::None
         );
         layer_surface.set_size(phys_width, phys_height);
         layer_surface.set_anchor(Anchor::BOTTOM);
@@ -349,14 +330,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             hover_popup: None,
             menu_popup: None,
             configured: false,
-            context_menu_popup: None,
-            dock_state: None,
-            hover_fade: FadeAnimation::new(0.0, 1.0, 0.2),
-            menu_fade: FadeAnimation::new(0.0, 1.0, 0.2),
+			context_menu_popup: None,
+			dock_state: None,
+			hover_fade: FadeAnimation::new(0.0, 1.0, 0.2),
+			   menu_fade: FadeAnimation::new(0.0, 1.0, 0.2),
         });
     }
 
-    // --- MAIN EVENT LOOP ---
+	// --- MAIN EVENT LOOP ---
     loop {
         // 1. INPUT: Dispatch Wayland socket events from event queue
         if let Err(e) = event_queue.dispatch_pending(&mut state) {
@@ -375,8 +356,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         while let Ok(update) = badge_rx.try_recv() {
-            let clean_id = update
-                .desktop_id
+            let clean_id = update.desktop_id
                 .trim_start_matches("application://")
                 .trim_end_matches(".desktop")
                 .to_lowercase();
@@ -398,15 +378,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for (app_id, anim) in state.animations.iter_mut() {
             if anim.update() {
                 if let Some(frame) = anim.current_frame() {
-                    state
-                        .icon_cache
-                        .insert(app_id.clone(), (frame.rgba.clone(), frame.width));
+                    state.icon_cache.insert(app_id.clone(), (frame.rgba.clone(), frame.width));
                     state.needs_redraw = true;
                 }
             }
         }
-
-		// --- HOVER & MENU FADE TICKING ---
+		//--- HOVER & MENU FADE TICKING ---
+        let timer_active = state.hover_state.last_leave_time.is_some();
         let hover_anim_active = state.docks.iter_mut().any(|d| d.hover_fade.tick());
         let menu_anim_active = state.docks.iter_mut().any(|d| d.menu_fade.tick());
 
@@ -415,64 +393,60 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             state.needs_redraw = true;
         }
 
-        // Run interaction update unconditionally every frame so cursor motion flags and states sync properly
-        let apps_in_dock = state.get_apps_in_dock();
-        let running_by_app = state.get_running_by_app();
+        if timer_active {
+			let apps_in_dock = state.get_apps_in_dock();
+			let running_by_app = state.get_running_by_app();
 
-        // Extract non-mutable state properties first to prevent borrow errors
-        let scale_factor = state.scale_factor as f32;
-        let screen_width = state.width as i32;
+			let scale_factor = state.scale_factor as f32;
+			// 1. Define layout dimensions (matching draw.rs / dock.rs)
+			let dock_height = 60;
+			let box_size = 48;
+			let spacing = 8;
+			let total_items = apps_in_dock.len() as i32;
 
-        // Compute layout specs
-        let dock_height = 60;
-        let box_size = 48;
-        let spacing = 8;
-        let total_items = apps_in_dock.len() as i32;
+			// 2. Compute dock start offset
+			let calculated_width = (total_items * box_size + (total_items + 1) * spacing).min(800);
+			let start_offset_x = if (state.width as i32) > calculated_width {
+			    ((state.width as i32) - calculated_width) / 2
+			} else {
+			    0
+			};
 
-        let calculated_width = (total_items * box_size + (total_items + 1) * spacing).min(800);
-        let start_offset_x = if screen_width > calculated_width {
-            (screen_width - calculated_width) / 2
-        } else {
-            0
-        };
-
-        let proximity_changed = crate::interaction::update(
-            &mut state,
-            &apps_in_dock,
-            &running_by_app,
-            scale_factor,
-            (dock_height, box_size, spacing, start_offset_x),
-        );
-
-        if proximity_changed {
-            state.needs_redraw = true;
+			// 3. Pass values to interaction handler
+			let proximity_changed = crate::interaction::update(
+			    &mut state,
+			    &apps_in_dock,
+			    &running_by_app,
+			    scale_factor,
+			    (dock_height, box_size, spacing, start_offset_x),
+			);
+            if proximity_changed {
+                state.needs_redraw = true;
+            }
         }
 
         if hover_anim_active || menu_anim_active {
             state.needs_redraw = true;
         }
-
-        // 5. RENDER: Pass visual snapshot to render functions
+		// 5. RENDER: Pass visual snapshot to render functions
         if frame_advanced || timers_changed || state.needs_redraw {
-            state.draw(&qh);
+            state.draw(&qh); 
+
+            // Only draw context menu here if it's open; 
+            // the initial display is handled safely inside the configure callback.
+
             state.needs_redraw = false;
             let _ = state.connection.flush();
         }
 
-        // 6. POLL: Calculate dynamic timeout and wait for socket readiness
-        let is_hide_animating =
-            (state.hide_state.current_alpha - state.hide_state.target_alpha).abs() >= 0.001;
-        let timeout_ms = if state.fallback_anim.is_active
-            || is_hide_animating
-            || hover_anim_active
-            || menu_anim_active
-            || state.needs_redraw
-        {
+		// 6. POLL: Calculate dynamic timeout and wait for socket readiness
+        let is_hide_animating = (state.hide_state.current_alpha - state.hide_state.target_alpha).abs() >= 0.001;
+        let timeout_ms = if state.fallback_anim.is_active || is_hide_animating || hover_anim_active || menu_anim_active || state.needs_redraw {
             15
         } else {
             50
         };
-
+        
         let _ = state.connection.flush();
         if let Some(guard) = state.connection.prepare_read() {
             let raw_fd = std::os::unix::io::AsRawFd::as_raw_fd(&guard.connection_fd());

@@ -1,4 +1,4 @@
-use crate::app::AppState;
+use crate::state::AppState;
 
 pub fn handle_drag_release(
     state: &mut AppState,
@@ -12,19 +12,25 @@ pub fn handle_drag_release(
 
     if is_over_icons {
         let mut dropped_idx = None;
-        for (index, _) in apps_in_dock.iter().enumerate() {
-            let start_x = start_offset_x + spacing + index as i32 * (box_size + spacing);
-            let hit_start_x = start_x.saturating_sub(spacing / 2);
-            let hit_end_x = start_x + box_size + (spacing / 2);
-            if state.interaction.pointer_position.x >= hit_start_x.into()
-                && state.interaction.pointer_position.x <= hit_end_x.into()
-            {
-                dropped_idx = Some(index as i32);
-                break;
+        let pointer_x = state.interaction.pointer_position.x as i32;
+
+        if pointer_x < start_offset_x {
+            dropped_idx = Some(0);
+        } else {
+            for (index, _) in apps_in_dock.iter().enumerate() {
+                let start_x = start_offset_x + index as i32 * (box_size + spacing);
+                let hit_start_x = start_x.saturating_sub(spacing / 2);
+                let hit_end_x = start_x + box_size + (spacing / 2);
+                
+                if pointer_x >= hit_start_x && pointer_x <= hit_end_x {
+                    dropped_idx = Some(index as i32);
+                    break;
+                }
             }
-        }
-        if dropped_idx.is_none() && state.interaction.pointer_position.x as i32 >= start_offset_x {
-            dropped_idx = Some(apps_in_dock.len().saturating_sub(1) as i32);
+            
+            if dropped_idx.is_none() && pointer_x >= start_offset_x {
+                dropped_idx = Some(apps_in_dock.len().saturating_sub(1) as i32);
+            }
         }
 
         if let Some(target_idx) = dropped_idx {

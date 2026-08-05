@@ -1,50 +1,7 @@
 use std::collections::HashMap;
 use wayland_client::backend::ObjectId;
-use crate::app::AppState;
+use crate::AppState;
 use super::dock::{get_windows_for_app, normalize_app_id, launch_app};
-
-pub fn check_and_consume_menu_press(
-    state: &mut AppState,
-    scale_factor: f32,
-    _phys_width: i32,
-    _phys_height: i32,
-) -> (bool, bool) {
-    let total_items = state.menu_state.items.len();
-    let calculated_width = if total_items > 0 {
-        (total_items * 48 + (total_items + 1) * 8) as u32
-    } else {
-        100
-    };
-    let dock_width = calculated_width.min(800);
-    let p_w = (dock_width as f64 * scale_factor as f64).round() as i32;
-    let p_h = (60.0 * scale_factor as f64).round() as i32;
-
-    let (menu_x, menu_y, menu_width, total_menu_h) =
-        state.get_context_menu_bounds(p_w, p_h, scale_factor);
-
-    // Convert physical menu bounds back to logical coordinates, matching Source 13 approach[cite: 13]
-    let menu_log_x = (menu_x as f32 / scale_factor).round() as i32;
-    let menu_log_y = (menu_y as f32 / scale_factor).round() as i32;
-    let menu_log_w = (menu_width as f32 / scale_factor).round() as i32;
-    let menu_log_h = (total_menu_h as f32 / scale_factor).round() as i32;
-
-    let ptr_log_x = state.interaction.pointer_position.x as i32;
-    let ptr_log_y = state.interaction.pointer_position.y as i32;
-
-    let inside_menu = ptr_log_x >= menu_log_x
-        && ptr_log_x <= (menu_log_x + menu_log_w)
-        && ptr_log_y >= menu_log_y
-        && ptr_log_y <= (menu_log_y + menu_log_h);
-
-    let mut layer_changed = false;
-    if !inside_menu && !state.menu_state.just_opened {
-        state.menu_state.is_open = false;
-        state.needs_redraw = true;
-        layer_changed = true;
-    }
-
-    (inside_menu, layer_changed)
-}
 
 pub fn open_context_menu(
     state: &mut AppState,
@@ -139,23 +96,31 @@ pub fn open_context_menu(
             state.menu_state.opened_by_button = Some(273); // BTN_RIGHT
             state.menu_state.waiting_for_initial_release = true;
             state.needs_redraw = true;
+
+            for dock in &mut state.docks {
+                dock.menu_fade.show();
+            }
+
             return true;
         }
     }
     false
 }
 
-pub fn handle_menu_release(
+pub fn check_and_consume_menu_press(
     state: &mut AppState,
+    scale_factor: f32,
     phys_width: i32,
     phys_height: i32,
-    scale_factor: f32,
-    item_h: i32,
-) -> bool {
+) -> (bool, bool) {
+    let total_items = state.menu_state.items.len();
+    if total_items == 0 {
+        return (false, false);
+    }
+
     let (menu_x, menu_y, menu_width, total_menu_h) =
         state.get_context_menu_bounds(phys_width, phys_height, scale_factor);
 
-    // Convert physical menu bounds back to logical coordinates, matching Source 13 approach[cite: 13]
     let menu_log_x = (menu_x as f32 / scale_factor).round() as i32;
     let menu_log_y = (menu_y as f32 / scale_factor).round() as i32;
     let menu_log_w = (menu_width as f32 / scale_factor).round() as i32;
@@ -164,9 +129,53 @@ pub fn handle_menu_release(
     let ptr_log_x = state.interaction.pointer_position.x as i32;
     let ptr_log_y = state.interaction.pointer_position.y as i32;
 
-    if ptr_log_x >= menu_log_x && ptr_log_x <= (menu_log_x + menu_log_w) && ptr_log_y >= menu_log_y && ptr_log_y <= (menu_log_y + menu_log_h) {
-        let item_h_log = (item_h as f32 / scale_factor).round() as i32;
-        let clicked_item_idx = (ptr_log_y - menu_log_y) / item_h_log;
+    let inside_menu = ptr_log_x >= menu_log_x
+        && ptr_log_x <= (menu_log_x + menu_log_w)
+        && ptr_log_y >= menu_log_y
+        && ptr_log_y <= (menu_log_y + menu_log_h);
+
+    let mut layer_changed = false;
+    if !inside_menu && !state.menu_state.just_opened {
+        for dock in &mut state.docks {
+            dock.menu_fade.hide();
+        }
+        state.needs_redraw = true;
+        layer_changed = true;
+    }
+
+    (inside_menu, layer_changed)
+}
+
+pub fn handle_menu_release(
+    state: &mut AppState,
+    phys_width: i32,
+    phys_height: i32,
+    scale_factor: f32,
+) -> bool {
+    let total_items = state.menu_state.items.len();
+    if total_items == 0 {
+        return false;
+    }
+
+    let (menu_x, menu_y, menu_width, total_menu_h) =
+        state.get_context_menu_bounds(phys_width, phys_height, scale_factor);
+
+    let menu_log_x = (menu_x as f32 / scale_factor).round() as i32;
+    let menu_log_y = (menu_y as f32 / scale_factor).round() as i32;
+    let menu_log_w = (menu_width as f32 / scale_factor).round() as i32;
+    let menu_log_h = (total_menu_h as f32 / scale_factor).round() as i32;
+
+    let ptr_log_x = state.interaction.pointer_position.x as i32;
+    let ptr_log_y = state.interaction.pointer_position.y as i32;
+
+    if ptr_log_x >= menu_log_x 
+        && ptr_log_x <= (menu_log_x + menu_log_w) 
+        && ptr_log_y >= menu_log_y 
+        && ptr_log_y <= (menu_log_y + menu_log_h) 
+    {
+        let item_h_log = ((total_menu_h as f32 / total_items as f32) / scale_factor).round() as i32;
+        let clicked_item_idx = ((ptr_log_y - menu_log_y) / item_h_log.max(1)).clamp(0, (total_items - 1) as i32);
+        
         let item_type = state.menu_state.items
             .get(clicked_item_idx as usize)
             .map(|item| item.item_type.clone());
@@ -176,7 +185,9 @@ pub fn handle_menu_release(
         }
         state.is_dragging = false;
         state.dragged_app_id = None;
-        state.menu_state.is_open = false;
+        for dock in &mut state.docks {
+            dock.menu_fade.hide();
+        }
         state.needs_redraw = true;
         return true;
     }

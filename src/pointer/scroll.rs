@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use smithay_client_toolkit::seat::pointer::{PointerEvent, PointerEventKind};
 use wayland_client::backend::ObjectId;
 
-use crate::app::AppState;
+use crate::AppState;
 
 pub fn handle_scroll_events(
     state: &mut AppState,

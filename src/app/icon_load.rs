@@ -3,7 +3,7 @@ use std::thread;
 use dockman_lib::animations::IconAnimation;
 use std::path::PathBuf;
 
-use super::state::IconLoadResult; 
+use crate::state::IconLoadResult; 
 
 pub struct IconLoadRequest {
     pub app_id: String,
@@ -105,7 +105,7 @@ impl IconLoader {
                         size: frame.width,
                         animation: Some(anim),
                     });
-                } else if let Some((default_bytes, size)) = super::state::load_generic_fallback_bytes() {
+                } else if let Some((default_bytes, size)) = crate::state::load_generic_fallback_bytes() {
                     let _ = result_tx.send(IconLoadResult {
                         app_id: req.app_id.clone(),
                         rgba: rgba_to_bgra(default_bytes),

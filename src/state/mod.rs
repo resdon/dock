@@ -33,8 +33,8 @@ use crate::graphics::hide::AutoHideState;
 use crate::models::{BadgeUpdate, WindowDiagnostics};
 use crate::render::font::FontManager;
 
-use super::icon_load::IconLoader;
-use super::types::{DndState, DockInstance, HoverState, InteractionState, MenuState};
+use crate::app::icon_load::IconLoader;
+use crate::app::types::{DndState, DockInstance, HoverState, InteractionState, MenuState};
 
 
 pub(crate) mod dock;

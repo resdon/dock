@@ -5,7 +5,7 @@ use wayland_client::protocol::wl_surface::WlSurface;
 
 use super::coordinates::map_coordinates;
 use crate::ContextMenuGeometry;
-use crate::app::AppState;
+use crate::AppState;
 
 /// Handles incoming pointer motion and entry/leave events, updating interaction state,
 /// pointer positions, and drag thresholds.
@@ -25,10 +25,12 @@ pub fn handle_motion_events(
                     layer_changed = true;
                 }
 
-                // Check if the event occurs on a hover popup surface or context menu surface and map coordinates accordingly
                 let mut mapped_coords = None;
+
                 for dock in &state.docks {
                     let scale = dock.scale_factor as f64;
+
+                    // 1. Check hover popup surface coordinates
                     if let Some(ref popup) = dock.hover_popup {
                         if event.surface == popup.surface {
                             if let Some(ref app_id) = state.hover_state.app_id {
@@ -39,20 +41,8 @@ pub fn handle_motion_events(
                                     .position(|id| id == app_id)
                                     .unwrap_or(0);
 
-                                // Count matching open windows directly without cloning into a HashMap
-                                let count = state
-                                    .open_windows
-                                    .values()
-                                    .filter(|win| win.outputs.contains(&dock.output))
-                                    .filter(|w| {
-                                        let id = if !w.app_id.is_empty() {
-                                            w.app_id.as_str()
-                                        } else {
-                                            "Unknown"
-                                        };
-                                        id == app_id.as_str()
-                                    })
-                                    .count();
+                                let running_by_app = state.get_running_by_app();
+                                let count = running_by_app.get(app_id).map_or(1, |v| v.len().max(1));
 
                                 let phys_width = (dock.width as f64 * scale).round() as i32;
                                 let phys_height = (dock.height as f64 * scale).round() as i32;
@@ -75,22 +65,21 @@ pub fn handle_motion_events(
                         }
                     }
 
-                    // Map coordinates if event occurs on the open context menu surface, accounting for dock height and screen position
+                    // 2. Check context menu surface coordinates
                     if state.menu_state.is_open && !state.menu_state.items.is_empty() {
                         let phys_width = (dock.width as f64 * scale).round() as i32;
                         let phys_height = (dock.height as f64 * scale).round() as i32;
                         let menu_item_count = state.menu_state.items.len();
-                        
+
                         let mut anchor_x = phys_width / 2;
+
                         if let Some(ref target_app) = state.menu_state.target_app_id {
                             for d in &state.docks {
                                 if let Some(ref dock_state) = d.dock_state {
-                                    for pin in &dock_state.pins {
-                                        if &pin.app_id == target_app {
-                                            let pin_center_logical = pin.x as f32 + (pin.size as f32 / 2.0);
-                                            anchor_x = (pin_center_logical * scale as f32).round() as i32;
-                                            break;
-                                        }
+                                    if let Some(pin) = dock_state.pins.iter().find(|p| &p.app_id == target_app) {
+                                        let pin_center_logical = pin.x as f32 + (pin.size as f32 / 2.0);
+                                        anchor_x = (pin_center_logical * scale as f32).round() as i32;
+                                        break;
                                     }
                                 }
                             }
@@ -105,7 +94,6 @@ pub fn handle_motion_events(
                             scale,
                         );
 
-                        // Account for dock height and screen position offset
                         let screen_height_phys = (state.height as f64 * scale).round() as i32;
                         let dock_top_phys = screen_height_phys - phys_height;
                         geom.y = dock_top_phys - geom.phys_height;
@@ -135,14 +123,12 @@ pub fn handle_motion_events(
                     layer_changed = true;
                 }
 
-                // Hide hover state if the dock is fully hidden
                 if state.hide_state.is_fully_hidden() && state.hover_state.is_visible {
                     state.hover_state.is_visible = false;
                     state.hover_state.app_id = None;
                     layer_changed = true;
                 }
 
-                // Evaluate drag threshold if an application is selected for dragging
                 if state.dragged_app_id.is_some() && !state.is_dragging {
                     let dx = mapped_x - state.drag_start_x as f32;
                     let dy = mapped_y - state.drag_start_y as f32;
@@ -153,27 +139,7 @@ pub fn handle_motion_events(
                 }
             }
             PointerEventKind::Leave { .. } => {
-                for dock in &state.docks {
-                    let is_menu_surface = dock.context_menu_popup.as_ref().map_or(false, |p| p.surface == event.surface);
-                    if is_menu_surface {
-                        state.menu_state.is_open = false;
-                        state.menu_state.items.clear();
-                        state.menu_state.target_app_id = None;
-                        layer_changed = true;
-                    }
-
-                    let is_hover_surface = dock.hover_popup.as_ref().map_or(false, |p| p.surface == event.surface);
-                    if is_hover_surface {
-                        state.hover_state.is_visible = false;
-                        state.hover_state.app_id = None;
-                        layer_changed = true;
-                    }
-                }
-
-                if dock_surface_ptr.map_or(true, |ptr| ptr == &event.surface) {
-                    state.interaction.pointer_inside = false;
-                    layer_changed = true;
-                }
+                // Leave events are handled coordinate-wise in update_hover_and_proximity
             }
             _ => {}
         }
@@ -211,18 +177,24 @@ pub fn update_hover_and_proximity(
 
     let window_list_geometry = crate::geometry::WindowListGeometry::default();
 
-    let (dock_width, dock_height_val, dock_scale) = state.docks.first()
+    let (dock_width, dock_height_val, dock_scale) = state
+        .docks
+        .first()
         .map(|d| (d.width, d.height, d.scale_factor as f64))
         .unwrap_or((100, dock_height as u32, scale_factor as f64));
 
     let phys_width = (dock_width as f64 * dock_scale).round() as i32;
     let phys_height = (dock_height_val as f64 * dock_scale).round() as i32;
 
-    // 1. If context menu is open, calculate its bounds using ContextMenuGeometry and suppress hover popups
+    // 1. Context Menu Handling
     if state.menu_state.is_open && !state.menu_state.items.is_empty() {
         let menu_item_count = state.menu_state.items.len();
-        
+
         let mut anchor_x = phys_width / 2;
+        let mut icon_hit_start_x = 0;
+        let mut icon_hit_end_x = 0;
+        let mut found_pin = false;
+
         if let Some(ref target_app) = state.menu_state.target_app_id {
             for d in &state.docks {
                 if let Some(ref dock_state) = d.dock_state {
@@ -230,11 +202,27 @@ pub fn update_hover_and_proximity(
                         if &pin.app_id == target_app {
                             let pin_center_logical = pin.x as f32 + (pin.size as f32 / 2.0);
                             anchor_x = (pin_center_logical * dock_scale as f32).round() as i32;
+
+                            let hit_start = pin.x.saturating_sub(spacing / 2) as f32;
+                            let hit_end = (pin.x + pin.size as i32 + (spacing / 2)) as f32;
+
+                            icon_hit_start_x = (hit_start * scale_factor).round() as i32;
+                            icon_hit_end_x = (hit_end * scale_factor).round() as i32;
+                            found_pin = true;
                             break;
                         }
                     }
                 }
+                if found_pin {
+                    break;
+                }
             }
+        }
+
+        if !found_pin {
+            let half_box = ((spacing * 2) as f32 * scale_factor).round() as i32;
+            icon_hit_start_x = anchor_x - half_box;
+            icon_hit_end_x = anchor_x + half_box;
         }
 
         let mut geom = ContextMenuGeometry::default().compute_bounds(
@@ -257,8 +245,33 @@ pub fn update_hover_and_proximity(
         {
             pointer_on_context_menu = true;
         }
+
+        let icon_top = (dock_top_bound as f32 * scale_factor).round() as i32;
+        let in_gap_y = ptr_y_scaled >= (geom.y - 10) && ptr_y_scaled <= (icon_top + (dock_height as f32 * scale_factor) as i32);
+
+        let leeway_min_x = icon_hit_start_x.min(geom.x) - 10;
+        let leeway_max_x = icon_hit_end_x.max(geom.x + geom.phys_width) + 10;
+
+        if in_gap_y && ptr_x_scaled >= leeway_min_x && ptr_x_scaled <= leeway_max_x {
+            pointer_in_leeway = true;
+        }
+
+        let menu_in_safe_zone = pointer_on_context_menu || pointer_in_leeway;
+
+        if menu_in_safe_zone {
+            for dock in &mut state.docks {
+                dock.menu_fade.show();
+            }
+        } else {
+            for dock in &mut state.docks {
+                dock.menu_fade.hide();
+            }
+            state.menu_state.is_open = false;
+            state.menu_state.target_app_id = None;
+            layer_changed = true;
+        }
     } else {
-        // 2. Evaluate hover icons & window lists when context menu is closed
+        // 2. Window Hover & Icon Proximity
         let is_over_icons = pointer_y >= dock_top_bound as f32 && pointer_y <= dock_bottom_bound as f32;
 
         if is_over_icons {
@@ -277,11 +290,12 @@ pub fn update_hover_and_proximity(
                         }
                     }
                 }
-                if should_be_visible { break; }
+                if should_be_visible {
+                    break;
+                }
             }
         }
 
-        // Evaluate the window list and calculate leeway for the active item
         let active_app_id = new_app_id.clone().or_else(|| {
             if state.hover_state.is_visible {
                 state.hover_state.app_id.clone()
@@ -291,108 +305,91 @@ pub fn update_hover_and_proximity(
         });
 
         if let Some(app_id) = active_app_id {
-            if let Some(wins) = running_by_app.get(&app_id) {
-                let hovered_app_index = apps_in_dock
-                    .iter()
-                    .position(|id| id == &app_id)
-                    .unwrap_or(0);
+            let win_count = running_by_app.get(&app_id).map_or(1, |v| v.len().max(1));
 
-                let (menu_x, menu_y, menu_width, menu_height, _, _) = window_list_geometry.compute_bounds(
-                    phys_width,
-                    phys_height,
-                    total_items,
-                    hovered_app_index,
-                    wins.len(),
-                    dock_scale,
-                );
+            let hovered_app_index = apps_in_dock
+                .iter()
+                .position(|id| id == &app_id)
+                .unwrap_or(0);
 
-                // Check if pointer is actively hovering the window list menu
-                if !should_be_visible && state.hover_state.is_visible {
-                    if ptr_x_scaled >= menu_x
-                        && ptr_x_scaled <= (menu_x + menu_width)
-                        && ptr_y_scaled >= menu_y
-                        && ptr_y_scaled <= (menu_y + menu_height)
-                    {
-                        should_be_visible = true;
-                        new_app_id = Some(app_id.clone());
-                    }
-                }
+            let (menu_x, menu_y, menu_width, menu_height, _, _) = window_list_geometry.compute_bounds(
+                phys_width,
+                phys_height,
+                total_items,
+                hovered_app_index,
+                win_count,
+                dock_scale,
+            );
 
-                // 3. Compute dynamic leeway corridor between the icon and the menu
-                let mut icon_hit_start_x = 0;
-                let mut icon_hit_end_x = 0;
-                let mut found_pin = false;
+            let is_over_window_list = ptr_x_scaled >= menu_x
+                && ptr_x_scaled <= (menu_x + menu_width)
+                && ptr_y_scaled >= menu_y
+                && ptr_y_scaled <= (menu_y + menu_height);
 
-                for dock in &state.docks {
-                    if let Some(ref dock_state) = dock.dock_state {
-                        for pin in &dock_state.pins {
-                            if pin.app_id == app_id {
-                                let hit_start = pin.x.saturating_sub(spacing / 2) as f32;
-                                let hit_end = (pin.x + pin.size as i32 + (spacing / 2)) as f32;
-                                
-                                icon_hit_start_x = (hit_start * scale_factor).round() as i32;
-                                icon_hit_end_x = (hit_end * scale_factor).round() as i32;
-                                found_pin = true;
-                                break;
-                            }
+            if is_over_window_list {
+                should_be_visible = true;
+                new_app_id = Some(app_id.clone());
+            }
+
+            let mut icon_hit_start_x = 0;
+            let mut icon_hit_end_x = 0;
+            let mut found_pin = false;
+
+            for dock in &state.docks {
+                if let Some(ref dock_state) = dock.dock_state {
+                    for pin in &dock_state.pins {
+                        if pin.app_id == app_id {
+                            let hit_start = pin.x.saturating_sub(spacing / 2) as f32;
+                            let hit_end = (pin.x + pin.size as i32 + (spacing / 2)) as f32;
+
+                            icon_hit_start_x = (hit_start * scale_factor).round() as i32;
+                            icon_hit_end_x = (hit_end * scale_factor).round() as i32;
+                            found_pin = true;
+                            break;
                         }
                     }
-                    if found_pin { break; }
                 }
-
                 if found_pin {
-                    let icon_top = (dock_top_bound as f32 * scale_factor).round() as i32;
-                    let icon_bottom = (dock_bottom_bound as f32 * scale_factor).round() as i32;
+                    break;
+                }
+            }
 
-                    // The bounding box covering both the rendered menu and the dock icon
-                    let leeway_min_x = icon_hit_start_x.min(menu_x);
-                    let leeway_max_x = icon_hit_end_x.max(menu_x + menu_width);
-                    let leeway_min_y = icon_top.min(menu_y);
-                    let leeway_max_y = icon_bottom.max(menu_y + menu_height);
+            if found_pin {
+                let icon_top = (dock_top_bound as f32 * scale_factor).round() as i32;
+                let in_gap_y = ptr_y_scaled >= (menu_y - 10) && ptr_y_scaled <= (icon_top + (dock_height as f32 * scale_factor) as i32);
 
-                    if ptr_x_scaled >= leeway_min_x
-                        && ptr_x_scaled <= leeway_max_x
-                        && ptr_y_scaled >= leeway_min_y
-                        && ptr_y_scaled <= leeway_max_y
-                    {
-                        pointer_in_leeway = true;
-                    }
+                let leeway_min_x = icon_hit_start_x.min(menu_x) - 10;
+                let leeway_max_x = icon_hit_end_x.max(menu_x + menu_width) + 10;
+
+                if in_gap_y && ptr_x_scaled >= leeway_min_x && ptr_x_scaled <= leeway_max_x {
+                    pointer_in_leeway = true;
+                    new_app_id = Some(app_id);
                 }
             }
         }
     }
 
-    // 4. State updates and grace period timers
-    let mut effective_should_be_visible = should_be_visible;
+    let effective_should_be_visible = should_be_visible || pointer_in_leeway || pointer_on_context_menu;
 
-    if effective_should_be_visible {
-        state.hover_state.last_leave_time = None;
-    } else if state.hover_state.is_visible {
-        let in_safe_zone = pointer_in_leeway || pointer_on_context_menu;
-        
-        if in_safe_zone {
-            effective_should_be_visible = true;
-            state.hover_state.last_leave_time = None;
+    let visibility_changed = effective_should_be_visible != state.hover_state.is_visible;
+    let app_changed = effective_should_be_visible && (new_app_id != state.hover_state.app_id);
+
+    if visibility_changed || app_changed {
+        state.hover_state.is_visible = effective_should_be_visible;
+        state.hover_state.app_id = if effective_should_be_visible {
+            new_app_id.or_else(|| state.hover_state.app_id.clone())
         } else {
-            let leave_time = *state
-                .hover_state
-                .last_leave_time
-                .get_or_insert_with(std::time::Instant::now);
-                
-            if leave_time.elapsed() < std::time::Duration::from_secs(1) {
-                effective_should_be_visible = true;
+            None
+        };
+        layer_changed = true;
+
+        for dock in &mut state.docks {
+            if effective_should_be_visible {
+                dock.hover_fade.show();
             } else {
-                state.hover_state.last_leave_time = None;
+                dock.hover_fade.hide();
             }
         }
-    }
-
-    if effective_should_be_visible != state.hover_state.is_visible
-        || new_app_id != state.hover_state.app_id
-    {
-        state.hover_state.is_visible = effective_should_be_visible;
-        state.hover_state.app_id = new_app_id;
-        layer_changed = true;
     }
 
     layer_changed

@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use wayland_client::backend::ObjectId;
-use crate::app::AppState;
+use crate::AppState;
 use crate::models::WindowDiagnostics;
-use super::drag::handle_drag_release;
+use crate::pointer::drag::handle_drag_release;
 
 pub fn handle_dock_press(
     state: &mut AppState,

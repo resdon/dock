@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use wayland_client::backend::ObjectId;
 
-use crate::app::AppState;
+use crate::AppState;
 use crate::geometry::context_menu::ContextMenuGeometry;
 
 /// Checks whether the current logical pointer coordinates are within a specified distance (`margin`)

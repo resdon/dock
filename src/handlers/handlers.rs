@@ -1,6 +1,6 @@
 pub use crate::models::LastState;
 use crate::models::WindowDiagnostics;
-use crate::app::AppState;
+use crate::AppState;
 
 use std::os::fd::AsFd;
 use std::io::Read;

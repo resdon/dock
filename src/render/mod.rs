@@ -12,7 +12,8 @@ pub use crate::geometry::context_menu::{
     BASE_ITEM_HEIGHT, BASE_MENU_WIDTH, SurfaceGeometry,
 };
 
-use crate::app::state::dock::DOCK_HEIGHT;
+use crate::graphics::fade::FadeAnimation;
+use crate::state::dock::DOCK_HEIGHT;
 use crate::models::{BadgeUpdate, WindowDiagnostics};
 use crate::FontManager;
 
@@ -103,6 +104,7 @@ pub fn render_dock_surface_legacy(
             width: phys_width as f64,
             height: dock_height as f64,
         },
+        fade: FadeAnimation::new(0.0, 1.0, 0.25),
     };
 
     let mut render_res = DockRenderResources {

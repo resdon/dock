@@ -1,7 +1,7 @@
 use smithay_client_toolkit::seat::pointer::PointerEvent;
 use wayland_client::protocol::wl_surface::WlSurface;
 
-use crate::app::AppState;
+use crate::AppState;
 use crate::geometry::context_menu::ContextMenuGeometry;
 
 pub fn map_coordinates(
