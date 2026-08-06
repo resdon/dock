@@ -107,15 +107,15 @@ pub fn update(
         state.menu_state.dock_timer = None;
     }
 
-    // C. Context menu tracking
+    // C. Context menu tracking: Clears timer when returning so fade immediately reverses
     if on_context_menu {
         state.menu_state.consecutive_on_context_menu_count += 1;
+        state.menu_state.context_menu_timer = None;
+    } else {
+        state.menu_state.consecutive_on_context_menu_count = 0;
         if state.menu_state.context_menu_timer.is_none() {
             state.menu_state.context_menu_timer = Some(Instant::now());
         }
-    } else {
-        state.menu_state.consecutive_on_context_menu_count = 0;
-        state.menu_state.context_menu_timer = None;
     }
 
     // D. Window list tracking
@@ -143,7 +143,7 @@ pub fn update(
     let no_motion_timed_out = no_motion_elapsed >= hard_timeout;
     let dock_timed_out = dock_elapsed >= hard_timeout;
     let window_list_timed_out = window_list_hard_timeout_pre || window_list_elapsed >= hard_timeout;
-    let context_menu_timed_out = context_menu_elapsed >= hard_timeout && no_motion_timed_out;
+    let context_menu_timed_out = context_menu_elapsed >= hard_timeout;
 
     let off_menu_no_motion = no_motion_timed_out && !on_context_menu;
 
@@ -183,17 +183,30 @@ pub fn update(
         let fading_out = (no_motion_elapsed >= fade_delay && !on_context_menu)
             || dock_elapsed >= fade_delay
             || window_list_elapsed >= fade_delay
-            || (context_menu_elapsed >= fade_delay && !on_context_menu);
+            || context_menu_elapsed >= fade_delay;
 
         let menu_visible_target = !fading_out;
 
         for dock in &mut state.docks {
+            let was_target_visible = dock.menu_fade.target_alpha > 0.0;
             dock.menu_fade.set_visible(menu_visible_target);
+            if was_target_visible != menu_visible_target {
+                layer_changed = true;
+            }
         }
     } else {
         for dock in &mut state.docks {
             dock.menu_fade.set_visible(false);
         }
+    }
+
+    // Keep layer redrawing active while alpha is animating back to target
+    let animating = state.docks.iter().any(|d| {
+        (d.hover_fade.current_alpha - d.hover_fade.target_alpha).abs() > f32::EPSILON
+            || (d.menu_fade.current_alpha - d.menu_fade.target_alpha).abs() > f32::EPSILON
+    });
+    if animating {
+        layer_changed = true;
     }
 
     state.menu_state.cursor_moved = false;

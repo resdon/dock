@@ -8,7 +8,6 @@ use crate::geometry::context_menu::{ContextMenuGeometry, BASE_ITEM_HEIGHT};
 use crate::handlers::context_menu::{execute_menu_action, open_context_menu};
 use crate::handlers::dock::{get_windows_for_app, handle_dock_press, handle_dock_release};
 use crate::interaction::proximity::calculate_context_menu_anchor;
-use crate::interaction::proximity::pointer_in_context_menu_leeway;
 
 const BTN_LEFT: u32 = 272;
 const BTN_RIGHT: u32 = 273;
@@ -22,7 +21,7 @@ pub fn handle_click_events(
     scale_factor: f32,
     layout: (i32, i32, i32, i32),
 ) -> bool {
-    let (dock_height, _, spacing, _) = layout;
+    let (dock_height, _, _spacing, _) = layout;
     let mut layer_changed = false;
 
     let ptr_log_x = state.interaction.pointer_position.x as i32;

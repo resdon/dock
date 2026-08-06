@@ -9,6 +9,49 @@ pub struct PreparedWindowList<'a> {
     pub running_by_app: HashMap<String, Vec<&'a WindowDiagnostics>>,
 }
 
+pub fn prepare_window_list<'a>(
+    pinned_apps: &[String],
+    open_windows: &'a HashMap<wayland_client::backend::ObjectId, WindowDiagnostics>,
+) -> PreparedWindowList<'a> {
+    let mut apps_in_dock = Vec::new();
+    let mut running_by_app: HashMap<String, Vec<&'a WindowDiagnostics>> = HashMap::new();
+
+    for app_id in pinned_apps {
+        if !apps_in_dock.contains(app_id) {
+            apps_in_dock.push(app_id.clone());
+        }
+    }
+
+    let mut sorted_windows: Vec<&'a WindowDiagnostics> = open_windows.values().collect();
+
+    // Stable sort by app_name, then pointer memory address
+    sorted_windows.sort_by(|a, b| {
+        a.app_name
+            .cmp(&b.app_name)
+            .then_with(|| std::ptr::from_ref(*a).cmp(&std::ptr::from_ref(*b)))
+    });
+
+    for w in sorted_windows {
+        let app_id = if !w.app_id.is_empty() {
+            w.app_id.clone()
+        } else if !w.title.is_empty() {
+            w.title.clone()
+        } else {
+            "Unknown".to_string()
+        };
+
+        running_by_app.entry(app_id.clone()).or_default().push(w);
+        if !apps_in_dock.contains(&app_id) {
+            apps_in_dock.push(app_id);
+        }
+    }
+
+    PreparedWindowList {
+        apps_in_dock,
+        running_by_app,
+    }
+}
+
 pub fn render_window_list_surface(
     canvas: &mut [u8],
     menu_width: i32,
@@ -23,7 +66,8 @@ pub fn render_window_list_surface(
         return;
     }
 
-	let item_h = (BASE_ITEM_HEIGHT as f32 * scale_factor).round() as i32;    if item_h <= 0 {
+    let item_h = (BASE_ITEM_HEIGHT as f32 * scale_factor).round() as i32;
+    if item_h <= 0 {
         return;
     }
 
@@ -125,48 +169,6 @@ pub fn render_window_list_surface(
                 }
             }
         }
-    }
-}
-
-pub fn prepare_window_list<'a>(
-    pinned_apps: &[String],
-    open_windows: &'a HashMap<wayland_client::backend::ObjectId, WindowDiagnostics>,
-) -> PreparedWindowList<'a> {
-    let mut apps_in_dock = Vec::new();
-    let mut running_by_app: HashMap<String, Vec<&'a WindowDiagnostics>> = HashMap::new();
-
-    for app_id in pinned_apps {
-        if !apps_in_dock.contains(app_id) {
-            apps_in_dock.push(app_id.clone());
-        }
-    }
-
-    let mut sorted_windows: Vec<&'a WindowDiagnostics> = open_windows.values().collect();
-    sorted_windows.sort_by(|a, b| {
-        a.app_name
-            .cmp(&b.app_name)
-            .then_with(|| a.title.cmp(&b.title))
-            .then_with(|| std::ptr::from_ref(*a).cmp(&std::ptr::from_ref(*b)))
-    });
-
-    for w in sorted_windows {
-        let app_id = if !w.app_id.is_empty() {
-            w.app_id.clone()
-        } else if !w.title.is_empty() {
-            w.title.clone()
-        } else {
-            "Unknown".to_string()
-        };
-
-        running_by_app.entry(app_id.clone()).or_default().push(w);
-        if !apps_in_dock.contains(&app_id) {
-            apps_in_dock.push(app_id);
-        }
-    }
-
-    PreparedWindowList {
-        apps_in_dock,
-        running_by_app,
     }
 }
 

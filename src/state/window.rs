@@ -93,7 +93,12 @@ impl AppState {
 
         if matching_windows.len() <= 1 { return; }
 
-        matching_windows.sort_by(|a, b| a.1.title.cmp(&b.1.title));
+		// Sorting
+		matching_windows.sort_by(|a, b| {
+            a.1.matched_pid
+                .cmp(&b.1.matched_pid)
+                .then_with(|| std::ptr::from_ref(a.1).cmp(&std::ptr::from_ref(b.1)))
+        });
 
         let active_idx = matching_windows.iter().position(|(_, win)| win.is_activated);
 

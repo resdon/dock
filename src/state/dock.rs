@@ -22,7 +22,7 @@ impl AppState {
     }
 
     /// Builds a map of App IDs to their sorted open window ObjectIds.
-    pub fn get_running_by_app(&self) -> HashMap<String, Vec<ObjectId>> {
+	pub fn get_running_by_app(&self) -> HashMap<String, Vec<ObjectId>> {
         let mut running_by_app: HashMap<String, Vec<ObjectId>> = HashMap::new();
 
         for (id, window) in &self.open_windows {
@@ -32,11 +32,19 @@ impl AppState {
                 .push(id.clone());
         }
 
+		// Sort by PID/stable ID instead of title
         for windows in running_by_app.values_mut() {
             windows.sort_by(|a, b| {
-                let title_a = self.open_windows.get(a).map(|w| w.title.as_str()).unwrap_or("");
-                let title_b = self.open_windows.get(b).map(|w| w.title.as_str()).unwrap_or("");
-                title_a.cmp(title_b)
+                let win_a = self.open_windows.get(a);
+                let win_b = self.open_windows.get(b);
+                let pid_a = win_a.and_then(|w| w.matched_pid);
+                let pid_b = win_b.and_then(|w| w.matched_pid);
+
+                pid_a.cmp(&pid_b).then_with(|| {
+                    let ptr_a = win_a.map(std::ptr::from_ref);
+                    let ptr_b = win_b.map(std::ptr::from_ref);
+                    ptr_a.cmp(&ptr_b)
+                })
             });
         }
 

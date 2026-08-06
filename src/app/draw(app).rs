@@ -64,41 +64,42 @@ impl AppState {
 
             let dock_output = dock.output.clone();
 
-            let filtered_windows: HashMap<ObjectId, WindowDiagnostics> = self
-                .open_windows
-                .iter()
-                .filter(|(_, win)| win.outputs.contains(&dock_output))
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
+			// 1. Replace the filtered_windows block (around line 46):
+			let filtered_windows: HashMap<&ObjectId, &WindowDiagnostics> = self
+			    .open_windows
+			    .iter()
+			    .filter(|(_, win)| win.outputs.contains(&dock_output))
+			    .collect();
 
-            // Group window diagnostics by app_id
-            let mut running_by_app: HashMap<String, Vec<&WindowDiagnostics>> = HashMap::new();
-            for win in filtered_windows.values() {
-                let id = if !win.app_id.is_empty() {
-                    win.app_id.clone()
-                } else if !win.title.is_empty() {
-                    win.title.clone()
-                } else {
-                    "Unknown".to_string()
-                };
-                running_by_app.entry(id).or_default().push(win);
-            }
+			// 2. Update running_by_app to push the borrowed reference (*win):
+			let mut running_by_app: HashMap<String, Vec<&WindowDiagnostics>> = HashMap::new();
+			for win in filtered_windows.values() {
+			    let id = if !win.app_id.is_empty() {
+			        win.app_id.clone()
+			    } else if !win.title.is_empty() {
+			        win.title.clone()
+			    } else {
+			        "Unknown".to_string()
+			    };
+			    running_by_app.entry(id).or_default().push(*win);
+			}
 
-            let mut apps_in_dock_ptrs: Vec<&str> = self.pinned_apps.iter().map(|s| s.as_str()).collect();
-            for window in filtered_windows.values() {
-                let id = if !window.app_id.is_empty() {
-                    window.app_id.as_str()
-                } else if !window.title.is_empty() {
-                    window.title.as_str()
-                } else {
-                    "Unknown"
-                };
+			// 3. Update apps_in_dock_ptrs:
+			let mut apps_in_dock_ptrs: Vec<&str> = self.pinned_apps.iter().map(|s| s.as_str()).collect();
+			for window in filtered_windows.values() {
+			    let id = if !window.app_id.is_empty() {
+			        window.app_id.as_str()
+			    } else if !window.title.is_empty() {
+			        window.title.as_str()
+			    } else {
+			        "Unknown"
+			    };
 
-                if !apps_in_dock_ptrs.contains(&id) {
-                    apps_in_dock_ptrs.push(id);
-                }
-            }
-
+			    if !apps_in_dock_ptrs.contains(&id) {
+			        apps_in_dock_ptrs.push(id);
+			    }
+			}
+			
             let total_items = apps_in_dock_ptrs.len();
             let calculated_width = if total_items > 0 {
                 (total_items * box_size + (total_items + 1) * spacing) as u32
@@ -184,12 +185,13 @@ impl AppState {
                                 wl_shm::Format::Argb8888,
                             ).expect("Failed to allocate hover popup buffer");
 
-                            let mut sorted_windows = app_windows;
-                            sorted_windows.sort_by(|a, b| {
-                                a.title
-                                    .cmp(&b.title)
-                                    .then_with(|| std::ptr::from_ref(*a).cmp(&std::ptr::from_ref(*b)))
-                            });
+							// Sorting not by title
+							let mut sorted_windows = app_windows;
+							sorted_windows.sort_by(|a, b| {
+							    a.matched_pid
+							        .cmp(&b.matched_pid)
+							        .then_with(|| std::ptr::from_ref(*a).cmp(&std::ptr::from_ref(*b)))
+							});
 
                             let local_ptr_x = ((self.interaction.pointer_position.x * dock_scale) - menu_x as f64).max(0.0) as usize;
                             let local_ptr_y = ((self.interaction.pointer_position.y * dock_scale) - menu_y as f64).max(0.0) as usize;
@@ -214,7 +216,8 @@ impl AppState {
 
                             let compositor = self.compositor_state.wl_compositor();
                             let region = compositor.create_region(qh, ());
-                            region.add(0, 0, logical_w as i32, logical_h as i32);
+                            // Use physical dimensions (p_width, p_height) to match buffer scale space
+                            region.add(0, 0, p_width, p_height);
                             popup.surface.set_input_region(Some(&region));
                             region.destroy();
 
@@ -295,7 +298,10 @@ impl AppState {
                     }
                 });
 
-				popup.subsurface.set_position(geom.x, geom.y);
+				popup.subsurface.set_position(
+				    (geom.x as f64 / dock_scale).round() as i32,
+				    (geom.y as f64 / dock_scale).round() as i32,
+				);	    
 
                 popup.width = geom.logical_width as u32;
                 popup.height = geom.logical_height as u32;
@@ -320,6 +326,9 @@ impl AppState {
                         local_ptr_y,
                     );
 
+					// --- APPLY CONTEXT MENU FADE ALPHA TO CANVAS ---
+	                dock.menu_fade.apply_alpha_to_canvas(canvas);
+
                     popup.surface.set_buffer_scale(scale_i32);
                     buffer
                         .attach_to(&popup.surface)
@@ -328,7 +337,8 @@ impl AppState {
 
                     let compositor = self.compositor_state.wl_compositor();
                     let region = compositor.create_region(qh, ());
-                    region.add(0, 0, geom.logical_width as i32, geom.logical_height as i32);
+                    // Use physical dimensions (geom.phys_width, geom.phys_height) to match buffer scale space
+                    region.add(0, 0, geom.phys_width, geom.phys_height);
                     popup.surface.set_input_region(Some(&region));
                     region.destroy();
 

@@ -351,8 +351,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             configured: false,
             context_menu_popup: None,
             dock_state: None,
-            hover_fade: FadeAnimation::new(0.0, 1.0, 0.2),
-            menu_fade: FadeAnimation::new(0.0, 1.0, 0.2),
+            hover_fade: FadeAnimation::new(0.0, 1.0, 1.0),
+            menu_fade: FadeAnimation::new(0.0, 1.0, 1.0), // 1000ms
         });
     }
 

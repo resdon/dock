@@ -120,10 +120,13 @@ pub fn pointer_on_window_list(
 
     let menu_y = (screen_height_phys - phys_dock_height) - menu_height;
 
-    ptr_x_scaled >= menu_x
+    let in_list = ptr_x_scaled >= menu_x
         && ptr_x_scaled <= (menu_x + menu_width)
         && ptr_y_scaled >= menu_y
-        && ptr_y_scaled <= (menu_y + menu_height)
+        && ptr_y_scaled <= (menu_y + menu_height);
+
+
+    in_list
 }
 
 pub fn pointer_between_icon_and_window(
@@ -135,19 +138,23 @@ pub fn pointer_between_icon_and_window(
     dock_height: i32,
     spacing: i32,
 ) -> bool {
+
+	// Disabled for now
+	false
+	/*
     let windows = get_windows_for_app(app_id, running_by_app, &state.open_windows);
     if windows.is_empty() {
         return false;
     }
-
-    let ptr_x_scaled = (state.interaction.pointer_position.x * scale_factor as f64).round() as i32;
-    let ptr_y_scaled = (state.interaction.pointer_position.y * scale_factor as f64).round() as i32;
 
     let dock_scale = state
         .docks
         .first()
         .map(|d| d.scale_factor as f64)
         .unwrap_or(scale_factor as f64);
+
+    let ptr_x_scaled = (state.interaction.pointer_position.x * dock_scale).round() as i32;
+    let ptr_y_scaled = (state.interaction.pointer_position.y * dock_scale).round() as i32;
 
     let phys_width = (state.width as f64 * dock_scale).round() as i32;
     let phys_dock_height = (dock_height as f64 * dock_scale).round() as i32;
@@ -175,11 +182,11 @@ pub fn pointer_between_icon_and_window(
     for dock in &state.docks {
         if let Some(ref dock_state) = dock.dock_state {
             if let Some(pin) = dock_state.pins.iter().find(|p| p.app_id == app_id) {
-                let hit_start = pin.x.saturating_sub(spacing / 2) as f32;
-                let hit_end = (pin.x + pin.size as i32 + (spacing / 2)) as f32;
+                let hit_start = pin.x as f64 * dock_scale;
+                let hit_end = (pin.x + pin.size as i32) as f64 * dock_scale;
 
-                icon_hit_start_x = (hit_start * scale_factor).round() as i32;
-                icon_hit_end_x = (hit_end * scale_factor).round() as i32;
+                icon_hit_start_x = hit_start.round() as i32;
+                icon_hit_end_x = hit_end.round() as i32;
                 found_pin = true;
                 break;
             }
@@ -201,10 +208,9 @@ pub fn pointer_between_icon_and_window(
                 0
             };
             let start_x = start_offset_x + spacing + idx as i32 * (box_size + spacing);
-            let hit_start = start_x.saturating_sub(spacing / 2) as f32;
-            let hit_end = (start_x + box_size + spacing / 2) as f32;
-            icon_hit_start_x = (hit_start * scale_factor).round() as i32;
-            icon_hit_end_x = (hit_end * scale_factor).round() as i32;
+            
+            icon_hit_start_x = (start_x as f64 * dock_scale).round() as i32;
+            icon_hit_end_x = ((start_x + box_size) as f64 * dock_scale).round() as i32;
             found_pin = true;
         }
     }
@@ -213,15 +219,27 @@ pub fn pointer_between_icon_and_window(
         return false;
     }
 
-    let dock_top_bound = (state.height as i32).saturating_sub(dock_height);
-    let icon_top = (dock_top_bound as f32 * scale_factor).round() as i32;
-    let in_gap_y = ptr_y_scaled >= (menu_y - 10)
-        && ptr_y_scaled <= (icon_top + phys_dock_height);
+    // 1. Strictly bound vertical gap between bottom of menu popup and top of dock icon
+    let gap_top = menu_y + menu_height - 6; // overlap 6px into bottom of popup
+    let dock_top = screen_height_phys - phys_dock_height;
+    let gap_bottom = dock_top + 6;          // overlap 6px into top of dock
 
-    let leeway_min_x = icon_hit_start_x.min(menu_x) - 10;
-    let leeway_max_x = icon_hit_end_x.max(menu_x + menu_width) + 10;
+    let in_gap_y = ptr_y_scaled >= gap_top && ptr_y_scaled <= gap_bottom;
 
-    in_gap_y && ptr_x_scaled >= leeway_min_x && ptr_x_scaled <= leeway_max_x
+    // 2. Restrict horizontal corridor to icon span + small buffer, or center towards menu anchor
+    let padding = (12.0 * dock_scale).round() as i32;
+    let leeway_min_x = icon_hit_start_x.min(menu_x) - padding;
+    let leeway_max_x = icon_hit_end_x.max(menu_x + menu_width) + padding;
+
+    // Constrain corridor horizontally to icon X range (+ buffer) to prevent swallowing adjacent icons
+    let tight_icon_min_x = icon_hit_start_x - padding;
+    let tight_icon_max_x = icon_hit_end_x + padding;
+
+    let final_min_x = leeway_min_x.max(tight_icon_min_x);
+    let final_max_x = leeway_max_x.min(tight_icon_max_x);
+
+    in_gap_y && ptr_x_scaled >= final_min_x && ptr_x_scaled <= final_max_x
+	*/
 }
 
 pub fn pointer_on_context_menu(
@@ -248,9 +266,11 @@ pub fn pointer_on_context_menu(
     let dock_width = state.docks.first().map(|d| d.width).unwrap_or(state.width as u32);
     let phys_width = (dock_width as f64 * dock_scale).round() as i32;
     let phys_dock_height = (dock_height as f64 * dock_scale).round() as i32;
+    let screen_height_phys = (state.height as f64 * dock_scale).round() as i32;
 
     let anchor_x = calculate_context_menu_anchor(state, apps_in_dock, phys_width, dock_scale, layout);
 
+    // Compute actual physical bounds of the context menu popup
     let mut geom = ContextMenuGeometry::default().compute_bounds(
         anchor_x,
         phys_dock_height,
@@ -260,13 +280,19 @@ pub fn pointer_on_context_menu(
         dock_scale,
     );
 
-    let screen_height_phys = (state.height as f64 * dock_scale).round() as i32;
     geom.y = (screen_height_phys - phys_dock_height) - geom.phys_height;
+    let menu_width = (geom.logical_width as f64 * dock_scale).round() as i32;
+    let menu_height = geom.phys_height;
 
-    ptr_x_scaled >= geom.x
-        && ptr_x_scaled <= (geom.x + geom.phys_width)
+    let menu_min_x = geom.x.max(0);
+    let menu_max_x = (geom.x + menu_width).min(phys_width);
+
+    let in_menu = ptr_x_scaled >= menu_min_x
+        && ptr_x_scaled <= menu_max_x
         && ptr_y_scaled >= geom.y
-        && ptr_y_scaled <= (geom.y + geom.phys_height)
+        && ptr_y_scaled <= (geom.y + menu_height);
+
+    in_menu
 }
 
 pub fn pointer_in_context_menu_leeway(
@@ -275,11 +301,13 @@ pub fn pointer_in_context_menu_leeway(
     scale_factor: f32,
     layout: (i32, i32, i32, i32),
 ) -> bool {
+	false
+	/*
     if !state.menu_state.is_open || state.menu_state.items.is_empty() {
         return false;
     }
 
-    let (dock_height, box_size, spacing, start_offset_x) = layout;
+    let (dock_height, _, _, _) = layout;
 
     let dock_scale = state
         .docks
@@ -293,47 +321,11 @@ pub fn pointer_in_context_menu_leeway(
     let dock_width = state.docks.first().map(|d| d.width).unwrap_or(state.width as u32);
     let phys_width = (dock_width as f64 * dock_scale).round() as i32;
     let phys_dock_height = (dock_height as f64 * dock_scale).round() as i32;
+    let screen_height_phys = (state.height as f64 * dock_scale).round() as i32;
 
     let anchor_x = calculate_context_menu_anchor(state, apps_in_dock, phys_width, dock_scale, layout);
 
-    let mut icon_hit_start_x = 0;
-    let mut icon_hit_end_x = 0;
-    let mut found_pin = false;
-
-    if let Some(ref target_app) = state.menu_state.target_app_id {
-        for d in &state.docks {
-            if let Some(ref dock_state) = d.dock_state {
-                if let Some(pin) = dock_state.pins.iter().find(|p| &p.app_id == target_app) {
-                    let hit_start = pin.x.saturating_sub(spacing / 2) as f64 * dock_scale;
-                    let hit_end = (pin.x + pin.size as i32 + (spacing / 2)) as f64 * dock_scale;
-
-                    icon_hit_start_x = hit_start.round() as i32;
-                    icon_hit_end_x = hit_end.round() as i32;
-                    found_pin = true;
-                    break;
-                }
-            }
-        }
-
-        if !found_pin {
-            if let Some(idx) = apps_in_dock.iter().position(|id| id == target_app) {
-                let start_x = start_offset_x + spacing + idx as i32 * (box_size + spacing);
-                let hit_start = (start_x.saturating_sub(spacing / 2)) as f64 * dock_scale;
-                let hit_end = (start_x + box_size + spacing / 2) as f64 * dock_scale;
-
-                icon_hit_start_x = hit_start.round() as i32;
-                icon_hit_end_x = hit_end.round() as i32;
-                found_pin = true;
-            }
-        }
-    }
-
-    if !found_pin {
-        let half_box = ((spacing * 2) as f64 * dock_scale).round() as i32;
-        icon_hit_start_x = anchor_x - half_box;
-        icon_hit_end_x = anchor_x + half_box;
-    }
-
+    // 1. Current Context Menu Area Bounds
     let mut geom = ContextMenuGeometry::default().compute_bounds(
         anchor_x,
         phys_dock_height,
@@ -343,17 +335,43 @@ pub fn pointer_in_context_menu_leeway(
         dock_scale,
     );
 
-    let screen_height_phys = (state.height as f64 * dock_scale).round() as i32;
     geom.y = (screen_height_phys - phys_dock_height) - geom.phys_height;
+    let menu_width = (geom.logical_width as f64 * dock_scale).round() as i32;
+    let menu_height = geom.phys_height;
 
-    let dock_top_bound = (state.height as i32).saturating_sub(dock_height);
-    let icon_top = (dock_top_bound as f64 * dock_scale).round() as i32;
-    
-    let in_gap_y = ptr_y_scaled >= (geom.y - 10)
-        && ptr_y_scaled <= (icon_top + phys_dock_height);
+    let menu_min_x = geom.x.max(0);
+    let menu_max_x = (geom.x + menu_width).min(phys_width);
 
-    let leeway_min_x = icon_hit_start_x.min(geom.x) - 15;
-    let leeway_max_x = icon_hit_end_x.max(geom.x + geom.phys_width) + 15;
+    let in_menu = ptr_x_scaled >= menu_min_x
+        && ptr_x_scaled <= menu_max_x
+        && ptr_y_scaled >= geom.y
+        && ptr_y_scaled <= (geom.y + menu_height);
 
-    in_gap_y && ptr_x_scaled >= leeway_min_x && ptr_x_scaled <= leeway_max_x
+    // 2. Main Rendered Dock Area Bounds
+    let dock_min_x = 0;
+    let dock_max_x = phys_width;
+    let dock_min_y = screen_height_phys - phys_dock_height;
+    let dock_max_y = screen_height_phys;
+
+    let in_dock = ptr_x_scaled >= dock_min_x
+        && ptr_x_scaled <= dock_max_x
+        && ptr_y_scaled >= dock_min_y
+        && ptr_y_scaled <= dock_max_y;
+
+    // 3. Leeway Corridor
+    let leeway_min_x = menu_min_x.min(anchor_x - 30);
+    let leeway_max_x = menu_max_x.max(anchor_x + 30);
+    let leeway_min_y = geom.y + menu_height;
+    let leeway_max_y = dock_min_y;
+
+    let in_leeway = ptr_x_scaled >= leeway_min_x
+        && ptr_x_scaled <= leeway_max_x
+        && ptr_y_scaled >= leeway_min_y
+        && ptr_y_scaled <= leeway_max_y;
+
+    // Force true if any cursor motion event is active in this frame
+    let is_inside = in_menu || in_dock || in_leeway || state.menu_state.cursor_moved;
+
+    is_inside
+    */
 }
