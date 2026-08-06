@@ -2,6 +2,8 @@
 
 A lightweight, high-performance Wayland dock written in Rust, designed for modern Wayland compositors.
 
+![Dock Demo](dock.gif)
+
 ## Features
 
 - **Wayland Native**: Built with Layer Shell and Foreign Toplevel protocols for smooth integration.
@@ -14,102 +16,26 @@ A lightweight, high-performance Wayland dock written in Rust, designed for moder
 `dock` works on any Wayland compositor supporting `wlr-layer-shell-unstable-v1` and `wlr-foreign-toplevel-management-unstable-v1`:
 
 - **labwc** (Primary target / recommended)
-- **Sway**
-- **Hyprland**
-- **Wayfire**
-- **river**
-- **COSMIC**
+- **Sway**[cite: 15]
+- **Hyprland**[cite: 15]
+- **Wayfire**[cite: 15]
+- **river**[cite: 15]
+- **COSMIC**[cite: 15]
 
 ## Prerequisites & Dependencies
 
 ### Rust Version
-- **Cargo / Rustc**: `1.75.0` or higher (Rust Edition 2021 recommended)
+- **Cargo / Rustc**: `1.75.0` or higher (Rust Edition 2021 recommended)[cite: 15]
 
 ### System Dependencies
 
-Ensure the following build tools and development libraries are installed on your system:
+Ensure the following build tools and development libraries are installed on your system[cite: 15]:
 
-- **Build Tools**: `make`, `gcc`, `pkg-config`
-- **Wayland Libraries**: `wayland-client`, `wayland-protocols`
-- **Input & Graphics**: `libxkbcommon`, `pixman`
-- **System Services**: `dbus`
+- **Build Tools**: `make`, `gcc`, `pkg-config`[cite: 15]
+- **Wayland Libraries**: `wayland-client`, `wayland-protocols`[cite: 15]
+- **Input & Graphics**: `libxkbcommon`, `pixman`[cite: 15]
+- **System Services**: `dbus`[cite: 15]
 
 #### Installing Dependencies on Arch Linux:
 ```bash
 sudo pacman -S --needed base-devel cargo wayland wayland-protocols libxkbcommon dbus
-```
-
-#### Installing Dependencies on Ubuntu / Debian:
-```bash
-sudo apt update
-sudo apt install -y build-essential cargo libwayland-dev wayland-protocols libxkbcommon-dev libdbus-1-dev pkg-config
-```
-
-## Installation
-
-### 1. Clone the Repository
-```bash
-git clone https://github.com/resdon/dock.git
-cd dock
-```
-
-### 2. Build and Install
-Compile the binary in release mode and install it to system PATH (`/usr/local/bin`):
-
-```bash
-make install
-```
-
-*Alternatively, build manually via Cargo:*
-```bash
-cargo build --release
-```
-
-### 3. Launching the Dock
-
-#### Run in Background (CLI):
-```bash
-nohup dock &
-```
-
-#### Autostarting on `labwc`:
-Add the following line to `~/.config/labwc/autostart`:
-```bash
-dock &
-```
-
-#### Autostarting on `Sway` / `Hyprland`:
-- **Sway** (`~/.config/sway/config`):
-  ```sway
-  exec dock
-  ```
-- **Hyprland** (`~/.config/hypr/hyprland.conf`):
-  ```ini
-  exec-once = dock
-  ```
-
-## Repository Structure
-
-```text
-dock/
-├── assets/          # Bundled fonts and connection indicator icons
-├── scripts/         # Launcher and icon listing scripts
-├── src/             # Core Rust source files
-│   ├── app/         # Main event loop and draw calls
-│   ├── cache/       # Icon indexing and state persistence
-│   ├── geometry/    # Dock layout math and bounding boxes
-│   ├── graphics/    # Animation, fade, and visual effects
-│   ├── handlers/    # Window list and context menu event handlers
-│   ├── interaction/ # Proximity, motion, and hover routines
-│   ├── pointer/     # Click, drag, and scroll input handling
-│   ├── render/      # Framebuffer drawing and font rendering
-│   ├── resolvers/   # Desktop file parser and Steam app resolver
-│   └── services/    # Display & monitor detection services
-├── Cargo.toml       # Cargo package manifest
-├── Makefile         # Build & installation targets
-└── PKGBUILD         # Arch Linux packaging file
-```
-
-## License
-
-Distributed under the MIT License.
