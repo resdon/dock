@@ -221,7 +221,7 @@ impl AppState {
         }
 
         // Only set needs_redraw if a state change occurred AND dock is visible/interactive
-        if state_changed && (self.interaction.pointer_inside || !self.hide_state.is_fully_hidden()) {
+        if state_changed && (self.interaction.pointer_inside) {
             self.needs_redraw = true;
         }
     }

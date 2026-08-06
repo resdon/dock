@@ -30,7 +30,7 @@ pub fn update(
     let window_list_elapsed_pre = state.menu_state.window_list_timer.map_or(Duration::ZERO, |t| t.elapsed());
     let window_list_hard_timeout_pre = window_list_elapsed_pre >= hard_timeout;
 
-    // 1. Raw Hover Calculation
+	// 1. Raw Hover Calculation
     let raw_hover_res = update_hover(state, apps_in_dock, running_by_app, scale_factor, layout);
     let pointer_on_window_list_target = raw_hover_res.visible;
 
@@ -47,6 +47,7 @@ pub fn update(
 
     let visibility_changed = target_hover_visible != state.hover_state.is_visible;
     let app_changed = target_hover_visible && (hover_res.app_id != state.hover_state.app_id);
+    let hover_just_opened = target_hover_visible && !state.hover_state.is_visible;
 
     if visibility_changed || app_changed {
         state.hover_state.is_visible = target_hover_visible;
@@ -59,6 +60,9 @@ pub fn update(
 
         for dock in &mut state.docks {
             dock.hover_fade.set_visible(target_hover_visible);
+            if hover_just_opened {
+                dock.hover_fade.current_alpha = 0.0; // Start at 0% and fade in to 1.0
+            }
         }
     }
 
@@ -80,6 +84,12 @@ pub fn update(
         state.menu_state.dock_timer = None;
         state.menu_state.context_menu_timer = None;
         state.menu_state.window_list_timer = None;
+
+        for dock in &mut state.docks {
+            dock.menu_fade.set_visible(true);
+            dock.menu_fade.current_alpha = 0.0; // Start at 0% and fade in to 1.0
+        }
+
         state.menu_state.just_opened = false;
     }
 
@@ -209,5 +219,29 @@ pub fn update(
 
     state.menu_state.cursor_moved = false;
 
-    layer_changed
+	// --- AUTO-HIDE STATE ENGINE ---
+    let pointer_near_edge = state.interaction.is_pointer_near;
+    let no_motion_timed_out = no_motion_elapsed >= Duration::from_millis(1000); // DOCK time to start hide/fade
+
+    if pointer_near_edge && !no_motion_timed_out {
+        // Reveal dock when pointer touches edge/strip
+        if state.hide_state.is_fully_hidden() || state.hide_state.mode == crate::graphics::hide::Mode::Hiding {
+            state.hide_state.show();
+            layer_changed = true;
+        }
+    } else if pointer_inside_dock && !no_motion_timed_out {
+        // Reset hide timer while actively moving/interacting inside dock area
+        state.hide_state.hide_timer = None;
+    } else {
+        // Pointer left OR pointer stationary > 5000ms: trigger hide timer and fade out
+        state.hide_state.start_hide_timer();
+        state.hide_state.update_timer(500);
+    }
+
+    // Tick alpha animation and transition to Hidden when alpha hits 0.0
+    if state.hide_state.tick() {
+        layer_changed = true;
+    }
+
+	layer_changed //[cite: 9]
 }

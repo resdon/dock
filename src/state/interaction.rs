@@ -131,7 +131,7 @@ impl AppState {
 
         // 2. Evaluate proximity (sole authority for proximity updates)
         let is_near = self.check_dock_proximity();
-        self.hide_state.update_proximity(is_near);
+        self.interaction.is_pointer_near = is_near;
 
         // 3. Advance fade animation
         if self.hide_state.tick() {

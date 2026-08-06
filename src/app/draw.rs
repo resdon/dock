@@ -106,29 +106,33 @@ impl AppState {
 			        apps_in_dock_ptrs.push(id);
 			    }
 			}
-			
-            let total_items = apps_in_dock_ptrs.len();
-            let calculated_width = if total_items > 0 {
-                (total_items * box_size + (total_items + 1) * spacing) as u32
-            } else {
-                100
-            };
 
-            let dock_width = calculated_width.min(max_dock_width);
-            let dock_height = 60;
+			let total_items = apps_in_dock_ptrs.len();
+			let calculated_width = if total_items > 0 {
+			    (total_items * box_size + (total_items + 1) * spacing) as u32
+			} else {
+			    100
+			};
 
-            dock.width = dock_width;
-            dock.height = dock_height;
+			let dock_width = calculated_width.min(max_dock_width);
+			let dock_height: u32 = 60; // Define full logical dock height
 
-            let surface = &dock.surface;
-            let dock_scale = dock.scale_factor;
-            let scale_int = dock_scale.round() as i32;
+			// 1. Determine logical height based on current hide state
+			let target_logical_height = dock_height;
 
-            surface.set_size(dock_width, dock_height);
+			dock.width = dock_width;
+			dock.height = target_logical_height;
 
-            // Pre-compute physical screen dimensions early for coordinate bounds calculations
-            let phys_width = (dock_width as f64 * dock_scale).round() as u32;
-            let phys_height = (dock_height as f64 * dock_scale).round() as u32;
+			let surface = &dock.surface;
+			let dock_scale = dock.scale_factor;
+			let scale_int = dock_scale.round() as i32;
+
+			// 2. Set surface size dynamically matching current visibility
+			surface.set_size(dock_width, target_logical_height);
+
+			// 3. Compute physical screen dimensions based on target height
+			let phys_width = (dock_width as f64 * dock_scale).round() as u32;
+			let phys_height = (target_logical_height as f64 * dock_scale).round() as u32;
 
 			// =========================================================================
             // HOVER WINDOW LIST SUBSURFACE MANAGEMENT & RENDERING
@@ -453,9 +457,18 @@ impl AppState {
             self.hide_state.apply_alpha_to_canvas(canvas);
 
             // 3. Update input region for THIS dock
-            let is_hidden = self.hide_state.is_fully_hidden();
+            let _is_hidden = self.hide_state.is_fully_hidden();
             let container_start = 0;
             let container_w = dock_width as i32;
+
+			// --- DOCK EXCLUSIVE ZONE ON STATE CHANGE ---
+			if self.hide_state.just_became_visible {
+			    dock.surface.set_exclusive_zone(60);
+			} else if self.hide_state.just_became_hidden {
+			    dock.surface.set_exclusive_zone(0);
+			}
+
+			let is_hidden = self.hide_state.is_fully_hidden();
 
             dock.update_input_region(
                 &self.compositor_state,
@@ -479,5 +492,7 @@ impl AppState {
 
             dock.current_buffer = Some(buffer);
         }
+        self.hide_state.just_became_visible = false;
+        self.hide_state.just_became_hidden = false;
     }
 }

@@ -146,7 +146,7 @@ impl DockInstance {
             let trigger_w = container_width + (margin * 2);
 
             // Anchor trigger region to the bottom of the dock surface
-            let trigger_h = 5;
+            let trigger_h = 3;
             let surface_h = self.height as i32;
             let trigger_y = (surface_h - trigger_h).max(0);
 
