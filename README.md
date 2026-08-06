@@ -39,3 +39,4 @@ Ensure the following build tools and development libraries are installed on your
 #### Installing Dependencies on Arch Linux:
 ```bash
 sudo pacman -S --needed base-devel cargo wayland wayland-protocols libxkbcommon dbus
+```
