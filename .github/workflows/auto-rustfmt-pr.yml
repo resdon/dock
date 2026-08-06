@@ -1,0 +1,61 @@
+name: Auto rustfmt + PR
+
+on:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: 'Base branch to target'
+        required: true
+        default: '1.3.8'
+      fmt_branch:
+        description: 'Branch to push formatting to (will be created/updated)'
+        required: true
+        default: 'format/rustfmt-apply-1.3.8'
+
+jobs:
+  fmt-and-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Ensure rustfmt component
+        run: rustup component add rustfmt || true
+
+      - name: Run rustfmt
+        run: cargo fmt --all
+
+      - name: Detect repo changes
+        id: detect
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "no_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "no_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create PR with formatted changes
+        if: steps.detect.outputs.no_changes == 'false'
+        uses: peter-evans/create-pull-request@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'style: apply rustfmt formatting'
+          branch: ${{ github.event.inputs.fmt_branch }}
+          base: ${{ github.event.inputs.base }}
+          title: 'style: apply rustfmt formatting'
+          body: |
+            Apply rustfmt formatting across the repository.
+
+            This PR contains only formatting changes produced by cargo fmt.
+          delete-branch: false
+          update-branch: true
