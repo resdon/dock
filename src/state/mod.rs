@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, Sender};
+use std::time::Instant;
 
 use dockman_lib::animations::IconAnimation;
 
@@ -111,6 +112,10 @@ pub struct AppState {
 
     // Autohide System State
     pub hide_state: AutoHideState,
+
+    // Focus check
+    pub focus_action_performed: bool,
+    pub focus_action_time: Option<Instant>,
 }
 
 /// Generates a blank/generic 48x48 RGBA fallback icon when an icon cannot be found anywhere

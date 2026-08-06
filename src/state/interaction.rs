@@ -4,6 +4,17 @@ use wayland_client::QueueHandle;
 use super::AppState;
 
 impl AppState {
+	pub fn update_focus_timer(&mut self) {
+	    if self.focus_action_performed {
+	        if let Some(time) = self.focus_action_time {
+	            if time.elapsed() >= std::time::Duration::from_secs(1) {
+	                self.focus_action_performed = false;
+	                self.focus_action_time = None;
+	            }
+	        }
+	    }
+	}
+
     pub fn update_dnd_hover_target(&mut self, x: f64, y: f64) {
         let new_app = self.get_app_id_at_location(x, y);
         let apps_in_dock = self.get_apps_in_dock();

@@ -1,7 +1,10 @@
+use std::time::Instant;
 use std::collections::HashMap;
 use wayland_client::backend::ObjectId;
+
 use crate::AppState;
 use super::dock::{get_windows_for_app, normalize_app_id, launch_app};
+
 
 pub fn open_context_menu(
     state: &mut AppState,
@@ -199,7 +202,12 @@ pub fn execute_menu_action(state: &mut AppState, item_type: &crate::MenuItemType
         crate::MenuItemType::Focus => {
             if let Some(handle_id) = &state.menu_state.target_window {
                 if let Some(window_info) = state.open_windows.get_mut(handle_id) {
-                    if let Some(seat) = &state.wl_seat { window_info.handle.activate(seat); }
+                    if let Some(seat) = &state.wl_seat { 
+                    	window_info.handle.activate(seat); 
+						state.focus_action_performed = true;
+						state.focus_action_time = Some(Instant::now());
+						eprintln!("[DEBUG] Focus action executed for window {:?}", handle_id);
+                    }
                 }
             }
         }

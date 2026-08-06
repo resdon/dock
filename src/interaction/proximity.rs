@@ -312,10 +312,10 @@ pub fn pointer_on_context_menu(
 }
 
 pub fn pointer_in_context_menu_leeway(
-    state: &AppState,
-    apps_in_dock: &[String],
-    scale_factor: f32,
-    layout: (i32, i32, i32, i32),
+    _state: &AppState,
+    _apps_in_dock: &[String],
+    _scale_factor: f32,
+    _layout: (i32, i32, i32, i32),
 ) -> bool {
 	false
 	/*

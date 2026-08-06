@@ -289,6 +289,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         animations: HashMap::new(),
         hide_state: AutoHideState::new(),
         interaction: InteractionState::new(),
+        focus_action_performed: true,
+        focus_action_time: Some(Instant::now()),
     };
 
     state.data_device_manager = state
@@ -390,6 +392,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // 4. ANIMATION: Step timers, opacity transitions, and active frame tickers
+		// Focus timer
+		let was_focus_performed = state.focus_action_performed;
+        state.update_focus_timer();
+
+        if was_focus_performed && !state.focus_action_performed {
+            eprintln!("[DEBUG] Focus action state reset to false after 1s timeout");
+        }		
+		// ------
         state.fallback_anim.is_active = state.is_animating();
         let frame_advanced = state.fallback_anim.update();
         let timers_changed = state.update_hover_and_hide_timers();
