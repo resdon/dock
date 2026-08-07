@@ -1,5 +1,7 @@
 # Dock
 
+[![Rust CI](https://github.com/resdon/dock/actions/workflows/rust.yml/badge.svg?branch=1.3.8)](https://github.com/resdon/dock/actions/workflows/rust.yml)
+
 A lightweight, high-performance Wayland dock written in Rust, designed for modern Wayland compositors.
 
 ![Dock Demo](dock.gif)
@@ -33,18 +35,18 @@ Ensure the following build tools and development libraries are installed on your
 
 - **Build Tools**: `make`, `gcc`, `pkg-config`
 - **Wayland Libraries**: `wayland-client`, `wayland-protocols`
-- **Input & Graphics**: `libxkbcommon`, `pixman`
+- **Input & Graphics**: `libxkbcommon`, `pixman`, `cairo`, `glib2`, `mesa` (EGL/GLES)
 - **System Services**: `dbus`
 
 #### Installing Dependencies on Arch Linux:
 ```bash
-sudo pacman -S --needed base-devel cargo wayland wayland-protocols libxkbcommon dbus
+sudo pacman -S --needed base-devel cargo wayland wayland-protocols libxkbcommon dbus cairo glib2 mesa
 ```
 
 #### Installing Dependencies on Ubuntu / Debian:
 ```bash
 sudo apt update
-sudo apt install -y build-essential cargo libwayland-dev wayland-protocols libxkbcommon-dev libdbus-1-dev pkg-config
+sudo apt install -y build-essential cargo pkg-config libwayland-dev wayland-protocols libxkbcommon-dev libdbus-1-dev libglib2.0-dev libcairo2-dev libegl1-mesa-dev libgles2-mesa-dev
 ```
 
 ## Installation
