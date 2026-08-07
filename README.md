@@ -53,7 +53,12 @@ sudo apt install -y build-essential cargo pkg-config libwayland-dev wayland-prot
 
 ### Pre-compiled Binary
 Download and extract the [latest release archive](https://github.com/resdon/dock/releases/latest/download/dock-linux-amd64.tar.gz):
-
+```bash
+tar -xzf dock-linux-amd64.tar.gz
+cd dock-linux-amd64
+make install
+```
+Or:
 ```bash
 curl -sSL [https://github.com/resdon/dock/releases/latest/download/dock-linux-amd64.tar.gz](https://github.com/resdon/dock/releases/latest/download/dock-linux-amd64.tar.gz) | tar -xz
 cd dock-linux-amd64
