@@ -2,7 +2,7 @@
 
 [![Rust CI](https://github.com/resdon/dock/actions/workflows/rust.yml/badge.svg?branch=1.3.8)](https://github.com/resdon/dock/actions/workflows/rust.yml)
 
-A lightweight, high-performance Wayland dock written in Rust, designed for modern Wayland compositors.
+A lightweight, high-performance Wayland dock written in Rust
 
 ![Dock Demo](dock.gif)
 
