@@ -35,6 +35,8 @@ jobs:
             libwayland-dev \
             wayland-protocols \
             libxkbcommon-dev \
+            libfontconfig1-dev \
+            libdbus-1-dev \
             libegl1-mesa-dev \
             libgles2-mesa-dev
 
@@ -50,20 +52,20 @@ jobs:
       - name: Run tests
         run: cargo test --all --verbose
 
-      - name: Build release binary
-        run: cargo build --release
+      - name: Build release archive
+        run: make dist
 
       - name: Upload Release Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dock-linux-x86_64
-          path: target/release/dock
+          name: dock-linux-amd64-tarball
+          path: dock-linux-amd64.tar.gz
           if-no-files-found: error
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: target/release/dock
+          files: dock-linux-amd64.tar.gz
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}          
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
