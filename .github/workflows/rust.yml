@@ -2,19 +2,18 @@ name: Rust CI
 
 on:
   push:
-    branches:
-      - "1.3.8"
+    branches: [ "1.3.8" ]
+    tags: [ "v*.*.*" ]
   pull_request:
-    branches:
-      - "1.3.8"
+    branches: [ "1.3.8" ]
   workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  check:
-    name: Build & Check
+  build-and-test:
+    name: Build & Verify
     runs-on: ubuntu-latest
 
     steps:
@@ -22,29 +21,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install stable Rust toolchain
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          profile: minimal
-          override: true
-
-      - name: Cache cargo registry and git index
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-registry-
-
-      - name: Cache target directory
-        uses: actions/cache@v4
-        with:
-          path: target
-          key: ${{ runner.os }}-cargo-target-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-target-
+          components: clippy, rustfmt
 
       - name: Install system dependencies
         run: |
@@ -59,6 +38,9 @@ jobs:
             libegl1-mesa-dev \
             libgles2-mesa-dev
 
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 
@@ -68,5 +50,12 @@ jobs:
       - name: Run tests
         run: cargo test --all --verbose
 
-      - name: Build
+      - name: Build release binary
         run: cargo build --release
+
+      - name: Upload Release Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dock-linux-x86_64
+          path: target/release/dock
+          if-no-files-found: error
