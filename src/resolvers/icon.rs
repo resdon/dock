@@ -41,7 +41,7 @@ pub fn find_icon_by_name(search_name: &str) -> Option<String> {
                             }
 
                             if current_section == "Desktop Entry" {
-								if let Some(rest) = trimmed.strip_prefix("Name=") {
+                                if let Some(rest) = trimmed.strip_prefix("Name=") {
                                     current_name = rest.trim().to_string();
                                 } else if let Some(rest) = trimmed.strip_prefix("Icon=") {
                                     current_icon = rest.trim().to_string();
@@ -79,9 +79,9 @@ pub fn get_icon_from_desktop(desktop_id: &str) -> Option<String> {
             if let Ok(file) = File::open(desktop_path) {
                 let reader = BufReader::new(file);
                 for line in reader.lines().map_while(Result::ok) {
-					if let Some(rest) = line.strip_prefix("Icon=") {
-						return Some(rest.trim().to_string());
-					}
+                    if let Some(rest) = line.strip_prefix("Icon=") {
+                        return Some(rest.trim().to_string());
+                    }
                 }
             }
         }
@@ -118,9 +118,9 @@ pub fn extract_icon_name(app_id: &str) -> String {
                 if let Ok(file) = File::open(desktop_path) {
                     let reader = BufReader::new(file);
                     for line in reader.lines().map_while(Result::ok) {
-						if let Some(rest) = line.strip_prefix("Icon=") {
-							return rest.trim().to_string();
-						}
+                        if let Some(rest) = line.strip_prefix("Icon=") {
+                            return rest.trim().to_string();
+                        }
                     }
                 }
             }

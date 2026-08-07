@@ -107,8 +107,8 @@ fn query_desktop_file_metadata(app_id: &str) -> (Option<String>, Option<String>)
                                 current_name = Some(trimmed["Name=".len()..].trim().to_string());
                             } else if trimmed.starts_with("Icon=") && current_icon.is_none() {
                                 current_icon = Some(trimmed["Icon=".len()..].trim().to_string());
-							} else if let Some(rest) = trimmed.strip_prefix("StartupWMClass=") {
-								let wm_class = rest.trim().to_lowercase();
+                            } else if let Some(rest) = trimmed.strip_prefix("StartupWMClass=") {
+                                let wm_class = rest.trim().to_lowercase();
                                 if wm_class == app_lower {
                                     matches = true;
                                 }

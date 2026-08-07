@@ -381,7 +381,7 @@ impl World {
         }
     }
 
-	#[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn draw_text(
         &mut self,
         frame: &mut [u8],

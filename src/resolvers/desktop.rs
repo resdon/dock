@@ -51,9 +51,9 @@ pub fn parse_desktop_actions(desktop_path: &Path) -> Vec<DesktopAction> {
                     .filter(|s| !s.is_empty())
                     .collect();
             }
-		} else if let Some(rest) = current_section.strip_prefix("Desktop Action ") {
+        } else if let Some(rest) = current_section.strip_prefix("Desktop Action ") {
             let action_id = rest.trim().to_string();
-            
+
             if let Some((key, value)) = trimmed.split_once('=') {
                 let key = key.trim();
                 let value = value.trim();
@@ -157,7 +157,7 @@ pub fn find_desktop_file_by_name(search_name: &str) -> Option<String> {
                     if let Ok(file) = File::open(&path) {
                         let reader = BufReader::new(file);
                         for line in reader.lines().map_while(Result::ok) {
-							if let Some(rest) = line.strip_prefix("Name=") {
+                            if let Some(rest) = line.strip_prefix("Name=") {
                                 let name = rest.trim();
                                 let title_lower = search_name.to_lowercase();
                                 let name_lower = name.to_lowercase();
@@ -212,7 +212,7 @@ pub fn find_desktop_file_by_exec(app_id: &str) -> Option<String> {
                     if let Ok(file) = File::open(&path) {
                         let reader = BufReader::new(file);
                         for line in reader.lines().map_while(Result::ok) {
-							if let Some(rest) = line.strip_prefix("Exec=") {
+                            if let Some(rest) = line.strip_prefix("Exec=") {
                                 let exec_line = rest.trim().to_lowercase();
 
                                 if let Some(binary_path) = exec_line.split_whitespace().next() {
