@@ -1,9 +1,9 @@
-use std::sync::mpsc;
-use std::thread;
 use dockman_lib::animations::IconAnimation;
 use std::path::PathBuf;
+use std::sync::mpsc;
+use std::thread;
 
-use crate::state::IconLoadResult; 
+use crate::state::IconLoadResult;
 
 pub struct IconLoadRequest {
     pub app_id: String,
@@ -34,8 +34,8 @@ impl IconLoader {
         .find(|p| p.exists())
         .unwrap_or_else(|| PathBuf::from("assets/24"));
 
-        let anim_dir_str = anim_dir.to_str().unwrap_or("assets/24").to_string();        
-        
+        let anim_dir_str = anim_dir.to_str().unwrap_or("assets/24").to_string();
+
         thread::spawn(move || {
             while let Ok(req) = rx.recv() {
                 let mut source_used = "none";
@@ -44,23 +44,25 @@ impl IconLoader {
                         source_used = "XDG get_icon_path";
                         Some(path)
                     }
-                    None => {
-                        match crate::resolvers::search_icon_list_file(&req.app_id) {
-                            Some(path) => {
-                                source_used = "icon_list.txt cache";
-                                Some(path)
-                            }
-                            None => None,
+                    None => match crate::resolvers::search_icon_list_file(&req.app_id) {
+                        Some(path) => {
+                            source_used = "icon_list.txt cache";
+                            Some(path)
                         }
-                    }
+                        None => None,
+                    },
                 };
 
                 if let Some(ref path) = icon_path {
-                    println!("[ICON LOADER] App '{}' resolved via [{}] -> path: {:?}", req.app_id, source_used, path);
-                    
-                    let is_svg = path.extension()
+                    println!(
+                        "[ICON LOADER] App '{}' resolved via [{}] -> path: {:?}",
+                        req.app_id, source_used, path
+                    );
+
+                    let is_svg = path
+                        .extension()
                         .and_then(|e| e.to_str())
-                        .map_or(false, |e| e.eq_ignore_ascii_case("svg"));
+                        .is_some_and(|e| e.eq_ignore_ascii_case("svg"));
 
                     if is_svg {
                         let opt = resvg::usvg::Options::default();
@@ -70,7 +72,11 @@ impl IconLoader {
                                 let w = size.width() as u32;
                                 let h = size.height() as u32;
                                 if let Some(mut pixmap) = tiny_skia::Pixmap::new(w, h) {
-                                    resvg::render(&rtree, tiny_skia::Transform::default(), &mut pixmap.as_mut());
+                                    resvg::render(
+                                        &rtree,
+                                        tiny_skia::Transform::default(),
+                                        &mut pixmap.as_mut(),
+                                    );
                                     let _ = result_tx.send(IconLoadResult {
                                         app_id: req.app_id.clone(),
                                         rgba: rgba_to_bgra(pixmap.data().to_vec()),
@@ -105,7 +111,9 @@ impl IconLoader {
                         size: frame.width,
                         animation: Some(anim),
                     });
-                } else if let Some((default_bytes, size)) = crate::state::load_generic_fallback_bytes() {
+                } else if let Some((default_bytes, size)) =
+                    crate::state::load_generic_fallback_bytes()
+                {
                     let _ = result_tx.send(IconLoadResult {
                         app_id: req.app_id.clone(),
                         rgba: rgba_to_bgra(default_bytes),

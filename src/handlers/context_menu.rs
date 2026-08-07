@@ -1,10 +1,9 @@
-use std::time::Instant;
 use std::collections::HashMap;
+use std::time::Instant;
 use wayland_client::backend::ObjectId;
 
+use super::dock::{get_windows_for_app, launch_app, normalize_app_id};
 use crate::AppState;
-use super::dock::{get_windows_for_app, normalize_app_id, launch_app};
-
 
 pub fn open_context_menu(
     state: &mut AppState,
@@ -14,8 +13,16 @@ pub fn open_context_menu(
     scale_factor: f32,
     _layout: (i32, i32, i32, i32),
 ) -> bool {
-    let dock_scale = state.docks.first().map(|d| d.scale_factor).unwrap_or(scale_factor as f64);
-    let dock_width = state.docks.first().map(|d| d.width as i32).unwrap_or(state.width as i32);
+    let dock_scale = state
+        .docks
+        .first()
+        .map(|d| d.scale_factor)
+        .unwrap_or(scale_factor as f64);
+    let dock_width = state
+        .docks
+        .first()
+        .map(|d| d.width as i32)
+        .unwrap_or(state.width);
     let phys_width = (dock_width as f64 * dock_scale).round() as i32;
     let ptr_phys_x = (ptr_log_x as f64 * dock_scale).round() as i32;
 
@@ -28,7 +35,8 @@ pub fn open_context_menu(
     let spacing = 8;
     let icon_base_size = (box_size as f64 * dock_scale).round() as i32;
     let icon_spacing = (spacing as f64 * dock_scale).round() as i32;
-    let total_icons_width = total_apps as i32 * icon_base_size + (total_apps as i32 - 1).max(0) * icon_spacing;
+    let total_icons_width =
+        total_apps as i32 * icon_base_size + (total_apps as i32 - 1).max(0) * icon_spacing;
     let start_x_offset = (phys_width - total_icons_width) / 2;
 
     for (index, app_id) in apps_in_dock.iter().enumerate() {
@@ -44,7 +52,7 @@ pub fn open_context_menu(
             let windows = get_windows_for_app(app_id, running_by_app, &state.open_windows);
             state.menu_state.target_window = windows
                 .iter()
-                .find(|id| state.open_windows.get(*id).map_or(false, |w| w.is_activated))
+                .find(|id| state.open_windows.get(*id).is_some_and(|w| w.is_activated))
                 .cloned()
                 .or_else(|| windows.first().cloned());
 
@@ -80,7 +88,11 @@ pub fn open_context_menu(
                 });
             }
 
-            let pin_label = if is_pinned { "Unpin from Dock" } else { "Pin to Dock" };
+            let pin_label = if is_pinned {
+                "Unpin from Dock"
+            } else {
+                "Pin to Dock"
+            };
             items.push(crate::ContextMenuItem {
                 label: pin_label.into(),
                 item_type: crate::MenuItemType::TogglePin,
@@ -171,15 +183,18 @@ pub fn handle_menu_release(
     let ptr_log_x = state.interaction.pointer_position.x as i32;
     let ptr_log_y = state.interaction.pointer_position.y as i32;
 
-    if ptr_log_x >= menu_log_x 
-        && ptr_log_x <= (menu_log_x + menu_log_w) 
-        && ptr_log_y >= menu_log_y 
-        && ptr_log_y <= (menu_log_y + menu_log_h) 
+    if ptr_log_x >= menu_log_x
+        && ptr_log_x <= (menu_log_x + menu_log_w)
+        && ptr_log_y >= menu_log_y
+        && ptr_log_y <= (menu_log_y + menu_log_h)
     {
         let item_h_log = ((total_menu_h as f32 / total_items as f32) / scale_factor).round() as i32;
-        let clicked_item_idx = ((ptr_log_y - menu_log_y) / item_h_log.max(1)).clamp(0, (total_items - 1) as i32);
-        
-        let item_type = state.menu_state.items
+        let clicked_item_idx =
+            ((ptr_log_y - menu_log_y) / item_h_log.max(1)).clamp(0, (total_items - 1) as i32);
+
+        let item_type = state
+            .menu_state
+            .items
             .get(clicked_item_idx as usize)
             .map(|item| item.item_type.clone());
 
@@ -202,11 +217,11 @@ pub fn execute_menu_action(state: &mut AppState, item_type: &crate::MenuItemType
         crate::MenuItemType::Focus => {
             if let Some(handle_id) = &state.menu_state.target_window {
                 if let Some(window_info) = state.open_windows.get_mut(handle_id) {
-                    if let Some(seat) = &state.wl_seat { 
-                    	window_info.handle.activate(seat); 
-						state.focus_action_performed = true;
-						state.focus_action_time = Some(Instant::now());
-						eprintln!("[DEBUG] Focus action executed for window {:?}", handle_id);
+                    if let Some(seat) = &state.wl_seat {
+                        window_info.handle.activate(seat);
+                        state.focus_action_performed = true;
+                        state.focus_action_time = Some(Instant::now());
+                        eprintln!("[DEBUG] Focus action executed for window {:?}", handle_id);
                     }
                 }
             }
@@ -224,7 +239,10 @@ pub fn execute_menu_action(state: &mut AppState, item_type: &crate::MenuItemType
             }
         }
         crate::MenuItemType::Action(action) => {
-            let _ = std::process::Command::new("sh").arg("-c").arg(&action.exec).spawn();
+            let _ = std::process::Command::new("sh")
+                .arg("-c")
+                .arg(&action.exec)
+                .spawn();
         }
         crate::MenuItemType::TogglePin => {
             if let Some(app_id) = &state.menu_state.target_app_id {
@@ -236,9 +254,16 @@ pub fn execute_menu_action(state: &mut AppState, item_type: &crate::MenuItemType
                     pinned.push(app_id.clone());
                     if let Some((rgba, size)) = state.icon_cache.get(&app_id) {
                         crate::cache::save_cached_icon(&app_id, *size, *size, rgba);
-                    } else if let Some(window_info) = state.open_windows.values().find(|w| w.app_id == app_id) {
+                    } else if let Some(window_info) =
+                        state.open_windows.values().find(|w| w.app_id == app_id)
+                    {
                         if let Some(rgba) = &window_info.icon_rgba {
-                            crate::cache::save_cached_icon(&app_id, window_info.icon_size, window_info.icon_size, rgba);
+                            crate::cache::save_cached_icon(
+                                &app_id,
+                                window_info.icon_size,
+                                window_info.icon_size,
+                                rgba,
+                            );
                         }
                     }
                 }

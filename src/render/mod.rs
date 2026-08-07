@@ -8,13 +8,11 @@ pub mod window_list;
 
 use std::collections::HashMap;
 
-pub use crate::geometry::context_menu::{
-    BASE_ITEM_HEIGHT, BASE_MENU_WIDTH, SurfaceGeometry,
-};
+pub use crate::geometry::context_menu::{SurfaceGeometry, BASE_ITEM_HEIGHT, BASE_MENU_WIDTH};
 
 use crate::graphics::fade::FadeAnimation;
-use crate::state::dock::DOCK_HEIGHT;
 use crate::models::{BadgeUpdate, WindowDiagnostics};
+use crate::state::dock::DOCK_HEIGHT;
 use crate::FontManager;
 
 pub use window_list::{
@@ -46,7 +44,7 @@ pub fn render_dock_surface_legacy(
     fallback_anim: &dockman_lib::animations::IconAnimation,
     badges: &HashMap<String, BadgeUpdate>,
 ) {
-    let dock_height = (DOCK_HEIGHT as f64 * scale_factor).round() as usize;
+    let dock_height = (DOCK_HEIGHT * scale_factor).round() as usize;
     let window_list = prepare_window_list(pinned_apps, open_windows);
 
     let mut running_by_app: HashMap<String, Vec<&WindowDiagnostics>> = HashMap::new();
@@ -77,7 +75,7 @@ pub fn render_dock_surface_legacy(
             let x = start_x_offset + i * (base_size + spacing);
             let y = dock_y + (dock_height.saturating_sub(base_size)) / 2;
             let running_windows = running_by_app.get(app_id);
-            let is_running = running_windows.map_or(false, |w| !w.is_empty());
+            let is_running = running_windows.is_some_and(|w| !w.is_empty());
             let running_count = running_windows.map_or(0, |w| w.len());
 
             crate::app::types::PinItem {

@@ -1,12 +1,9 @@
+use crate::graphics::fade::FadeAnimation;
 use wayland_client::backend::ObjectId;
 use wayland_client::protocol::{
-    wl_data_offer::WlDataOffer,
-    wl_output::WlOutput,
-    wl_subsurface::WlSubsurface,
+    wl_data_offer::WlDataOffer, wl_output::WlOutput, wl_subsurface::WlSubsurface,
     wl_surface::WlSurface,
 };
-use crate::graphics::fade::FadeAnimation;
-
 
 // SCTK Types
 use smithay_client_toolkit::shell::wlr_layer::LayerSurface;
@@ -19,8 +16,8 @@ use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1:
 use std::time::Instant;
 
 // Project Types
-use crate::state::AppState;
 use crate::geometry::{Point, Rect};
+use crate::state::AppState;
 use crate::DesktopAction;
 
 // --- Unified Interaction State ---
@@ -46,7 +43,6 @@ pub struct PinItem {
     pub badge_count: Option<u32>,
 }
 
-
 pub struct DockRenderState<'a> {
     pub phys_width: u32,
     pub phys_height: u32,
@@ -54,7 +50,8 @@ pub struct DockRenderState<'a> {
     pub dock_height: usize,
     pub alpha: f32,
     pub apps_in_dock: &'a [String],
-    pub running_by_app: &'a std::collections::HashMap<String, Vec<&'a crate::models::WindowDiagnostics>>,
+    pub running_by_app:
+        &'a std::collections::HashMap<String, Vec<&'a crate::models::WindowDiagnostics>>,
     pub open_windows: &'a std::collections::HashMap<ObjectId, crate::models::WindowDiagnostics>,
     pub icon_cache: &'a std::collections::HashMap<String, (Vec<u8>, u32)>,
     pub badges: &'a std::collections::HashMap<String, crate::models::BadgeUpdate>,
@@ -122,9 +119,9 @@ pub struct DockInstance {
     pub menu_popup: Option<PopupSurface>,
     pub configured: bool,
     pub context_menu_popup: Option<PopupSurface>,
-	pub dock_state: Option<DockState>,
-	pub hover_fade: FadeAnimation,
-	pub menu_fade: FadeAnimation,
+    pub dock_state: Option<DockState>,
+    pub hover_fade: FadeAnimation,
+    pub menu_fade: FadeAnimation,
 }
 
 impl DockInstance {
@@ -197,23 +194,23 @@ pub struct MenuState {
     pub target_app_id: Option<String>,
     pub is_open: bool,
     pub items: Vec<ContextMenuItem>,
-	pub opened_by_button: Option<u32>,      // Track which button opened it
+    pub opened_by_button: Option<u32>, // Track which button opened it
     pub waiting_for_initial_release: bool, // Guard against the opening click
-	pub just_opened: bool,
-	pub fade: FadeAnimation,
-	pub consecutive_false_count: u32,
-	pub cursor_moved: bool,
-	pub last_pointer_x: f64,
-	pub last_pointer_y: f64,
-	pub last_debug_print: std::time::Instant,
-	pub consecutive_no_motion_count: i32,
-	pub consecutive_on_dock_count: i32,
-	pub consecutive_on_window_list_count: i32,
-	pub consecutive_on_context_menu_count: i32,
-	pub no_motion_timer: Option<Instant>,
+    pub just_opened: bool,
+    pub fade: FadeAnimation,
+    pub consecutive_false_count: u32,
+    pub cursor_moved: bool,
+    pub last_pointer_x: f64,
+    pub last_pointer_y: f64,
+    pub last_debug_print: std::time::Instant,
+    pub consecutive_no_motion_count: i32,
+    pub consecutive_on_dock_count: i32,
+    pub consecutive_on_window_list_count: i32,
+    pub consecutive_on_context_menu_count: i32,
+    pub no_motion_timer: Option<Instant>,
     pub dock_timer: Option<Instant>,
     pub context_menu_timer: Option<Instant>,
-    pub window_list_timer: Option<Instant>,	
+    pub window_list_timer: Option<Instant>,
 }
 
 pub struct HoverState {

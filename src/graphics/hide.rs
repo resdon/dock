@@ -22,6 +22,12 @@ pub struct AutoHideState {
     pub hide_timer: Option<Instant>,
 }
 
+impl Default for AutoHideState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AutoHideState {
     pub fn new() -> Self {
         Self {
@@ -71,8 +77,9 @@ impl AutoHideState {
 
         if (self.current_alpha - self.target_alpha).abs() < 0.01 {
             self.current_alpha = self.target_alpha;
-            
-            if self.mode == Mode::Hiding && (self.current_alpha - HIDDEN_ALPHA).abs() < f32::EPSILON {
+
+            if self.mode == Mode::Hiding && (self.current_alpha - HIDDEN_ALPHA).abs() < f32::EPSILON
+            {
                 self.mode = Mode::Hidden;
                 self.just_became_hidden = true;
             }

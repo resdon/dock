@@ -6,10 +6,10 @@ pub use hover::update_hover;
 pub use motion::handle_motion_events;
 pub use proximity::{pointer_in_context_menu_leeway, pointer_on_context_menu};
 
-use std::collections::HashMap;
-use std::time::{Instant, Duration};
-use wayland_client::backend::ObjectId;
 use crate::AppState;
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+use wayland_client::backend::ObjectId;
 
 /// Top-level coordinator for interaction state updates.
 pub fn update(
@@ -27,10 +27,13 @@ pub fn update(
     let hard_timeout = Duration::from_millis(2000);
 
     // Pre-check window list hard timeout before calculating raw hover
-    let window_list_elapsed_pre = state.menu_state.window_list_timer.map_or(Duration::ZERO, |t| t.elapsed());
+    let window_list_elapsed_pre = state
+        .menu_state
+        .window_list_timer
+        .map_or(Duration::ZERO, |t| t.elapsed());
     let window_list_hard_timeout_pre = window_list_elapsed_pre >= hard_timeout;
 
-	// 1. Raw Hover Calculation
+    // 1. Raw Hover Calculation
     let raw_hover_res = update_hover(state, apps_in_dock, running_by_app, scale_factor, layout);
     let pointer_on_window_list_target = raw_hover_res.visible;
 
@@ -51,7 +54,7 @@ pub fn update(
 
     if visibility_changed || app_changed {
         state.hover_state.is_visible = target_hover_visible;
-        
+
         // Preserve app_id during fade-out to render popup contents continuously
         if hover_res.visible || state.hover_state.app_id.is_none() {
             state.hover_state.app_id = hover_res.app_id;
@@ -69,8 +72,8 @@ pub fn update(
     // 2. State tracking flags
     let pointer_inside_dock = state.interaction.pointer_inside;
     let in_valid_leeway = pointer_in_context_menu_leeway(state, apps_in_dock, scale_factor, layout);
-    
-    let on_context_menu = state.menu_state.is_open 
+
+    let on_context_menu = state.menu_state.is_open
         && (pointer_on_context_menu(state, apps_in_dock, scale_factor, layout) || in_valid_leeway);
 
     let on_dock = pointer_inside_dock && !on_context_menu;
@@ -144,10 +147,22 @@ pub fn update(
         state.menu_state.window_list_timer = None;
     }
 
-    let no_motion_elapsed = state.menu_state.no_motion_timer.map_or(Duration::ZERO, |t| t.elapsed());
-    let dock_elapsed = state.menu_state.dock_timer.map_or(Duration::ZERO, |t| t.elapsed());
-    let context_menu_elapsed = state.menu_state.context_menu_timer.map_or(Duration::ZERO, |t| t.elapsed());
-    let window_list_elapsed = state.menu_state.window_list_timer.map_or(Duration::ZERO, |t| t.elapsed());
+    let no_motion_elapsed = state
+        .menu_state
+        .no_motion_timer
+        .map_or(Duration::ZERO, |t| t.elapsed());
+    let dock_elapsed = state
+        .menu_state
+        .dock_timer
+        .map_or(Duration::ZERO, |t| t.elapsed());
+    let context_menu_elapsed = state
+        .menu_state
+        .context_menu_timer
+        .map_or(Duration::ZERO, |t| t.elapsed());
+    let window_list_elapsed = state
+        .menu_state
+        .window_list_timer
+        .map_or(Duration::ZERO, |t| t.elapsed());
 
     // Evaluate Hard Close Timeouts (>= 2000ms)
     let no_motion_timed_out = no_motion_elapsed >= hard_timeout;
@@ -156,7 +171,12 @@ pub fn update(
     let context_menu_timed_out = context_menu_elapsed >= hard_timeout;
 
     // Hard close context menu when 2000ms threshold is passed
-    if state.menu_state.is_open && (no_motion_timed_out || dock_timed_out || window_list_timed_out || context_menu_timed_out) {
+    if state.menu_state.is_open
+        && (no_motion_timed_out
+            || dock_timed_out
+            || window_list_timed_out
+            || context_menu_timed_out)
+    {
         state.menu_state.is_open = false;
         state.menu_state.consecutive_no_motion_count = 0;
         state.menu_state.consecutive_on_dock_count = 0;
@@ -219,13 +239,15 @@ pub fn update(
 
     state.menu_state.cursor_moved = false;
 
-	// --- AUTO-HIDE STATE ENGINE ---
+    // --- AUTO-HIDE STATE ENGINE ---
     let pointer_near_edge = state.interaction.is_pointer_near;
     let no_motion_timed_out = no_motion_elapsed >= Duration::from_millis(1000); // DOCK time to start hide/fade
 
     if pointer_near_edge && !no_motion_timed_out {
         // Reveal dock when pointer touches edge/strip
-        if state.hide_state.is_fully_hidden() || state.hide_state.mode == crate::graphics::hide::Mode::Hiding {
+        if state.hide_state.is_fully_hidden()
+            || state.hide_state.mode == crate::graphics::hide::Mode::Hiding
+        {
             state.hide_state.show();
             layer_changed = true;
         }
@@ -243,5 +265,5 @@ pub fn update(
         layer_changed = true;
     }
 
-	layer_changed //[cite: 9]
+    layer_changed //[cite: 9]
 }

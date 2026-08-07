@@ -1,10 +1,10 @@
+use fontdue::{Font, FontSettings};
+use memmap2::Mmap;
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use fontdue::{Font, FontSettings};
-use memmap2::Mmap;
 
 pub struct CachedGlyph {
     pub bitmap: Vec<u8>,
@@ -49,7 +49,10 @@ impl FontManager {
             .join("dock/glyphs");
         let _ = fs::create_dir_all(&cache_dir);
 
-        eprintln!("[FontManager] Initialized (raw bytes) with cache dir: {:?}", cache_dir);
+        eprintln!(
+            "[FontManager] Initialized (raw bytes) with cache dir: {:?}",
+            cache_dir
+        );
 
         Self {
             primary_font: font,
@@ -72,15 +75,18 @@ impl FontManager {
         let mut file = File::create(path)?;
         file.write_all(&(metrics.width as u32).to_le_bytes())?;
         file.write_all(&(metrics.height as u32).to_le_bytes())?;
-        file.write_all(&(metrics.xmin as i32).to_le_bytes())?;
-        file.write_all(&(metrics.ymin as i32).to_le_bytes())?;
-        file.write_all(&(metrics.advance_width as f32).to_le_bytes())?;
-        file.write_all(&(metrics.advance_height as f32).to_le_bytes())?;
+        file.write_all(&metrics.xmin.to_le_bytes())?;
+        file.write_all(&metrics.ymin.to_le_bytes())?;
+        file.write_all(&metrics.advance_width.to_le_bytes())?;
+        file.write_all(&metrics.advance_height.to_le_bytes())?;
         file.write_all(bitmap)?;
 
         eprintln!(
             "[GlyphCache] Saved binary cache to {:?} (dims: {}x{}, bitmap len: {})",
-            path, metrics.width, metrics.height, bitmap.len()
+            path,
+            metrics.width,
+            metrics.height,
+            bitmap.len()
         );
 
         Ok(())
@@ -92,7 +98,11 @@ impl FontManager {
         file.read_to_end(&mut buf).ok()?;
 
         if buf.len() < 24 {
-            eprintln!("[GlyphCache] File {:?} is too small ({} bytes)", path, buf.len());
+            eprintln!(
+                "[GlyphCache] File {:?} is too small ({} bytes)",
+                path,
+                buf.len()
+            );
             return None;
         }
 
@@ -106,7 +116,10 @@ impl FontManager {
 
         eprintln!(
             "[GlyphCache] Loaded cached bin {:?} (dims: {}x{}, bitmap len: {})",
-            path, width, height, bitmap.len()
+            path,
+            width,
+            height,
+            bitmap.len()
         );
 
         let (mut metrics, _) = self.primary_font.rasterize(' ', size);
@@ -145,7 +158,10 @@ impl FontManager {
                 }
             }
             Ok(out) => {
-                eprintln!("[Fontconfig] fc-match failed with code: {:?}", out.status.code());
+                eprintln!(
+                    "[Fontconfig] fc-match failed with code: {:?}",
+                    out.status.code()
+                );
             }
             Err(e) => {
                 eprintln!("[Fontconfig] Failed to execute fc-match: {}", e);
@@ -157,7 +173,7 @@ impl FontManager {
     fn char_to_lang(c: char) -> &'static str {
         match c as u32 {
             0x4E00..=0x9FFF | 0x3400..=0x4DBF => "zh",
-            0x3040..=0x309F | 0x30A0..=0x30FF => "ja",
+            0x3040..=0x30FF => "ja",
             0xAC00..=0xD7AF | 0x1100..=0x11FF => "ko",
             _ => "en",
         }
@@ -180,12 +196,18 @@ impl FontManager {
                 }
             }
         }
-        eprintln!("[FontLoader] Loaded {} font face(s) from {:?}", fonts.len(), path);
+        eprintln!(
+            "[FontLoader] Loaded {} font face(s) from {:?}",
+            fonts.len(),
+            path
+        );
         fonts
     }
 
     fn extract_single_glyph(&mut self, character: char, size: f32) -> Option<CachedGlyph> {
-        let bin_path = self.cache_dir.join(format!("{:x}_{}.bin", character as u32, size as u32));
+        let bin_path = self
+            .cache_dir
+            .join(format!("{:x}_{}.bin", character as u32, size as u32));
 
         if bin_path.exists() {
             if let Some(glyph) = self.load_glyph_bin(&bin_path, size) {
@@ -341,23 +363,25 @@ impl World {
         y_start: i32,
         y_end: i32,
     ) {
-        let blue_pixel: [u8; 4] = [255, 100, 0, 255]; 
+        let blue_pixel: [u8; 4] = [255, 100, 0, 255];
 
         for y in y_start..=y_end {
             for x in x_start..=x_end {
                 let is_edge = x == x_start || x == x_end || y == y_start || y == y_end;
-                
+
                 if is_edge {
                     let pixel_index = (y * self.width as i32 + x) * 4;
 
-                    if ((pixel_index + 3) as usize) < (frame.len() as usize) {
-                        frame[(pixel_index as usize)..((pixel_index as usize + 4 as usize))].copy_from_slice(&blue_pixel);
+                    if ((pixel_index + 3) as usize) < frame.len() {
+                        frame[(pixel_index as usize)..(pixel_index as usize + 4_usize)]
+                            .copy_from_slice(&blue_pixel);
                     }
                 }
             }
         }
     }
 
+	#[allow(clippy::too_many_arguments)]
     pub fn draw_text(
         &mut self,
         frame: &mut [u8],
@@ -420,11 +444,11 @@ impl World {
                 let opacity_u8 = glyph.bitmap[bitmap_idx];
 
                 if opacity_u8 == 0 {
-                    continue; 
+                    continue;
                 }
 
-                let target_x = (x as i32 + glyph.metrics.xmin + col as i32) as isize;
-                let target_y = (y as i32 - glyph.metrics.ymin - g_height as i32 + row as i32) as isize;
+                let target_x = (x + glyph.metrics.xmin + col as i32) as isize;
+                let target_y = (y - glyph.metrics.ymin - g_height as i32 + row as i32) as isize;
 
                 if target_x < 0
                     || target_x >= width as isize
@@ -441,7 +465,7 @@ impl World {
                 }
 
                 let alpha = opacity_u8 as f32 / 255.0;
-                
+
                 for i in 0..3 {
                     let dst = frame[pixel_index + i] as f32;
                     let src = color[i] as f32;

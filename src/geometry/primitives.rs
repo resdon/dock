@@ -20,12 +20,16 @@ pub struct Rect {
 
 impl Rect {
     pub fn new(x: f64, y: f64, width: f64, height: f64) -> Self {
-        Self { x, y, width, height }
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     pub fn contains(&self, p: Point) -> bool {
-        p.x >= self.x && p.x <= self.x + self.width &&
-        p.y >= self.y && p.y <= self.y + self.height
+        p.x >= self.x && p.x <= self.x + self.width && p.y >= self.y && p.y <= self.y + self.height
     }
 
     pub fn scale(&self, scale_factor: f64) -> Self {

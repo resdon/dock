@@ -36,7 +36,7 @@ impl ContextMenuGeometry {
         }
     }
 
-    /// Computes context menu bounding geometry, explicitly separating physical dimensions 
+    /// Computes context menu bounding geometry, explicitly separating physical dimensions
     /// (for buffer allocation) and logical dimensions (for Wayland input regions and surface bounds).
     pub fn compute_bounds(
         &self,

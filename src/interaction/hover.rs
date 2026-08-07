@@ -1,8 +1,8 @@
+use super::proximity;
+use crate::handlers::dock::get_windows_for_app;
+use crate::AppState;
 use std::collections::HashMap;
 use wayland_client::backend::ObjectId;
-use crate::AppState;
-use crate::handlers::dock::get_windows_for_app;
-use super::proximity;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct HoverResult {
@@ -63,16 +63,18 @@ pub fn update_hover(
             spacing,
         );
 
-        if is_over_icon || is_over_window_list || in_leeway {
-            if !windows.is_empty() {
-                should_be_visible = true;
-                final_app_id = Some(app_id);
-            }
+        if (is_over_icon || is_over_window_list || in_leeway) && !windows.is_empty() {
+            should_be_visible = true;
+            final_app_id = Some(app_id);
         }
     }
 
     HoverResult {
         visible: should_be_visible,
-        app_id: if should_be_visible { final_app_id } else { None },
+        app_id: if should_be_visible {
+            final_app_id
+        } else {
+            None
+        },
     }
 }

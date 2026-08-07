@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use wayland_client::backend::ObjectId;
 
-use crate::AppState;
 use crate::geometry::context_menu::ContextMenuGeometry;
+use crate::AppState;
 
 /// Checks whether the current logical pointer coordinates are within a specified distance (`margin`)
 /// of the hover menu popup for an active app.
@@ -49,8 +49,8 @@ pub fn is_pointer_near_hover_menu(
     // Convert physical menu bounds back to logical coordinates for proximity evaluation
     let menu_log_x = (geom.x as f32 / scale_factor).round() as i32;
     let menu_log_y = (geom.y as f32 / scale_factor).round() as i32;
-	let menu_log_w = (geom.logical_width as f32 / scale_factor).round() as i32;
-	let menu_log_h = (geom.logical_height as f32 / scale_factor).round() as i32;
+    let menu_log_w = (geom.logical_width as f32 / scale_factor).round() as i32;
+    let menu_log_h = (geom.logical_height as f32 / scale_factor).round() as i32;
 
     ptr_log_x >= (menu_log_x - margin)
         && ptr_log_x <= (menu_log_x + menu_log_w + margin)

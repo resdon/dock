@@ -23,7 +23,9 @@ pub async fn start_unity_dbus_listener(
     tokio::spawn(async move {
         use futures_util::StreamExt;
         while let Some(Ok(msg)) = stream.next().await {
-            if let Ok((app_uri, properties)) = msg.body().deserialize::<(String, HashMap<String, Value>)>() {
+            if let Ok((app_uri, properties)) =
+                msg.body().deserialize::<(String, HashMap<String, Value>)>()
+            {
                 if let Some(update) = parse_unity_update(app_uri, properties) {
                     let _ = tx.send(update);
                 }

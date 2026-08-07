@@ -33,7 +33,7 @@ pub fn find_icon_by_name(search_name: &str) -> Option<String> {
                         let mut current_name = String::new();
                         let mut current_icon = String::new();
 
-                        for line in reader.lines().flatten() {
+                        for line in reader.lines().map_while(Result::ok) {
                             let trimmed = line.trim();
                             if trimmed.starts_with('[') && trimmed.ends_with(']') {
                                 current_section = trimmed[1..trimmed.len() - 1].to_string();
@@ -41,13 +41,15 @@ pub fn find_icon_by_name(search_name: &str) -> Option<String> {
                             }
 
                             if current_section == "Desktop Entry" {
-                                if trimmed.starts_with("Name=") {
-                                    current_name = trimmed["Name=".len()..].trim().to_string();
-                                } else if trimmed.starts_with("Icon=") {
-                                    current_icon = trimmed["Icon=".len()..].trim().to_string();
+								if let Some(rest) = trimmed.strip_prefix("Name=") {
+                                    current_name = rest.trim().to_string();
+                                } else if let Some(rest) = trimmed.strip_prefix("Icon=") {
+                                    current_icon = rest.trim().to_string();
                                 }
 
-                                if current_name.eq_ignore_ascii_case(search_name) && !current_icon.is_empty() {
+                                if current_name.eq_ignore_ascii_case(search_name)
+                                    && !current_icon.is_empty()
+                                {
                                     return Some(current_icon);
                                 }
                             }
@@ -61,8 +63,12 @@ pub fn find_icon_by_name(search_name: &str) -> Option<String> {
 }
 
 pub fn get_icon_from_desktop(desktop_id: &str) -> Option<String> {
-    let xdg_data_dirs = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".to_string());
-    let mut search_paths: Vec<PathBuf> = xdg_data_dirs.split(':').map(|s| Path::new(s).join("applications")).collect();
+    let xdg_data_dirs = std::env::var("XDG_DATA_DIRS")
+        .unwrap_or_else(|_| "/usr/local/share:/usr/share".to_string());
+    let mut search_paths: Vec<PathBuf> = xdg_data_dirs
+        .split(':')
+        .map(|s| Path::new(s).join("applications"))
+        .collect();
     if let Ok(home) = std::env::var("HOME") {
         search_paths.insert(0, Path::new(&home).join(".local/share/applications"));
     }
@@ -72,10 +78,10 @@ pub fn get_icon_from_desktop(desktop_id: &str) -> Option<String> {
         if desktop_path.exists() {
             if let Ok(file) = File::open(desktop_path) {
                 let reader = BufReader::new(file);
-                for line in reader.lines().flatten() {
-                    if line.starts_with("Icon=") {
-                        return Some(line["Icon=".len()..].trim().to_string());
-                    }
+                for line in reader.lines().map_while(Result::ok) {
+					if let Some(rest) = line.strip_prefix("Icon=") {
+						return Some(rest.trim().to_string());
+					}
                 }
             }
         }
@@ -95,8 +101,12 @@ pub fn extract_icon_name(app_id: &str) -> String {
         format!("com.{}.desktop", app_id),
     ];
 
-    let xdg_data_dirs = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".to_string());
-    let mut search_paths: Vec<PathBuf> = xdg_data_dirs.split(':').map(|s| Path::new(s).join("applications")).collect();
+    let xdg_data_dirs = std::env::var("XDG_DATA_DIRS")
+        .unwrap_or_else(|_| "/usr/local/share:/usr/share".to_string());
+    let mut search_paths: Vec<PathBuf> = xdg_data_dirs
+        .split(':')
+        .map(|s| Path::new(s).join("applications"))
+        .collect();
     if let Ok(home) = std::env::var("HOME") {
         search_paths.insert(0, Path::new(&home).join(".local/share/applications"));
     }
@@ -107,10 +117,10 @@ pub fn extract_icon_name(app_id: &str) -> String {
             if desktop_path.exists() {
                 if let Ok(file) = File::open(desktop_path) {
                     let reader = BufReader::new(file);
-                    for line in reader.lines().flatten() {
-                        if line.starts_with("Icon=") {
-                            return line["Icon=".len()..].trim().to_string();
-                        }
+                    for line in reader.lines().map_while(Result::ok) {
+						if let Some(rest) = line.strip_prefix("Icon=") {
+							return rest.trim().to_string();
+						}
                     }
                 }
             }
@@ -140,7 +150,7 @@ pub fn find_icon_path(root_dir: &str, target_name: &str) -> Option<PathBuf> {
 
 pub fn search_icon_list_file(query: &str) -> Option<PathBuf> {
     let home = std::env::var("HOME").unwrap_or_default();
-    
+
     let candidate_paths = [
         get_icon_list_path(),
         PathBuf::from("./icon_list.txt"),
@@ -155,7 +165,7 @@ pub fn search_icon_list_file(query: &str) -> Option<PathBuf> {
     let query_lower = query.to_lowercase();
     let mut best_fallback: Option<PathBuf> = None;
 
-    for line in reader.lines().flatten() {
+    for line in reader.lines().map_while(Result::ok) {
         let line_lower = line.trim().to_lowercase();
 
         if line_lower.contains(&query_lower) {
@@ -182,7 +192,8 @@ pub fn search_icon_list_file(query: &str) -> Option<PathBuf> {
 pub fn get_icon_path(app_id: &str) -> Option<PathBuf> {
     if app_id.starts_with("steam_icon_") {
         let sys_scanner = sysinfo::System::new();
-        if let Some((_, _, icon_path)) = resolve_steam_game_details(app_id, "", &sys_scanner, None) {
+        if let Some((_, _, icon_path)) = resolve_steam_game_details(app_id, "", &sys_scanner, None)
+        {
             return Some(icon_path);
         }
     }

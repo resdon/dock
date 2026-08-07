@@ -1,5 +1,5 @@
-use std::sync::OnceLock;
 use crate::models::{BadgeUpdate, DockItem};
+use std::sync::OnceLock;
 
 // dbus_unity notifications badge asset
 static BADGE_ICON_BYTES: &[u8] = include_bytes!("../../assets/dialog-warning.png");
@@ -68,7 +68,7 @@ pub fn draw_canvas_badge(
                 let dst_g = canvas[dst_idx + 1] as u32;
                 let dst_b = canvas[dst_idx + 2] as u32;
 
-                canvas[dst_idx]     = ((src_r * alpha + dst_r * inv_alpha) / 255) as u8;
+                canvas[dst_idx] = ((src_r * alpha + dst_r * inv_alpha) / 255) as u8;
                 canvas[dst_idx + 1] = ((src_g * alpha + dst_g * inv_alpha) / 255) as u8;
                 canvas[dst_idx + 2] = ((src_b * alpha + dst_b * inv_alpha) / 255) as u8;
                 canvas[dst_idx + 3] = 255;

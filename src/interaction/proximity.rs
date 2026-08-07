@@ -1,9 +1,9 @@
+use crate::geometry::context_menu::ContextMenuGeometry;
+use crate::geometry::WindowListGeometry;
+use crate::handlers::dock::get_windows_for_app;
+use crate::AppState;
 use std::collections::HashMap;
 use wayland_client::backend::ObjectId;
-use crate::geometry::WindowListGeometry;
-use crate::geometry::context_menu::ContextMenuGeometry;
-use crate::AppState;
-use crate::handlers::dock::get_windows_for_app;
 
 /// Calculates the physical horizontal anchor coordinate for a target app icon.
 pub fn calculate_context_menu_anchor(
@@ -41,9 +41,13 @@ pub fn calculate_context_menu_anchor(
                 .first()
                 .and_then(|d| d.dock_state.as_ref())
                 .and_then(|ds| ds.pins.first())
-                .map_or(false, |first_pin| apps_in_dock.first() == Some(&first_pin.app_id));
+                .is_some_and(|first_pin| apps_in_dock.first() == Some(&first_pin.app_id));
 
-            let slot_idx = if is_full_list { idx } else { pinned_count + idx };
+            let slot_idx = if is_full_list {
+                idx
+            } else {
+                pinned_count + idx
+            };
 
             let start_x = start_offset_x + spacing + slot_idx as i32 * (box_size + spacing);
             let pin_center_logical = start_x as f32 + (box_size as f32 / 2.0);
@@ -62,8 +66,8 @@ pub fn pointer_on_icon(
     let pointer_x = state.interaction.pointer_position.x as f32;
     let pointer_y = state.interaction.pointer_position.y as f32;
 
-    let dock_top_bound = (state.height as i32).saturating_sub(dock_height);
-    let dock_bottom_bound = state.height as i32;
+    let dock_top_bound = state.height.saturating_sub(dock_height);
+    let dock_bottom_bound = state.height;
 
     let is_over_y = pointer_y >= dock_top_bound as f32 && pointer_y <= dock_bottom_bound as f32;
     if !is_over_y {
@@ -115,7 +119,7 @@ pub fn pointer_on_window_list(
     let dock_scale = state
         .docks
         .first()
-        .map(|d| d.scale_factor as f64)
+        .map(|d| d.scale_factor)
         .unwrap_or(scale_factor as f64);
 
     let phys_width = (state.width as f64 * dock_scale).round() as i32;
@@ -137,13 +141,10 @@ pub fn pointer_on_window_list(
 
     let menu_y = (screen_height_phys - phys_dock_height) - menu_height;
 
-    let in_list = ptr_x_scaled >= menu_x
+    ptr_x_scaled >= menu_x
         && ptr_x_scaled <= (menu_x + menu_width)
         && ptr_y_scaled >= menu_y
-        && ptr_y_scaled <= (menu_y + menu_height);
-
-
-    in_list
+        && ptr_y_scaled <= (menu_y + menu_height)
 }
 
 pub fn pointer_between_icon_and_window(
@@ -155,10 +156,9 @@ pub fn pointer_between_icon_and_window(
     _dock_height: i32,
     _spacing: i32,
 ) -> bool {
-
-	// Disabled for now
-	false
-	/*
+    // Disabled for now
+    false
+    /*
     let windows = get_windows_for_app(app_id, running_by_app, &state.open_windows);
     if windows.is_empty() {
         return false;
@@ -225,7 +225,7 @@ pub fn pointer_between_icon_and_window(
                 0
             };
             let start_x = start_offset_x + spacing + idx as i32 * (box_size + spacing);
-            
+
             icon_hit_start_x = (start_x as f64 * dock_scale).round() as i32;
             icon_hit_end_x = ((start_x + box_size) as f64 * dock_scale).round() as i32;
             found_pin = true;
@@ -256,7 +256,7 @@ pub fn pointer_between_icon_and_window(
     let final_max_x = leeway_max_x.min(tight_icon_max_x);
 
     in_gap_y && ptr_x_scaled >= final_min_x && ptr_x_scaled <= final_max_x
-	*/
+    */
 }
 
 pub fn pointer_on_context_menu(
@@ -274,7 +274,7 @@ pub fn pointer_on_context_menu(
     let dock_scale = state
         .docks
         .first()
-        .map(|d| d.scale_factor as f64)
+        .map(|d| d.scale_factor)
         .unwrap_or(scale_factor as f64);
 
     let ptr_x_scaled = (state.interaction.pointer_position.x * dock_scale).round() as i32;
@@ -285,7 +285,8 @@ pub fn pointer_on_context_menu(
     let phys_dock_height = (dock_height as f64 * dock_scale).round() as i32;
     let screen_height_phys = (state.height as f64 * dock_scale).round() as i32;
 
-    let anchor_x = calculate_context_menu_anchor(state, apps_in_dock, phys_screen_width, dock_scale, layout);
+    let anchor_x =
+        calculate_context_menu_anchor(state, apps_in_dock, phys_screen_width, dock_scale, layout);
 
     let mut geom = ContextMenuGeometry::default().compute_bounds(
         anchor_x,
@@ -303,12 +304,10 @@ pub fn pointer_on_context_menu(
     let menu_min_x = geom.x.max(0);
     let menu_max_x = (geom.x + menu_width).min(phys_screen_width);
 
-    let in_menu = ptr_x_scaled >= menu_min_x
+    ptr_x_scaled >= menu_min_x
         && ptr_x_scaled <= menu_max_x
         && ptr_y_scaled >= geom.y
-        && ptr_y_scaled <= (geom.y + menu_height);
-
-    in_menu
+        && ptr_y_scaled <= (geom.y + menu_height)
 }
 
 pub fn pointer_in_context_menu_leeway(
@@ -317,8 +316,8 @@ pub fn pointer_in_context_menu_leeway(
     _scale_factor: f32,
     _layout: (i32, i32, i32, i32),
 ) -> bool {
-	false
-	/*
+    false
+    /*
     if !state.menu_state.is_open || state.menu_state.items.is_empty() {
         return false;
     }

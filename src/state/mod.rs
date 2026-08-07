@@ -15,12 +15,8 @@ use smithay_client_toolkit::{
 };
 use wayland_client::backend::ObjectId;
 use wayland_client::protocol::{
-    wl_data_device::WlDataDevice,
-    wl_data_device_manager::WlDataDeviceManager,
-    wl_output::WlOutput,
-    wl_pointer::WlPointer,
-    wl_seat::WlSeat,
-    wl_subcompositor::WlSubcompositor,
+    wl_data_device::WlDataDevice, wl_data_device_manager::WlDataDeviceManager, wl_output::WlOutput,
+    wl_pointer::WlPointer, wl_seat::WlSeat, wl_subcompositor::WlSubcompositor,
 };
 use wayland_client::Connection;
 
@@ -36,7 +32,6 @@ use crate::render::font::FontManager;
 
 use crate::app::icon_load::IconLoader;
 use crate::app::types::{DndState, DockInstance, HoverState, InteractionState, MenuState};
-
 
 pub(crate) mod dock;
 mod interaction;

@@ -1,9 +1,9 @@
 use smithay_client_toolkit::seat::pointer::PointerEvent;
 use wayland_client::protocol::wl_surface::WlSurface;
 
-use crate::AppState;
 use crate::geometry::context_menu::ContextMenuGeometry;
 use crate::geometry::WindowListGeometry;
+use crate::AppState;
 
 pub fn map_coordinates(
     event: &PointerEvent,
@@ -49,8 +49,7 @@ pub fn map_coordinates(
 
             let apps_in_dock = state.get_apps_in_dock();
             let total_apps = apps_in_dock.len();
-            let hovered_app_index =
-                apps_in_dock.iter().position(|id| id == app_id).unwrap_or(0);
+            let hovered_app_index = apps_in_dock.iter().position(|id| id == app_id).unwrap_or(0);
 
             let geometry = WindowListGeometry::default();
             let (menu_x, _, _, menu_height, _, _) = geometry.compute_bounds(

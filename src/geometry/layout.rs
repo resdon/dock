@@ -1,4 +1,4 @@
-use super::primitives::{Point};
+use super::primitives::Point;
 
 /// Calculates relative local pointer position inside a bounding box
 pub fn to_local_coords(global_ptr: Point, bounds_x: f64, bounds_y: f64, scale: f64) -> (i32, i32) {

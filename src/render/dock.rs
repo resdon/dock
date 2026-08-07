@@ -17,11 +17,7 @@ pub struct DockRenderResources<'a> {
     pub pointer_position: (i32, i32),
 }
 
-pub fn render_dock_surface(
-    canvas: &mut [u8],
-    state: &DockState,
-    res: &mut DockRenderResources,
-) {
+pub fn render_dock_surface(canvas: &mut [u8], state: &DockState, res: &mut DockRenderResources) {
     render_dock_background(
         canvas,
         res.phys_width,
@@ -61,18 +57,18 @@ pub fn render_dock_background(
             break;
         }
 
-        let pixel_data = if y >= dock_start_y { bg_pixel } else { transparent_pixel };
+        let pixel_data = if y >= dock_start_y {
+            bg_pixel
+        } else {
+            transparent_pixel
+        };
         for pixel in canvas[row_start..row_end].chunks_exact_mut(4) {
             pixel.copy_from_slice(&pixel_data);
         }
     }
 }
 
-pub fn render_dock_items(
-    canvas: &mut [u8],
-    state: &DockState,
-    res: &mut DockRenderResources,
-) {
+pub fn render_dock_items(canvas: &mut [u8], state: &DockState, res: &mut DockRenderResources) {
     let phys_width = res.phys_width as usize;
     let phys_height = res.phys_height as usize;
 
@@ -89,10 +85,16 @@ pub fn render_dock_items(
         let icon = windows
             .and_then(|v| {
                 v.first().and_then(|w| {
-                    w.icon_rgba.as_ref().map(|rgba| (rgba.as_slice(), w.icon_size))
+                    w.icon_rgba
+                        .as_ref()
+                        .map(|rgba| (rgba.as_slice(), w.icon_size))
                 })
             })
-            .or_else(|| res.icon_cache.get(&pin.app_id).map(|(v, s)| (v.as_slice(), *s)));
+            .or_else(|| {
+                res.icon_cache
+                    .get(&pin.app_id)
+                    .map(|(v, s)| (v.as_slice(), *s))
+            });
 
         if let Some((icon_pixels, img_size_u32)) = icon {
             let img_size = img_size_u32 as usize;
@@ -104,7 +106,10 @@ pub fn render_dock_items(
                     let src_y = (y * img_size) / box_size;
                     let src_idx = (src_y * img_size + src_x) * 4;
 
-                    if src_idx + 3 < icon_pixels.len() && canvas_x < phys_width && canvas_y < phys_height {
+                    if src_idx + 3 < icon_pixels.len()
+                        && canvas_x < phys_width
+                        && canvas_y < phys_height
+                    {
                         let canvas_idx = (canvas_y * phys_width + canvas_x) * 4;
                         if canvas_idx + 3 < canvas.len() {
                             let alpha = icon_pixels[src_idx + 3] as f32 / 255.0;
@@ -115,9 +120,15 @@ pub fn render_dock_items(
                                 let src_b = icon_pixels[src_idx + 2] as f32;
 
                                 // Wayland ARGB8888 Little-Endian Canvas Layout: [B, G, R, A]
-                                canvas[canvas_idx]     = ((src_b * alpha * dim) + (canvas[canvas_idx] as f32 * (1.0 - alpha))) as u8;
-                                canvas[canvas_idx + 1] = ((src_g * alpha * dim) + (canvas[canvas_idx + 1] as f32 * (1.0 - alpha))) as u8;
-                                canvas[canvas_idx + 2] = ((src_r * alpha * dim) + (canvas[canvas_idx + 2] as f32 * (1.0 - alpha))) as u8;
+                                canvas[canvas_idx] = ((src_b * alpha * dim)
+                                    + (canvas[canvas_idx] as f32 * (1.0 - alpha)))
+                                    as u8;
+                                canvas[canvas_idx + 1] = ((src_g * alpha * dim)
+                                    + (canvas[canvas_idx + 1] as f32 * (1.0 - alpha)))
+                                    as u8;
+                                canvas[canvas_idx + 2] = ((src_r * alpha * dim)
+                                    + (canvas[canvas_idx + 2] as f32 * (1.0 - alpha)))
+                                    as u8;
                                 canvas[canvas_idx + 3] = 255;
                             }
                         }
@@ -147,9 +158,14 @@ pub fn render_dock_items(
                                 if canvas_idx + 3 < canvas.len() {
                                     let inv_a = 255 - a;
                                     // Canvas [B, G, R, A]
-                                    canvas[canvas_idx]     = ((b * a + canvas[canvas_idx] as u32 * inv_a) / 255) as u8;
-                                    canvas[canvas_idx + 1] = ((g * a + canvas[canvas_idx + 1] as u32 * inv_a) / 255) as u8;
-                                    canvas[canvas_idx + 2] = ((r * a + canvas[canvas_idx + 2] as u32 * inv_a) / 255) as u8;
+                                    canvas[canvas_idx] =
+                                        ((b * a + canvas[canvas_idx] as u32 * inv_a) / 255) as u8;
+                                    canvas[canvas_idx + 1] =
+                                        ((g * a + canvas[canvas_idx + 1] as u32 * inv_a) / 255)
+                                            as u8;
+                                    canvas[canvas_idx + 2] =
+                                        ((r * a + canvas[canvas_idx + 2] as u32 * inv_a) / 255)
+                                            as u8;
                                     canvas[canvas_idx + 3] = 255;
                                 }
                             }
@@ -158,7 +174,13 @@ pub fn render_dock_items(
                 }
             }
         } else {
-            let letter = pin.app_id.chars().next().unwrap_or('?').to_uppercase().to_string();
+            let letter = pin
+                .app_id
+                .chars()
+                .next()
+                .unwrap_or('?')
+                .to_uppercase()
+                .to_string();
             let font_size = (24.0f32 * pin.scale_factor) as i32;
             let text_x = (start_x as f32 + 16.0f32 * pin.scale_factor).round() as i32;
             let text_y = (start_y as f32 + 11.0f32 * pin.scale_factor).round() as i32;
@@ -175,10 +197,10 @@ pub fn render_dock_items(
             );
         }
 
-		// Render tracking indicator dash(es) with configurable thickness
+        // Render tracking indicator dash(es) with configurable thickness
         if pin.is_running {
             let indicator_y = start_y + box_size + 2; // 4 pixels below the icon box
-            let dash_height = 3;                      // Height (thickness) in pixels (e.g., 4px)
+            let dash_height = 3; // Height (thickness) in pixels (e.g., 4px)
 
             if indicator_y < phys_height {
                 let num_dashes = if pin.running_count > 0 {
@@ -188,15 +210,17 @@ pub fn render_dock_items(
                 };
 
                 let total_line_width = 28.0f32; // Fixed total width of the indicator group
-                let dash_spacing = 3.0f32;      // Spacing between multiple dashes
+                let dash_spacing = 3.0f32; // Spacing between multiple dashes
                 let total_spacing = dash_spacing * (num_dashes as f32 - 1.0f32).max(0.0f32);
-                let dash_width = ((total_line_width - total_spacing) / num_dashes as f32).max(4.0f32);
+                let dash_width =
+                    ((total_line_width - total_spacing) / num_dashes as f32).max(4.0f32);
 
-                let indicator_start_x = start_x as f32 + (box_size as f32 - total_line_width) / 2.0f32;
+                let indicator_start_x =
+                    start_x as f32 + (box_size as f32 - total_line_width) / 2.0f32;
 
-                let is_app_active = windows.map_or(pin.is_activated, |wins| {
-                    wins.iter().any(|w| w.is_activated)
-                }) || pin.is_activated;
+                let is_app_active = windows
+                    .map_or(pin.is_activated, |wins| wins.iter().any(|w| w.is_activated))
+                    || pin.is_activated;
 
                 for i in 0..num_dashes {
                     let dash_start_x = indicator_start_x + (i as f32 * (dash_width + dash_spacing));
@@ -214,12 +238,12 @@ pub fn render_dock_items(
                                     if canvas_idx + 3 < canvas.len() {
                                         if is_app_active {
                                             // Cyan indicator in [B, G, R, A] format: B=0xFF, G=0xFF, R=0x00
-                                            canvas[canvas_idx]     = 0xFF;
+                                            canvas[canvas_idx] = 0xFF;
                                             canvas[canvas_idx + 1] = 0xFF;
                                             canvas[canvas_idx + 2] = 0x00;
                                         } else {
                                             let brightness = 0x66;
-                                            canvas[canvas_idx]     = brightness;
+                                            canvas[canvas_idx] = brightness;
                                             canvas[canvas_idx + 1] = brightness;
                                             canvas[canvas_idx + 2] = brightness;
                                         }
@@ -262,7 +286,9 @@ pub fn render_dragged_icon(
     let icon = windows
         .and_then(|v| {
             v.first().and_then(|w| {
-                w.icon_rgba.as_ref().map(|rgba| (rgba.as_slice(), w.icon_size))
+                w.icon_rgba
+                    .as_ref()
+                    .map(|rgba| (rgba.as_slice(), w.icon_size))
             })
         })
         .or_else(|| res.icon_cache.get(drag_id).map(|(v, s)| (v.as_slice(), *s)));
@@ -296,9 +322,15 @@ pub fn render_dragged_icon(
                             let src_b = icon_pixels[(src_idx + 2) as usize] as f32;
 
                             // Canvas [B, G, R, A]
-                            canvas[canvas_idx]     = ((src_b * alpha) + (canvas[canvas_idx] as f32 * (1.0 - alpha))) as u8;
-                            canvas[canvas_idx + 1] = ((src_g * alpha) + (canvas[canvas_idx + 1] as f32 * (1.0 - alpha))) as u8;
-                            canvas[canvas_idx + 2] = ((src_r * alpha) + (canvas[canvas_idx + 2] as f32 * (1.0 - alpha))) as u8;
+                            canvas[canvas_idx] = ((src_b * alpha)
+                                + (canvas[canvas_idx] as f32 * (1.0 - alpha)))
+                                as u8;
+                            canvas[canvas_idx + 1] = ((src_g * alpha)
+                                + (canvas[canvas_idx + 1] as f32 * (1.0 - alpha)))
+                                as u8;
+                            canvas[canvas_idx + 2] = ((src_r * alpha)
+                                + (canvas[canvas_idx + 2] as f32 * (1.0 - alpha)))
+                                as u8;
                             canvas[canvas_idx + 3] = 255;
                         }
                     }
@@ -324,7 +356,9 @@ pub fn render_dragged_icon(
             }
         };
 
-        let hash = drag_id.bytes().fold(0u32, |acc, b| acc.wrapping_add(b as u32));
+        let hash = drag_id
+            .bytes()
+            .fold(0u32, |acc, b| acc.wrapping_add(b as u32));
         let hue = (hash % 360) as f32;
         let base_color = hsl_to_rgb(hue, 0.6, 0.55);
         let grad_color = hsl_to_rgb(hue, 0.6, 0.40);
@@ -333,27 +367,35 @@ pub fn render_dragged_icon(
             for x in 0..box_size {
                 let canvas_x = drag_start_x + x;
                 let canvas_y = drag_start_y + y;
-                if canvas_x >= 0 && canvas_x < phys_width && canvas_y >= 0 && canvas_y < phys_height {
-                    if is_inside_rounded_rect(x as usize, y as usize) {
-                        let canvas_idx = ((canvas_y * phys_width + canvas_x) * 4) as usize;
-                        if canvas_idx + 3 < canvas.len() {
-                            let t = y as f32 / box_size as f32;
-                            let r = base_color.0 as f32 * (1.0 - t) + grad_color.0 as f32 * t;
-                            let g = base_color.1 as f32 * (1.0 - t) + grad_color.1 as f32 * t;
-                            let b = base_color.2 as f32 * (1.0 - t) + grad_color.2 as f32 * t;
+                if canvas_x >= 0
+                    && canvas_x < phys_width
+                    && canvas_y >= 0
+                    && canvas_y < phys_height
+                    && is_inside_rounded_rect(x as usize, y as usize)
+                {
+                    let canvas_idx = ((canvas_y * phys_width + canvas_x) * 4) as usize;
+                    if canvas_idx + 3 < canvas.len() {
+                        let t = y as f32 / box_size as f32;
+                        let r = base_color.0 as f32 * (1.0 - t) + grad_color.0 as f32 * t;
+                        let g = base_color.1 as f32 * (1.0 - t) + grad_color.1 as f32 * t;
+                        let b = base_color.2 as f32 * (1.0 - t) + grad_color.2 as f32 * t;
 
-                            // Canvas [B, G, R, A]
-                            canvas[canvas_idx]     = b as u8;
-                            canvas[canvas_idx + 1] = g as u8;
-                            canvas[canvas_idx + 2] = r as u8;
-                            canvas[canvas_idx + 3] = 255;
-                        }
+                        // Canvas [B, G, R, A]
+                        canvas[canvas_idx] = b as u8;
+                        canvas[canvas_idx + 1] = g as u8;
+                        canvas[canvas_idx + 2] = r as u8;
+                        canvas[canvas_idx + 3] = 255;
                     }
                 }
             }
         }
 
-        let letter = drag_id.chars().next().unwrap_or('?').to_uppercase().to_string();
+        let letter = drag_id
+            .chars()
+            .next()
+            .unwrap_or('?')
+            .to_uppercase()
+            .to_string();
         let font_size = 24;
         let offset_x = 16;
         let offset_y = 11;

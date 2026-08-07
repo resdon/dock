@@ -44,7 +44,7 @@ pub fn spawn_startup_indexer() {
         }
 
         let num_workers = 4.min(top_level_dirs.len().max(1));
-        let chunk_size = (top_level_dirs.len() + num_workers - 1) / num_workers;
+        let chunk_size = top_level_dirs.len().div_ceil(num_workers);
         let chunks: Vec<Vec<PathBuf>> = top_level_dirs
             .chunks(chunk_size.max(1))
             .map(|c| c.to_vec())
@@ -88,7 +88,10 @@ pub fn spawn_startup_indexer() {
             let _ = final_writer.flush();
         }
 
-        println!("[ICON INDEXER] Completed and memory fully dropped in {:0.2?}", start.elapsed());
+        println!(
+            "[ICON INDEXER] Completed and memory fully dropped in {:0.2?}",
+            start.elapsed()
+        );
     });
 }
 
@@ -116,7 +119,7 @@ fn scan_directory_to_writer(dir: &Path, writer: &mut BufWriter<File>) {
 pub fn search_icon_list_file(query: &str) -> Option<PathBuf> {
     let search_start = Instant::now(); // <-- Start timer here
     let home = std::env::var("HOME").unwrap_or_default();
-    
+
     let candidate_paths = [
         get_icon_list_path(),
         PathBuf::from("./icon_list.txt"),
@@ -139,7 +142,7 @@ pub fn search_icon_list_file(query: &str) -> Option<PathBuf> {
     if file_size < 32 * 1024 {
         let reader = BufReader::new(file);
         let mut best_fallback: Option<PathBuf> = None;
-        for line in reader.lines().flatten() {
+        for line in reader.lines().map_while(Result::ok) {
             let line_lower = line.trim().to_lowercase();
 
             if line_lower.contains(&query_lower) {
@@ -168,12 +171,17 @@ pub fn search_icon_list_file(query: &str) -> Option<PathBuf> {
 
     let found_exact = Arc::new(AtomicBool::new(false));
     // Stores (exact_png_match, best_fallback)
-    let best_result: Arc<Mutex<(Option<PathBuf>, Option<PathBuf>)>> = Arc::new(Mutex::new((None, None)));
+    let best_result: Arc<Mutex<(Option<PathBuf>, Option<PathBuf>)>> =
+        Arc::new(Mutex::new((None, None)));
     let mut handles = vec![];
 
     for i in 0..num_workers {
         let start_pos = i as u64 * chunk_size;
-        let end_pos = if i == num_workers - 1 { file_size } else { (i + 1) as u64 * chunk_size };
+        let end_pos = if i == num_workers - 1 {
+            file_size
+        } else {
+            (i + 1) as u64 * chunk_size
+        };
 
         let list_path_clone = list_path.clone();
         let query_lower_clone = query_lower.clone();
@@ -269,9 +277,15 @@ pub fn search_icon_list_file(query: &str) -> Option<PathBuf> {
     let res = best_result.lock().unwrap();
     let elapsed = search_start.elapsed(); // <-- Stop timer here
     if let Some(exact) = res.0.clone() {
-        println!("[icon_list.txt SEARCH] Returning parallel exact match: {:?} in {:0.2?}", exact, elapsed);
+        println!(
+            "[icon_list.txt SEARCH] Returning parallel exact match: {:?} in {:0.2?}",
+            exact, elapsed
+        );
         return Some(exact);
     }
-    println!("[icon_list.txt SEARCH] Returning parallel fallback match: {:?} in {:0.2?}", res.1, elapsed);
+    println!(
+        "[icon_list.txt SEARCH] Returning parallel fallback match: {:?} in {:0.2?}",
+        res.1, elapsed
+    );
     res.1.clone()
 }

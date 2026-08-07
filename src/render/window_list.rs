@@ -52,6 +52,7 @@ pub fn prepare_window_list<'a>(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_window_list_surface(
     canvas: &mut [u8],
     menu_width: i32,
@@ -113,7 +114,8 @@ pub fn render_window_list_surface(
         };
 
         let text_x = (12.0 * scale_factor).round() as i32;
-        let text_y = i as i32 * item_h + ((item_h as f32 - 14.0 * scale_factor) / 2.0).max(0.0) as i32;
+        let text_y =
+            i as i32 * item_h + ((item_h as f32 - 14.0 * scale_factor) / 2.0).max(0.0) as i32;
 
         crate::render::text::draw_text(
             canvas,

@@ -1,5 +1,5 @@
-use wayland_client::backend::ObjectId;
 use super::AppState;
+use wayland_client::backend::ObjectId;
 
 /// Strips trailing numeric instance identifiers (e.g., "app_1234" -> "app") while leaving Steam app IDs untouched.
 fn normalize_app_id(app_id: &str) -> &str {
@@ -17,11 +17,13 @@ fn normalize_app_id(app_id: &str) -> &str {
 impl AppState {
     /// Returns true if at least one window, pinned app, or background icon search is active
     pub fn is_animating(&self) -> bool {
-        let windows_loading = self.open_windows
+        let windows_loading = self
+            .open_windows
             .values()
             .any(|win| !win.icon_resolved && win.icon_rgba.is_none());
 
-        let pinned_loading = self.pinned_apps
+        let pinned_loading = self
+            .pinned_apps
             .iter()
             .any(|app_id| !self.icon_cache.contains_key(app_id));
 
@@ -53,31 +55,36 @@ impl AppState {
         }
 
         if target_app_lower.contains("steam") || app_id.starts_with("steam_icon_") {
-            let _ = std::process::Command::new("steam")
-                .arg("-shutdown")
-                .spawn();
+            let _ = std::process::Command::new("steam").arg("-shutdown").spawn();
         }
 
         // Safely terminate window-associated PIDs
         for pid in &pids_to_kill {
             if *pid > 1 {
-                unsafe { libc::kill(*pid as i32, libc::SIGTERM); }
+                unsafe {
+                    libc::kill(*pid as i32, libc::SIGTERM);
+                }
             }
         }
 
-        self.sys_scanner.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+        self.sys_scanner
+            .refresh_processes(sysinfo::ProcessesToUpdate::All, true);
         let clean_name = normalize_app_id(&target_app_lower);
 
         // Strict process name match to avoid accidental terminations of short-named binaries
         for (pid, proc_) in self.sys_scanner.processes() {
             let pid_u32 = pid.as_u32();
-            if pid_u32 <= 1 { continue; }
+            if pid_u32 <= 1 {
+                continue;
+            }
 
             let proc_name = proc_.name().to_string_lossy().to_lowercase();
             let proc_stem = proc_name.split('.').next().unwrap_or(&proc_name);
 
             if proc_name == clean_name || proc_stem == clean_name {
-                unsafe { libc::kill(pid_u32 as i32, libc::SIGTERM); }
+                unsafe {
+                    libc::kill(pid_u32 as i32, libc::SIGTERM);
+                }
             }
         }
 
@@ -91,21 +98,29 @@ impl AppState {
             .filter(|(_, win)| win.resolved_app_id() == target_app_id)
             .collect();
 
-        if matching_windows.len() <= 1 { return; }
+        if matching_windows.len() <= 1 {
+            return;
+        }
 
-		// Sorting
-		matching_windows.sort_by(|a, b| {
+        // Sorting
+        matching_windows.sort_by(|a, b| {
             a.1.matched_pid
                 .cmp(&b.1.matched_pid)
                 .then_with(|| std::ptr::from_ref(a.1).cmp(&std::ptr::from_ref(b.1)))
         });
 
-        let active_idx = matching_windows.iter().position(|(_, win)| win.is_activated);
+        let active_idx = matching_windows
+            .iter()
+            .position(|(_, win)| win.is_activated);
 
         let count = matching_windows.len();
         let next_idx = match active_idx {
             Some(idx) => {
-                if reverse { (idx + count - 1) % count } else { (idx + 1) % count }
+                if reverse {
+                    (idx + count - 1) % count
+                } else {
+                    (idx + 1) % count
+                }
             }
             None => 0,
         };
@@ -119,8 +134,10 @@ impl AppState {
 
     pub fn update_window_icon(&mut self, window_id: ObjectId) {
         if let Some(window) = self.open_windows.get_mut(&window_id) {
-            if window.icon_resolved { return; }
-            
+            if window.icon_resolved {
+                return;
+            }
+
             let mut search_id = if !window.app_id.trim().is_empty() {
                 window.app_id.trim().to_string()
             } else {
@@ -131,10 +148,11 @@ impl AppState {
             if lower_id.contains("task manager") || lower_id == "taskman" {
                 search_id = "taskman".to_string();
             }
-            
+
             search_id = normalize_app_id(&search_id).to_string();
 
-            self.sys_scanner.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+            self.sys_scanner
+                .refresh_processes(sysinfo::ProcessesToUpdate::All, true);
 
             if window.matched_pid.is_none() {
                 let target_app = search_id.to_lowercase();
@@ -148,9 +166,18 @@ impl AppState {
 
             let pid_opt = window.matched_pid.map(sysinfo::Pid::from_u32);
 
-            if let Some((appid, steam_name, steam_icon_path)) = dockman_lib::resolve_steam_game_details(&search_id, &window.title, &self.sys_scanner, pid_opt) {
+            if let Some((appid, steam_name, steam_icon_path)) =
+                dockman_lib::resolve_steam_game_details(
+                    &search_id,
+                    &window.title,
+                    &self.sys_scanner,
+                    pid_opt,
+                )
+            {
                 let target_size = 48;
-                if let Some((_, _, rgba_data)) = crate::terminal_graphics::load_image_raw_rgba(&steam_icon_path, target_size) {
+                if let Some((_, _, rgba_data)) =
+                    crate::terminal_graphics::load_image_raw_rgba(&steam_icon_path, target_size)
+                {
                     let icon_key = format!("steam_icon_{}", appid);
                     window.app_name = steam_name;
                     window.app_id = icon_key.clone();
@@ -158,9 +185,15 @@ impl AppState {
                     window.icon_rgba = Some(rgba_data.clone());
                     window.icon_size = target_size;
                     window.icon_resolved = true;
-                    self.icon_cache.insert(icon_key.clone(), (rgba_data.clone(), target_size));
+                    self.icon_cache
+                        .insert(icon_key.clone(), (rgba_data.clone(), target_size));
                     if self.pinned_apps.contains(&icon_key) {
-                        crate::cache::save_cached_icon(&icon_key, target_size, target_size, &rgba_data);
+                        crate::cache::save_cached_icon(
+                            &icon_key,
+                            target_size,
+                            target_size,
+                            &rgba_data,
+                        );
                     }
                     return;
                 }
@@ -169,15 +202,21 @@ impl AppState {
             for pinned_id in &self.pinned_apps {
                 let p_lower = pinned_id.to_lowercase();
                 let s_lower = search_id.to_lowercase();
-                if p_lower == s_lower && !p_lower.starts_with("steam_icon_") && !s_lower.starts_with("steam_icon_") {
+                if p_lower == s_lower
+                    && !p_lower.starts_with("steam_icon_")
+                    && !s_lower.starts_with("steam_icon_")
+                {
                     search_id = pinned_id.clone();
                     window.app_id = search_id.clone();
                     break;
                 }
             }
 
-            if !search_id.is_empty() && crate::icon_utils::get_icon_from_desktop(&search_id).is_none() {
-                if let Some(resolved_id) = crate::icon_utils::find_desktop_file_by_exec(&search_id) {
+            if !search_id.is_empty()
+                && crate::icon_utils::get_icon_from_desktop(&search_id).is_none()
+            {
+                if let Some(resolved_id) = crate::icon_utils::find_desktop_file_by_exec(&search_id)
+                {
                     search_id = resolved_id;
                     window.app_id = search_id.clone();
                 }
@@ -186,15 +225,23 @@ impl AppState {
             if !search_id.is_empty() {
                 let icon_name = crate::icon_utils::extract_icon_name(&search_id);
                 let icon_path = crate::get_icon_path(&search_id);
-                
+
                 let mut raw_pixels = None;
                 let target_size = 48;
                 if let Some(path) = icon_path {
-                    if let Some((_, _, rgba_data)) = crate::terminal_graphics::load_image_raw_rgba(&path, target_size) {
+                    if let Some((_, _, rgba_data)) =
+                        crate::terminal_graphics::load_image_raw_rgba(&path, target_size)
+                    {
                         raw_pixels = Some(rgba_data.clone());
-                        self.icon_cache.insert(search_id.clone(), (rgba_data.clone(), target_size));
+                        self.icon_cache
+                            .insert(search_id.clone(), (rgba_data.clone(), target_size));
                         if self.pinned_apps.contains(&search_id) {
-                            crate::cache::save_cached_icon(&search_id, target_size, target_size, &rgba_data);
+                            crate::cache::save_cached_icon(
+                                &search_id,
+                                target_size,
+                                target_size,
+                                &rgba_data,
+                            );
                         }
                     }
                 }

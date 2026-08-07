@@ -1,7 +1,7 @@
+use super::AppState;
 use std::collections::HashMap;
 use wayland_client::backend::ObjectId;
 use wayland_client::QueueHandle;
-use super::AppState;
 
 const BOX_SIZE: f64 = 48.0;
 const SPACING: f64 = 12.0;
@@ -22,7 +22,7 @@ impl AppState {
     }
 
     /// Builds a map of App IDs to their sorted open window ObjectIds.
-	pub fn get_running_by_app(&self) -> HashMap<String, Vec<ObjectId>> {
+    pub fn get_running_by_app(&self) -> HashMap<String, Vec<ObjectId>> {
         let mut running_by_app: HashMap<String, Vec<ObjectId>> = HashMap::new();
 
         for (id, window) in &self.open_windows {
@@ -32,7 +32,7 @@ impl AppState {
                 .push(id.clone());
         }
 
-		// Sort by PID/stable ID instead of title
+        // Sort by PID/stable ID instead of title
         for windows in running_by_app.values_mut() {
             windows.sort_by(|a, b| {
                 let win_a = self.open_windows.get(a);
@@ -144,7 +144,13 @@ impl AppState {
     ) {
         // Iterate through active output dock instances
         for dock in &self.docks {
-            dock.update_input_region(&self.compositor_state, is_hidden, container_start_x, container_width, qh);
+            dock.update_input_region(
+                &self.compositor_state,
+                is_hidden,
+                container_start_x,
+                container_width,
+                qh,
+            );
         }
     }
 }

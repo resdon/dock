@@ -2,22 +2,20 @@ pub use crate::models::LastState;
 use crate::models::WindowDiagnostics;
 use crate::AppState;
 
-use std::os::fd::AsFd;
+use std::env;
 use std::io::Read;
+use std::os::fd::AsFd;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::env;
-use std::path::Path;
 
 use smithay_client_toolkit::{
-    compositor::{CompositorHandler},
+    compositor::CompositorHandler,
     delegate_compositor, delegate_layer, delegate_output, delegate_pointer, delegate_registry,
     delegate_seat, delegate_shm,
     output::{OutputHandler, OutputState},
     registry::{ProvidesRegistryState, RegistryHandler, RegistryState},
-    seat::{
-        Capability, SeatHandler, SeatState,
-    },
+    seat::{Capability, SeatHandler, SeatState},
     shell::{
         wlr_layer::{LayerShellHandler, LayerSurface, LayerSurfaceConfigure},
         WaylandSurface,
@@ -36,12 +34,11 @@ use wayland_client::{
 
 use wayland_client::backend::ObjectData;
 
-
-use wayland_client::protocol::wl_subcompositor::WlSubcompositor;
-use wayland_client::protocol::wl_subsurface::WlSubsurface;
 use wayland_client::protocol::wl_data_device::{Event as DndEvent, WlDataDevice};
 use wayland_client::protocol::wl_data_device_manager::{DndAction, WlDataDeviceManager};
 use wayland_client::protocol::wl_data_offer::{self, WlDataOffer};
+use wayland_client::protocol::wl_subcompositor::WlSubcompositor;
+use wayland_client::protocol::wl_subsurface::WlSubsurface;
 use wayland_protocols_wlr::foreign_toplevel::v1::client::{
     zwlr_foreign_toplevel_handle_v1::{self, ZwlrForeignToplevelHandleV1},
     zwlr_foreign_toplevel_manager_v1::{self, ZwlrForeignToplevelManagerV1},
@@ -77,13 +74,13 @@ pub fn get_launcher_path() -> String {
 fn parse_window_states(state_bytes: &[u8]) -> (bool, bool) {
     let mut activated = false;
     let mut minimized = false;
-    
+
     for chunk in state_bytes.chunks_exact(4) {
         let value = u32::from_ne_bytes(chunk.try_into().unwrap());
         match value {
-            2 => activated = true, 
-            1 => minimized = true, 
-            _ => {} 
+            2 => activated = true,
+            1 => minimized = true,
+            _ => {}
         }
     }
     (activated, minimized)
@@ -117,11 +114,11 @@ fn percent_decode(input: &str) -> Option<String> {
         if b == b'%' {
             let h1 = chars.next()?;
             let h2 = chars.next()?;
-            
+
             let hex_bytes = [h1, h2];
             let hex_str = std::str::from_utf8(&hex_bytes).ok()?;
             let byte = u8::from_str_radix(hex_str, 16).ok()?;
-            
+
             bytes.push(byte);
         } else {
             bytes.push(b);
@@ -139,7 +136,8 @@ impl wayland_client::Dispatch<WlSubcompositor, ()> for AppState {
         _data: &(),
         _conn: &wayland_client::Connection,
         _qhandle: &wayland_client::QueueHandle<Self>,
-    ) {}
+    ) {
+    }
 }
 
 impl wayland_client::Dispatch<WlSubsurface, ()> for AppState {
@@ -150,7 +148,8 @@ impl wayland_client::Dispatch<WlSubsurface, ()> for AppState {
         _data: &(),
         _conn: &wayland_client::Connection,
         _qhandle: &wayland_client::QueueHandle<Self>,
-    ) {}
+    ) {
+    }
 }
 
 impl Dispatch<wayland_client::protocol::wl_region::WlRegion, ()> for AppState {
@@ -161,7 +160,8 @@ impl Dispatch<wayland_client::protocol::wl_region::WlRegion, ()> for AppState {
         _data: &(),
         _conn: &wayland_client::Connection,
         _qhandle: &wayland_client::QueueHandle<Self>,
-    ) {}
+    ) {
+    }
 }
 
 impl Dispatch<WlDataDeviceManager, ()> for AppState {
@@ -172,7 +172,8 @@ impl Dispatch<WlDataDeviceManager, ()> for AppState {
         _data: &(),
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
-    ) {}
+    ) {
+    }
 }
 
 impl Dispatch<WlDataOffer, ()> for AppState {
@@ -210,7 +211,11 @@ impl Dispatch<WlDataDevice, ()> for AppState {
                 state.dnd_state.drag_y = y;
 
                 if let Some(ref offer) = state.dnd_state.current_offer {
-                    let has_uri_list = state.dnd_state.mime_types.iter().any(|m| m == "text/uri-list");
+                    let has_uri_list = state
+                        .dnd_state
+                        .mime_types
+                        .iter()
+                        .any(|m| m == "text/uri-list");
 
                     if has_uri_list {
                         offer.accept(serial, Some("text/uri-list".to_string()));
@@ -243,12 +248,16 @@ impl Dispatch<WlDataDevice, ()> for AppState {
                 let drop_y = state.dnd_state.drag_y;
 
                 if let Some(offer) = state.dnd_state.current_offer.take() {
-                    let has_uri_list = state.dnd_state.mime_types.iter().any(|m| m == "text/uri-list");
+                    let has_uri_list = state
+                        .dnd_state
+                        .mime_types
+                        .iter()
+                        .any(|m| m == "text/uri-list");
 
                     if has_uri_list {
                         if let Ok((read_pipe, write_pipe)) = os_pipe::pipe() {
                             offer.receive("text/uri-list".to_string(), write_pipe.as_fd());
-                            
+
                             let _ = _conn.flush();
                             drop(write_pipe);
 
@@ -277,10 +286,7 @@ impl Dispatch<WlDataDevice, ()> for AppState {
         }
     }
 
-    fn event_created_child(
-        opcode: u16,
-        qh: &QueueHandle<Self>,
-    ) -> Arc<dyn ObjectData> {
+    fn event_created_child(opcode: u16, qh: &QueueHandle<Self>) -> Arc<dyn ObjectData> {
         match opcode {
             0 => qh.make_data::<WlDataOffer, _>(()),
             _ => unreachable!(),
@@ -296,7 +302,8 @@ impl Dispatch<WpFractionalScaleManagerV1, ()> for AppState {
         _data: &(),
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
-    ) {}
+    ) {
+    }
 }
 
 impl Dispatch<WpFractionalScaleV1, WlOutput> for AppState {
@@ -332,17 +339,22 @@ impl RegistryHandler<AppState> for AppState {
         eprintln!("[DEBUG] Global detected: {} (v{})", interface, version);
 
         if interface == WlSubcompositor::interface().name {
-            let subcompositor = state.registry_state.registry().bind::<WlSubcompositor, _, _>(
-                name,
-                version.min(1),
-                qh,
-                (),
-            );
+            let subcompositor = state
+                .registry_state
+                .registry()
+                .bind::<WlSubcompositor, _, _>(name, version.min(1), qh, ());
             state.subcompositor = Some(subcompositor);
         }
     }
 
-    fn remove_global(_data: &mut AppState, _conn: &Connection, _qh: &QueueHandle<AppState>, _name: u32, _interface: &str) {}
+    fn remove_global(
+        _data: &mut AppState,
+        _conn: &Connection,
+        _qh: &QueueHandle<AppState>,
+        _name: u32,
+        _interface: &str,
+    ) {
+    }
 }
 
 impl ProvidesRegistryState for AppState {
@@ -353,22 +365,54 @@ impl ProvidesRegistryState for AppState {
 }
 
 impl CompositorHandler for AppState {
-    fn surface_enter(&mut self, _: &Connection, _qh: &QueueHandle<Self>, _: &wayland_client::protocol::wl_surface::WlSurface, output: &WlOutput) {
+    fn surface_enter(
+        &mut self,
+        _: &Connection,
+        _qh: &QueueHandle<Self>,
+        _: &wayland_client::protocol::wl_surface::WlSurface,
+        output: &WlOutput,
+    ) {
         self.current_output = Some(output.clone());
         self.needs_redraw = true;
     }
 
-    fn surface_leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wayland_client::protocol::wl_surface::WlSurface, output: &WlOutput) {
+    fn surface_leave(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wayland_client::protocol::wl_surface::WlSurface,
+        output: &WlOutput,
+    ) {
         if self.current_output.as_ref() == Some(output) {
             self.current_output = None;
         }
     }
 
-    fn scale_factor_changed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wayland_client::protocol::wl_surface::WlSurface, _: i32) {}
-    fn frame(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wayland_client::protocol::wl_surface::WlSurface, _: u32) {
+    fn scale_factor_changed(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wayland_client::protocol::wl_surface::WlSurface,
+        _: i32,
+    ) {
+    }
+    fn frame(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wayland_client::protocol::wl_surface::WlSurface,
+        _: u32,
+    ) {
         self.needs_redraw = true;
     }
-    fn transform_changed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wayland_client::protocol::wl_surface::WlSurface, _: Transform) {}
+    fn transform_changed(
+        &mut self,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+        _: &wayland_client::protocol::wl_surface::WlSurface,
+        _: Transform,
+    ) {
+    }
 }
 
 impl OutputHandler for AppState {
@@ -405,7 +449,8 @@ impl LayerShellHandler for AppState {
     }
 
     fn closed(&mut self, _: &Connection, _: &QueueHandle<Self>, layer: &LayerSurface) {
-        self.docks.retain(|d| d.surface.wl_surface() != layer.wl_surface());
+        self.docks
+            .retain(|d| d.surface.wl_surface() != layer.wl_surface());
     }
 }
 impl ShmHandler for AppState {
@@ -422,13 +467,20 @@ impl SeatHandler for AppState {
     fn new_seat(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _seat: WlSeat) {}
     fn remove_seat(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _seat: WlSeat) {}
 
-    fn new_capability(&mut self, _conn: &Connection, qh: &QueueHandle<Self>, seat: WlSeat, cap: Capability) {
+    fn new_capability(
+        &mut self,
+        _conn: &Connection,
+        qh: &QueueHandle<Self>,
+        seat: WlSeat,
+        cap: Capability,
+    ) {
         if cap == Capability::Pointer {
             if let Some(ref ddm) = self.data_device_manager {
                 self.data_device = Some(ddm.get_data_device(&seat, qh, ()));
             }
 
-            let wl_pointer = self.seat_state
+            let wl_pointer = self
+                .seat_state
                 .get_pointer(qh, &seat)
                 .expect("Failed to secure pointer handle");
 
@@ -437,7 +489,13 @@ impl SeatHandler for AppState {
         }
     }
 
-    fn remove_capability(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _seat: WlSeat, cap: Capability) {
+    fn remove_capability(
+        &mut self,
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+        _seat: WlSeat,
+        cap: Capability,
+    ) {
         if cap == Capability::Pointer {
             self.wl_pointer = None;
             self.data_device = None;
@@ -456,9 +514,10 @@ impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for AppState {
     ) {
         if let zwlr_foreign_toplevel_manager_v1::Event::Toplevel { toplevel } = event {
             let window_id = toplevel.id().protocol_id() as u64;
-            state.open_windows.entry(toplevel.id()).or_insert_with(|| {
-                WindowDiagnostics::new(window_id, toplevel.clone())
-            });
+            state
+                .open_windows
+                .entry(toplevel.id())
+                .or_insert_with(|| WindowDiagnostics::new(window_id, toplevel.clone()));
         }
     }
 
@@ -477,9 +536,10 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for AppState {
         _qh: &QueueHandle<Self>,
     ) {
         let window_id = handle.id().protocol_id() as u64;
-        state.open_windows.entry(handle.id()).or_insert_with(|| {
-            WindowDiagnostics::new(window_id, handle.clone())
-        });
+        state
+            .open_windows
+            .entry(handle.id())
+            .or_insert_with(|| WindowDiagnostics::new(window_id, handle.clone()));
 
         match event {
             zwlr_foreign_toplevel_handle_v1::Event::OutputEnter { output } => {
@@ -526,7 +586,7 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for AppState {
                 if let Some(window) = state.open_windows.get_mut(&handle.id()) {
                     window.is_activated = activated;
                     window.is_minimized = minimized;
-                    window.is_pending = false; 
+                    window.is_pending = false;
                 }
                 state.needs_redraw = true;
             }

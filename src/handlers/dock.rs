@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-use wayland_client::backend::ObjectId;
-use crate::AppState;
 use crate::models::WindowDiagnostics;
 use crate::pointer::drag::handle_drag_release;
+use crate::AppState;
+use std::collections::HashMap;
+use wayland_client::backend::ObjectId;
 
 pub fn handle_dock_press(
     state: &mut AppState,
@@ -39,6 +39,7 @@ pub fn handle_dock_press(
     false
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn handle_dock_release(
     state: &mut AppState,
     button: u32,
@@ -79,11 +80,16 @@ pub fn handle_dock_release(
                         if button == 274 {
                             launch_app(&pin.app_id);
                         } else if button == 272 {
-                            let windows = get_windows_for_app(&pin.app_id, running_by_app, &state.open_windows);
+                            let windows = get_windows_for_app(
+                                &pin.app_id,
+                                running_by_app,
+                                &state.open_windows,
+                            );
                             if let Some(handle_id) = windows.first() {
-                                let was_active = state.open_windows
+                                let was_active = state
+                                    .open_windows
                                     .get(handle_id)
-                                    .map_or(false, |w| w.is_activated);
+                                    .is_some_and(|w| w.is_activated);
                                 if let Some(win) = state.open_windows.get_mut(handle_id) {
                                     if was_active {
                                         win.handle.set_minimized();
@@ -151,5 +157,8 @@ pub fn normalize_app_id(app_id: &str) -> String {
 pub fn launch_app(app_id: &str) {
     let launcher_path = crate::handlers::get_launcher_path();
     let normalized = normalize_app_id(app_id);
-    let _ = std::process::Command::new("sh").arg(launcher_path).arg(normalized).spawn();
+    let _ = std::process::Command::new("sh")
+        .arg(launcher_path)
+        .arg(normalized)
+        .spawn();
 }

@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_arguments)]
 pub mod app;
 pub mod cache;
 pub mod geometry;
@@ -42,14 +43,14 @@ use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use libc; // for loop and animation
+// for loop and animation
 
 use crate::cache::persistence;
 use crate::graphics::AutoHideState;
 use crate::render::font::FontManager;
 
-pub use dockman_lib::DesktopAction;
 use dockman_lib::listeners::start_unity_dbus_listener;
+pub use dockman_lib::DesktopAction;
 
 use app::types::*;
 
@@ -71,7 +72,7 @@ fn load_icon_index_map() -> HashMap<String, PathBuf> {
 
     if let Ok(file) = File::open(list_path) {
         let reader = BufReader::new(file);
-        for line in reader.lines().flatten() {
+        for line in reader.lines().map_while(Result::ok) {
             let path = PathBuf::from(&line);
             if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                 let key = stem.to_lowercase();
@@ -152,8 +153,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let qh = event_queue.handle();
     let registry_state = RegistryState::new(&globals);
-    let compositor_state =
-        CompositorState::bind(&globals, &qh).expect("Failed to bind compositor");
+    let compositor_state = CompositorState::bind(&globals, &qh).expect("Failed to bind compositor");
     let output_state = OutputState::new(&globals, &qh);
     let layer_shell = LayerShell::bind(&globals, &qh).expect("wlr_layer_shell required");
     let shm_state = Shm::bind(&globals, &qh).expect("wl_shm required");
@@ -221,8 +221,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         width: 100,
         height: 60,
         toplevel_manager: None,
-        font_manager: FontManager::from_file(&font_path)
-            .expect("Failed to memory-map font file"),
+        font_manager: FontManager::from_file(&font_path).expect("Failed to memory-map font file"),
         wl_seat: None,
         wl_pointer: None,
         open_windows: HashMap::new(),
@@ -251,10 +250,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             consecutive_on_dock_count: 0,
             consecutive_on_context_menu_count: 0,
             consecutive_on_window_list_count: 0,
-			no_motion_timer: None,
-			dock_timer: None,
-			context_menu_timer: None,
-			window_list_timer: None,
+            no_motion_timer: None,
+            dock_timer: None,
+            context_menu_timer: None,
+            window_list_timer: None,
         },
         hover_state: HoverState {
             x: 0,
@@ -320,11 +319,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(&output),
         );
 
-        let scale_notifier = if let Some(ref manager) = state.fractional_scale_manager {
-            Some(manager.get_fractional_scale(layer_surface.wl_surface(), &qh, output.clone()))
-        } else {
-            None
-        };
+        let scale_notifier = state.fractional_scale_manager.as_ref().map(|manager| {
+            manager.get_fractional_scale(layer_surface.wl_surface(), &qh, output.clone())
+        });
 
         // Define physical dimensions prior to setting surface size
         let dock_width = 540;
@@ -392,14 +389,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // 4. ANIMATION: Step timers, opacity transitions, and active frame tickers
-		// Focus timer
-		let was_focus_performed = state.focus_action_performed;
+        // Focus timer
+        let was_focus_performed = state.focus_action_performed;
         state.update_focus_timer();
 
         if was_focus_performed && !state.focus_action_performed {
             eprintln!("[DEBUG] Focus action state reset to false after 1s timeout");
-        }		
-		// ------
+        }
+        // ------
         state.fallback_anim.is_active = state.is_animating();
         let frame_advanced = state.fallback_anim.update();
         let timers_changed = state.update_hover_and_hide_timers();
@@ -416,7 +413,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-		// --- HOVER & MENU FADE TICKING ---
+        // --- HOVER & MENU FADE TICKING ---
         let hover_anim_active = state.docks.iter_mut().any(|d| d.hover_fade.tick());
         let menu_anim_active = state.docks.iter_mut().any(|d| d.menu_fade.tick());
 

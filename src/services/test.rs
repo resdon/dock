@@ -3,8 +3,10 @@ use std::fs;
 use std::path::PathBuf;
 
 fn main() {
-    let home = env::var("HOME").map(PathBuf::from).unwrap_or_else(|_| PathBuf::from("/tmp"));
-    
+    let home = env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/tmp"));
+
     // We store PathBufs directly to avoid lifetime/borrowing errors
     let dirs = vec![
         PathBuf::from("/usr/share/applications"),
@@ -16,12 +18,18 @@ fn main() {
     let mut i = 0;
 
     for dir_path in dirs {
-        if !dir_path.exists() { continue; }
-        
+        if !dir_path.exists() {
+            continue;
+        }
+
         if let Ok(entries) = fs::read_dir(dir_path) {
             for entry in entries.flatten() {
                 let p = entry.path();
-                let file_name = p.file_name().and_then(|n| n.to_str()).unwrap_or("unknown").to_string();
+                let file_name = p
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown")
+                    .to_string();
 
                 // Process .desktop files
                 if p.is_file() && file_name.ends_with(".desktop") {
@@ -34,9 +42,12 @@ fn main() {
                             }
                         }
                     }
-                    println!(" {:<4} | File: {:<30} | Icon Value: {}", i, file_name, icon_val);
+                    println!(
+                        " {:<4} | File: {:<30} | Icon Value: {}",
+                        i, file_name, icon_val
+                    );
                     i += 1;
-                } 
+                }
                 // Process files in the Flatpak icons folder specifically
                 else if p.is_file() && p.to_string_lossy().contains("flatpak") {
                     println!(" {:<4} | Icon File: {}", i, file_name);

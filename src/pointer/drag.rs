@@ -21,13 +21,13 @@ pub fn handle_drag_release(
                 let start_x = start_offset_x + index as i32 * (box_size + spacing);
                 let hit_start_x = start_x.saturating_sub(spacing / 2);
                 let hit_end_x = start_x + box_size + (spacing / 2);
-                
+
                 if pointer_x >= hit_start_x && pointer_x <= hit_end_x {
                     dropped_idx = Some(index as i32);
                     break;
                 }
             }
-            
+
             if dropped_idx.is_none() && pointer_x >= start_offset_x {
                 dropped_idx = Some(apps_in_dock.len().saturating_sub(1) as i32);
             }

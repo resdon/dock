@@ -1,6 +1,6 @@
-use std::fs;
-use resvg::usvg::{Options, Tree};
 use resvg::tiny_skia::{Pixmap, Transform};
+use resvg::usvg::{Options, Tree};
+use std::fs;
 use std::time::{Duration, Instant};
 
 pub struct IconAnimation {
@@ -75,7 +75,13 @@ pub fn load_svg_animation_sequence(dir_path: &str, target_size: u32) -> Vec<Fram
         e.path()
             .file_stem()
             .and_then(|s| s.to_str())
-            .and_then(|s| s.chars().filter(|c| c.is_ascii_digit()).collect::<String>().parse::<u32>().ok())
+            .and_then(|s| {
+                s.chars()
+                    .filter(|c| c.is_ascii_digit())
+                    .collect::<String>()
+                    .parse::<u32>()
+                    .ok()
+            })
             .unwrap_or(0)
     });
 
@@ -87,7 +93,7 @@ pub fn load_svg_animation_sequence(dir_path: &str, target_size: u32) -> Vec<Fram
             if let Ok(svg_data) = fs::read(&path) {
                 if let Ok(tree) = Tree::from_data(&svg_data, &opt) {
                     let mut pixmap = Pixmap::new(target_size, target_size).unwrap();
-                    
+
                     let sx = target_size as f32 / tree.size().width();
                     let sy = target_size as f32 / tree.size().height();
                     let transform = Transform::from_scale(sx, sy);

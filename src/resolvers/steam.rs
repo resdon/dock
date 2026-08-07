@@ -97,15 +97,19 @@ fn resolve_appid_from_process(sys_scanner: &System, entry_pid: Option<Pid>) -> O
     None
 }
 
-fn resolve_appid_from_gamescope(sys_scanner: &System, target_app: &str, window_title: &str) -> Option<String> {
-    let is_gamescope = target_app.to_lowercase().contains("gamescope") 
+fn resolve_appid_from_gamescope(
+    sys_scanner: &System,
+    target_app: &str,
+    window_title: &str,
+) -> Option<String> {
+    let is_gamescope = target_app.to_lowercase().contains("gamescope")
         || window_title.to_lowercase().contains("gamescope");
 
     if !is_gamescope {
         return None;
     }
 
-    for (c_pid, _) in sys_scanner.processes() {
+    for c_pid in sys_scanner.processes().keys() {
         if let Ok(env_data) = fs::read_to_string(format!("/proc/{}/environ", c_pid.as_u32())) {
             for env_pair in env_data.split('\0') {
                 if let Some(val) = env_pair.strip_prefix("SteamAppId=") {
@@ -123,7 +127,11 @@ fn resolve_appid_from_gamescope(sys_scanner: &System, target_app: &str, window_t
     None
 }
 
-fn find_appid_by_manifest(steam_roots: &[PathBuf], target_app: &str, window_title: &str) -> Option<String> {
+fn find_appid_by_manifest(
+    steam_roots: &[PathBuf],
+    target_app: &str,
+    window_title: &str,
+) -> Option<String> {
     let target_lower = target_app.to_lowercase();
     let title_lower = window_title.to_lowercase();
 
@@ -143,23 +151,28 @@ fn find_appid_by_manifest(steam_roots: &[PathBuf], target_app: &str, window_titl
                         let mut installdir_val = String::new();
                         let mut name_val = String::new();
 
-                        for line in reader.lines().flatten() {
+                        for line in reader.lines().map_while(Result::ok) {
                             let trimmed = line.trim();
                             if trimmed.starts_with("\"appid\"") {
                                 appid_val = trimmed.split('"').nth(3).unwrap_or("").to_string();
                             } else if trimmed.starts_with("\"installdir\"") {
-                                installdir_val = trimmed.split('"').nth(3).unwrap_or("").to_lowercase();
+                                installdir_val =
+                                    trimmed.split('"').nth(3).unwrap_or("").to_lowercase();
                             } else if trimmed.starts_with("\"name\"") {
                                 name_val = trimmed.split('"').nth(3).unwrap_or("").to_lowercase();
                             }
                         }
 
-                        if !appid_val.is_empty() {
-                            if (!installdir_val.is_empty() && (target_lower.contains(&installdir_val) || installdir_val.contains(&target_lower)))
-                                || (!name_val.is_empty() && (target_lower.contains(&name_val) || name_val.contains(&target_lower) || title_lower.contains(&name_val)))
-                            {
-                                return Some(appid_val);
-                            }
+                        if !appid_val.is_empty()
+                            && ((!installdir_val.is_empty()
+                                && (target_lower.contains(&installdir_val)
+                                    || installdir_val.contains(&target_lower)))
+                                || (!name_val.is_empty()
+                                    && (target_lower.contains(&name_val)
+                                        || name_val.contains(&target_lower)
+                                        || title_lower.contains(&name_val))))
+                        {
+                            return Some(appid_val);
                         }
                     }
                 }
@@ -175,7 +188,7 @@ fn get_game_name_from_manifest(steam_roots: &[PathBuf], appid: &str) -> Option<S
         if manifest_path.exists() {
             if let Ok(file) = File::open(&manifest_path) {
                 let reader = BufReader::new(file);
-                for line in reader.lines().flatten() {
+                for line in reader.lines().map_while(Result::ok) {
                     let trimmed = line.trim();
                     if trimmed.starts_with("\"name\"") {
                         return Some(trimmed.split('"').nth(3).unwrap_or("").to_string());
@@ -197,7 +210,11 @@ fn find_steam_icon(steam_roots: &[PathBuf], appid: &str) -> Option<PathBuf> {
                     let p = entry.path();
                     if let Some(file_name) = p.file_name().and_then(|n| n.to_str()) {
                         let lower = file_name.to_lowercase();
-                        if lower.starts_with(appid) && (lower.contains("icon") || lower.contains("logo") || lower.contains("library")) {
+                        if lower.starts_with(appid)
+                            && (lower.contains("icon")
+                                || lower.contains("logo")
+                                || lower.contains("library"))
+                        {
                             return Some(p);
                         }
                     }
@@ -218,7 +235,11 @@ fn find_steam_icon(steam_roots: &[PathBuf], appid: &str) -> Option<PathBuf> {
         if !theme_dir.exists() {
             continue;
         }
-        for entry in WalkDir::new(&theme_dir).max_depth(6).into_iter().filter_map(|e| e.ok()) {
+        for entry in WalkDir::new(&theme_dir)
+            .max_depth(6)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
             let path = entry.path();
             if path.is_file() {
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {

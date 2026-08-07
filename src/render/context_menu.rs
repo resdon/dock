@@ -1,4 +1,6 @@
-pub use crate::geometry::context_menu::{ContextMenuGeometry, SurfaceGeometry, BASE_ITEM_HEIGHT, BASE_MENU_WIDTH};
+pub use crate::geometry::context_menu::{
+    ContextMenuGeometry, SurfaceGeometry, BASE_ITEM_HEIGHT, BASE_MENU_WIDTH,
+};
 
 use crate::render::text::draw_text;
 use crate::{FontManager, MenuItemType, MenuState};
@@ -48,6 +50,7 @@ pub fn get_context_menu_bounds(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_context_menu_surface(
     buffer: &mut [u8],
     width: i32,
@@ -83,7 +86,8 @@ pub fn render_context_menu_surface(
         && (local_pointer_y as f32) >= 0.0
         && (local_pointer_y as f32) < logical_menu_h
     {
-        let idx = ((local_pointer_y as f32 / item_h_log) as i32).clamp(0, (item_count - 1) as i32) as usize;
+        let idx = ((local_pointer_y as f32 / item_h_log) as i32).clamp(0, (item_count - 1) as i32)
+            as usize;
         Some(idx)
     } else {
         None
@@ -130,7 +134,8 @@ pub fn render_context_menu_surface(
         let next_item_top_phys = ((i as i32 + 1) * height) / item_count as i32;
         let current_item_h_phys = next_item_top_phys - item_top_phys;
 
-        let text_offset_y = ((current_item_h_phys as f32 - 14.0 * scale_factor) / 2.0).max(0.0) as i32;
+        let text_offset_y =
+            ((current_item_h_phys as f32 - 14.0 * scale_factor) / 2.0).max(0.0) as i32;
         let text_y = item_top_phys + text_offset_y;
 
         if text_y >= height {

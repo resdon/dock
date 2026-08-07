@@ -28,12 +28,19 @@ impl PointerHandler for AppState {
         let scale_factor = self.docks.first().map(|d| d.scale_factor).unwrap_or(1.0) as f32;
         let dock_surface_ptr = self.docks.first().map(|d| d.surface.wl_surface().clone());
 
-		// Now PointerEventKind is in scope and resolves cleanly
-    	let has_motion = events.iter().any(|e| matches!(e.kind, PointerEventKind::Motion { .. }));
-    	self.menu_state.cursor_moved = has_motion;
-        
+        // Now PointerEventKind is in scope and resolves cleanly
+        let has_motion = events
+            .iter()
+            .any(|e| matches!(e.kind, PointerEventKind::Motion { .. }));
+        self.menu_state.cursor_moved = has_motion;
+
         // Step 1: Motion Coordinates & Leave Tracking
-		layer_changed |= crate::interaction::handle_motion_events(self, events, dock_surface_ptr.as_ref(), scale_factor);
+        layer_changed |= crate::interaction::handle_motion_events(
+            self,
+            events,
+            dock_surface_ptr.as_ref(),
+            scale_factor,
+        );
         // Step 2: State Retrieval & Layout Metrics
         let running_by_app = self.get_running_by_app();
         let apps_in_dock = self.get_apps_in_dock();
@@ -48,20 +55,35 @@ impl PointerHandler for AppState {
         } else {
             0
         };
-        let start_offset_x = if (self.width as i32) > content_width {
-            (self.width as i32 - content_width) / 2
+        let start_offset_x = if self.width > content_width {
+            (self.width - content_width) / 2
         } else {
             0
         };
         let layout = (dock_height, box_size, spacing, start_offset_x);
 
         // Step 3: Hover & Proximity Checks
-		layer_changed |= crate::interaction::update(self, &apps_in_dock, &running_by_app, scale_factor, layout);
+        layer_changed |=
+            crate::interaction::update(self, &apps_in_dock, &running_by_app, scale_factor, layout);
         // Step 4: Scroll Events
-        layer_changed |= scroll::handle_scroll_events(self, events, &apps_in_dock, &running_by_app, scale_factor, layout);
+        layer_changed |= scroll::handle_scroll_events(
+            self,
+            events,
+            &apps_in_dock,
+            &running_by_app,
+            scale_factor,
+            layout,
+        );
 
         // Step 5: Click & Drag Release
-        layer_changed |= click::handle_click_events(self, events, &apps_in_dock, &running_by_app, scale_factor, layout);
+        layer_changed |= click::handle_click_events(
+            self,
+            events,
+            &apps_in_dock,
+            &running_by_app,
+            scale_factor,
+            layout,
+        );
 
         // Step 6: Render Sync
         if layer_changed {

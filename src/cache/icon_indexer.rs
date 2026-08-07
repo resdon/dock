@@ -39,7 +39,7 @@ pub fn spawn_startup_indexer() {
         }
 
         let num_workers = 4.min(top_level_dirs.len().max(1));
-        let chunk_size = (top_level_dirs.len() + num_workers - 1) / num_workers;
+        let chunk_size = top_level_dirs.len().div_ceil(num_workers);
         let chunks: Vec<Vec<PathBuf>> = top_level_dirs
             .chunks(chunk_size.max(1))
             .map(|c| c.to_vec())
@@ -83,8 +83,11 @@ pub fn spawn_startup_indexer() {
             let _ = final_writer.flush();
         }
 
-        println!("[RAM-OPTIMIZED INDEXER] Completed and memory fully dropped in {:0.2?}", start.elapsed());
-    }); // <-- The thread stack, local vectors, and buffers go out of scope here. 
+        println!(
+            "[RAM-OPTIMIZED INDEXER] Completed and memory fully dropped in {:0.2?}",
+            start.elapsed()
+        );
+    }); // <-- The thread stack, local vectors, and buffers go out of scope here.
         // The OS immediately reclaims all RAM allocated to this thread.
 }
 

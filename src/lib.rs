@@ -1,7 +1,8 @@
+#![allow(clippy::manual_strip)]
 // src/lib.rs
 
-use std::path::Path;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
+use std::path::Path;
 
 pub mod graphics;
 pub mod listeners;
@@ -27,19 +28,24 @@ pub mod terminal_graphics {
 
         if extension == "svg" {
             let svg_data = std::fs::read(path).ok()?;
-            let tree = resvg::usvg::Tree::from_data(&svg_data, &resvg::usvg::Options::default()).ok()?;
+            let tree =
+                resvg::usvg::Tree::from_data(&svg_data, &resvg::usvg::Options::default()).ok()?;
             let mut pixmap = resvg::tiny_skia::Pixmap::new(target_size, target_size)?;
-            
+
             let transform = resvg::tiny_skia::Transform::from_scale(
                 target_size as f32 / tree.size().width(),
                 target_size as f32 / tree.size().height(),
             );
             resvg::render(&tree, transform, &mut pixmap.as_mut());
-            
+
             Some((target_size, target_size, pixmap.data().to_vec()))
         } else {
             let img = image::open(path).ok()?;
-            let scaled = img.resize_exact(target_size, target_size, image::imageops::FilterType::Lanczos3);
+            let scaled = img.resize_exact(
+                target_size,
+                target_size,
+                image::imageops::FilterType::Lanczos3,
+            );
             let rgba = scaled.to_rgba8();
             Some((rgba.width(), rgba.height(), rgba.into_raw()))
         }

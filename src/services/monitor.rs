@@ -7,17 +7,17 @@ use walkdir::WalkDir;
 // Base64 engine for terminal protocol payloads
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
+use linicon::lookup_icon;
 use smithay_client_toolkit::registry::{ProvidesRegistryState, RegistryHandler, RegistryState};
+use sysinfo::{ProcessRefreshKind, RefreshKind, System};
+use wayland_client::globals::registry_queue_init;
+use wayland_client::{event_created_child, Connection, Dispatch, Proxy, QueueHandle};
 use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_handle_v1::{
     Event as HandleEvent, ZwlrForeignToplevelHandleV1,
 };
 use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_manager_v1::{
     Event as ManagerEvent, ZwlrForeignToplevelManagerV1,
 };
-use wayland_client::globals::registry_queue_init;
-use wayland_client::{event_created_child, Connection, Dispatch, Proxy, QueueHandle};
-use sysinfo::{ProcessRefreshKind, RefreshKind, System};
-use linicon::lookup_icon;
 
 struct RealtimeTrackerApp {
     registry_state: RegistryState,
@@ -40,8 +40,12 @@ fn query_desktop_file_metadata(app_id: &str) -> (Option<String>, Option<String>)
         return (None, None);
     }
 
-    let xdg_data_dirs = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".to_string());
-    let mut search_paths: Vec<PathBuf> = xdg_data_dirs.split(':').map(|s| Path::new(s).join("applications")).collect();
+    let xdg_data_dirs = std::env::var("XDG_DATA_DIRS")
+        .unwrap_or_else(|_| "/usr/local/share:/usr/share".to_string());
+    let mut search_paths: Vec<PathBuf> = xdg_data_dirs
+        .split(':')
+        .map(|s| Path::new(s).join("applications"))
+        .collect();
     if let Ok(home) = std::env::var("HOME") {
         search_paths.insert(0, Path::new(&home).join(".local/share/applications"));
     }
@@ -62,7 +66,7 @@ fn query_desktop_file_metadata(app_id: &str) -> (Option<String>, Option<String>)
             if desktop_path.exists() {
                 if let Ok(file) = File::open(&desktop_path) {
                     let reader = BufReader::new(file);
-                    for line in reader.lines().flatten() {
+                    for line in reader.lines().map_while(Result::ok) {
                         let trimmed = line.trim();
                         if trimmed.starts_with("Name=") && found_name.is_none() {
                             found_name = Some(trimmed["Name=".len()..].trim().to_string());
@@ -84,7 +88,11 @@ fn query_desktop_file_metadata(app_id: &str) -> (Option<String>, Option<String>)
             if !path.exists() {
                 continue;
             }
-            for entry in WalkDir::new(path).max_depth(2).into_iter().filter_map(|e| e.ok()) {
+            for entry in WalkDir::new(path)
+                .max_depth(2)
+                .into_iter()
+                .filter_map(|e| e.ok())
+            {
                 let p = entry.path();
                 if p.extension().and_then(|s| s.to_str()) == Some("desktop") {
                     if let Ok(file) = File::open(p) {
@@ -93,14 +101,14 @@ fn query_desktop_file_metadata(app_id: &str) -> (Option<String>, Option<String>)
                         let mut current_icon = None;
                         let mut matches = false;
 
-                        for line in reader.lines().flatten() {
+                        for line in reader.lines().map_while(Result::ok) {
                             let trimmed = line.trim();
                             if trimmed.starts_with("Name=") && current_name.is_none() {
                                 current_name = Some(trimmed["Name=".len()..].trim().to_string());
                             } else if trimmed.starts_with("Icon=") && current_icon.is_none() {
                                 current_icon = Some(trimmed["Icon=".len()..].trim().to_string());
-                            } else if trimmed.starts_with("StartupWMClass=") {
-                                let wm_class = trimmed["StartupWMClass=".len()..].trim().to_lowercase();
+							} else if let Some(rest) = trimmed.strip_prefix("StartupWMClass=") {
+								let wm_class = rest.trim().to_lowercase();
                                 if wm_class == app_lower {
                                     matches = true;
                                 }
@@ -136,12 +144,20 @@ fn query_desktop_file_metadata(app_id: &str) -> (Option<String>, Option<String>)
 // Purely dynamic icon path location via linicon and filesystem traversal
 fn locate_actual_icon_path(icon_name: &str, app_id: &str) -> Option<PathBuf> {
     if !icon_name.is_empty() {
-        if let Some(icon) = lookup_icon(icon_name).from_theme("hicolor").next().and_then(|res| res.ok()) {
+        if let Some(icon) = lookup_icon(icon_name)
+            .from_theme("hicolor")
+            .next()
+            .and_then(|res| res.ok())
+        {
             return Some(icon.path);
         }
     }
     if !app_id.is_empty() {
-        if let Some(icon) = lookup_icon(app_id).from_theme("hicolor").next().and_then(|res| res.ok()) {
+        if let Some(icon) = lookup_icon(app_id)
+            .from_theme("hicolor")
+            .next()
+            .and_then(|res| res.ok())
+        {
             return Some(icon.path);
         }
     }
@@ -165,7 +181,11 @@ fn locate_actual_icon_path(icon_name: &str, app_id: &str) -> Option<PathBuf> {
         if !root.exists() {
             continue;
         }
-        for entry in WalkDir::new(root).max_depth(6).into_iter().filter_map(|e| e.ok()) {
+        for entry in WalkDir::new(root)
+            .max_depth(6)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
             let path = entry.path();
             if path.is_file() {
                 if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
@@ -187,13 +207,18 @@ fn locate_actual_icon_path(icon_name: &str, app_id: &str) -> Option<PathBuf> {
 }
 
 // Purely dynamic Steam metadata discovery via environment/cmdline and .acf manifests
-fn resolve_steam_game_details(target_app: &str, window_title: &str, sys_scanner: &System, entry_pid: sysinfo::Pid) -> Option<(String, String, PathBuf)> {
+fn resolve_steam_game_details(
+    target_app: &str,
+    window_title: &str,
+    sys_scanner: &System,
+    entry_pid: sysinfo::Pid,
+) -> Option<(String, String, PathBuf)> {
     let mut steam_appid = None;
 
     for (c_pid, c_proc) in sys_scanner.processes() {
         let mut current = c_proc.parent();
         let mut is_descendant = c_pid == &entry_pid;
-        
+
         while let Some(p_id) = current {
             if p_id == entry_pid {
                 is_descendant = true;
@@ -206,26 +231,28 @@ fn resolve_steam_game_details(target_app: &str, window_title: &str, sys_scanner:
             }
         }
 
-        if is_descendant {
-            if steam_appid.is_none() {
-                if let Ok(env_data) = std::fs::read_to_string(format!("/proc/{}/environ", c_pid.as_u32())) {
-                    for env_pair in env_data.split('\0') {
-                        if let Some(val) = env_pair.strip_prefix("SteamAppId=") {
-                            steam_appid = Some(val.to_string());
-                        } else if let Some(val) = env_pair.strip_prefix("STEAM_COMPAT_APP_ID=") {
-                            steam_appid = Some(val.to_string());
-                        }
+        if is_descendant && steam_appid.is_none() {
+            if let Ok(env_data) =
+                std::fs::read_to_string(format!("/proc/{}/environ", c_pid.as_u32()))
+            {
+                for env_pair in env_data.split('\0') {
+                    if let Some(val) = env_pair.strip_prefix("SteamAppId=") {
+                        steam_appid = Some(val.to_string());
+                    } else if let Some(val) = env_pair.strip_prefix("STEAM_COMPAT_APP_ID=") {
+                        steam_appid = Some(val.to_string());
                     }
                 }
-                if steam_appid.is_none() {
-                    if let Ok(cmd_data) = std::fs::read_to_string(format!("/proc/{}/cmdline", c_pid.as_u32())) {
-                        let parts: Vec<&str> = cmd_data.split('\0').collect();
-                        for (i, part) in parts.iter().enumerate() {
-                            if *part == "-applaunch" {
-                                if let Some(id) = parts.get(i + 1) {
-                                    if !id.is_empty() {
-                                        steam_appid = Some(id.to_string());
-                                    }
+            }
+            if steam_appid.is_none() {
+                if let Ok(cmd_data) =
+                    std::fs::read_to_string(format!("/proc/{}/cmdline", c_pid.as_u32()))
+                {
+                    let parts: Vec<&str> = cmd_data.split('\0').collect();
+                    for (i, part) in parts.iter().enumerate() {
+                        if *part == "-applaunch" {
+                            if let Some(id) = parts.get(i + 1) {
+                                if !id.is_empty() {
+                                    steam_appid = Some(id.to_string());
                                 }
                             }
                         }
@@ -263,24 +290,30 @@ fn resolve_steam_game_details(target_app: &str, window_title: &str, sys_scanner:
                             let mut installdir_val = String::new();
                             let mut name_val = String::new();
 
-                            for line in reader.lines().flatten() {
+                            for line in reader.lines().map_while(Result::ok) {
                                 let trimmed = line.trim();
                                 if trimmed.starts_with("\"appid\"") {
                                     appid_val = trimmed.split('"').nth(3).unwrap_or("").to_string();
                                 } else if trimmed.starts_with("\"installdir\"") {
-                                    installdir_val = trimmed.split('"').nth(3).unwrap_or("").to_lowercase();
+                                    installdir_val =
+                                        trimmed.split('"').nth(3).unwrap_or("").to_lowercase();
                                 } else if trimmed.starts_with("\"name\"") {
-                                    name_val = trimmed.split('"').nth(3).unwrap_or("").to_lowercase();
+                                    name_val =
+                                        trimmed.split('"').nth(3).unwrap_or("").to_lowercase();
                                 }
                             }
 
-                            if !appid_val.is_empty() {
-                                if (!installdir_val.is_empty() && (target_lower.contains(&installdir_val) || installdir_val.contains(&target_lower)))
-                                    || (!name_val.is_empty() && (target_lower.contains(&name_val) || name_val.contains(&target_lower) || title_lower.contains(&name_val)))
-                                {
-                                    steam_appid = Some(appid_val);
-                                    break;
-                                }
+                            if !appid_val.is_empty()
+                                && ((!installdir_val.is_empty()
+                                    && (target_lower.contains(&installdir_val)
+                                        || installdir_val.contains(&target_lower)))
+                                    || (!name_val.is_empty()
+                                        && (target_lower.contains(&name_val)
+                                            || name_val.contains(&target_lower)
+                                            || title_lower.contains(&name_val))))
+                            {
+                                steam_appid = Some(appid_val);
+                                break;
                             }
                         }
                     }
@@ -300,7 +333,7 @@ fn resolve_steam_game_details(target_app: &str, window_title: &str, sys_scanner:
         if manifest_path.exists() {
             if let Ok(file) = File::open(&manifest_path) {
                 let reader = BufReader::new(file);
-                for line in reader.lines().flatten() {
+                for line in reader.lines().map_while(Result::ok) {
                     let trimmed = line.trim();
                     if trimmed.starts_with("\"name\"") {
                         game_name = Some(trimmed.split('"').nth(3).unwrap_or("").to_string());
@@ -325,7 +358,11 @@ fn resolve_steam_game_details(target_app: &str, window_title: &str, sys_scanner:
                     let p = entry.path();
                     if let Some(file_name) = p.file_name().and_then(|n| n.to_str()) {
                         let lower = file_name.to_lowercase();
-                        if lower.starts_with(&appid) && (lower.contains("icon") || lower.contains("logo") || lower.contains("library")) {
+                        if lower.starts_with(&appid)
+                            && (lower.contains("icon")
+                                || lower.contains("logo")
+                                || lower.contains("library"))
+                        {
                             icon_path = Some(p);
                             break;
                         }
@@ -348,7 +385,11 @@ fn resolve_steam_game_details(target_app: &str, window_title: &str, sys_scanner:
             if !theme_dir.exists() {
                 continue;
             }
-            for entry in WalkDir::new(&theme_dir).max_depth(6).into_iter().filter_map(|e| e.ok()) {
+            for entry in WalkDir::new(&theme_dir)
+                .max_depth(6)
+                .into_iter()
+                .filter_map(|e| e.ok())
+            {
                 let path = entry.path();
                 if path.is_file() {
                     if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
@@ -373,62 +414,90 @@ fn load_image_raw_rgba(path: &Path, target_size: u32) -> Option<(u32, u32, Vec<u
 
     if extension == "svg" {
         let svg_data = std::fs::read(path).ok()?;
-        let tree = resvg::usvg::Tree::from_data(&svg_data, &resvg::usvg::Options::default()).ok()?;
+        let tree =
+            resvg::usvg::Tree::from_data(&svg_data, &resvg::usvg::Options::default()).ok()?;
         let mut pixmap = resvg::tiny_skia::Pixmap::new(target_size, target_size)?;
-        
+
         let transform = resvg::tiny_skia::Transform::from_scale(
             target_size as f32 / tree.size().width(),
             target_size as f32 / tree.size().height(),
         );
         resvg::render(&tree, transform, &mut pixmap.as_mut());
-        
+
         Some((target_size, target_size, pixmap.data().to_vec()))
     } else {
         let img = image::open(path).ok()?;
-        let scaled = img.resize_exact(target_size, target_size, image::imageops::FilterType::Lanczos3);
+        let scaled = img.resize_exact(
+            target_size,
+            target_size,
+            image::imageops::FilterType::Lanczos3,
+        );
         let rgba = scaled.to_rgba8();
         Some((rgba.width(), rgba.height(), rgba.into_raw()))
     }
 }
 
 impl ProvidesRegistryState for RealtimeTrackerApp {
-    fn registry(&mut self) -> &mut RegistryState { &mut self.registry_state }
+    fn registry(&mut self) -> &mut RegistryState {
+        &mut self.registry_state
+    }
     smithay_client_toolkit::registry_handlers![RealtimeTrackerApp];
 }
 
 impl RegistryHandler<RealtimeTrackerApp> for RealtimeTrackerApp {
     fn new_global(
-        _data: &mut RealtimeTrackerApp, 
-        _conn: &Connection, 
-        _qh: &QueueHandle<RealtimeTrackerApp>, 
-        _name: u32, 
-        _interface: &str, 
-        _version: u32
-    ) {}
+        _data: &mut RealtimeTrackerApp,
+        _conn: &Connection,
+        _qh: &QueueHandle<RealtimeTrackerApp>,
+        _name: u32,
+        _interface: &str,
+        _version: u32,
+    ) {
+    }
 
     fn remove_global(
-        _data: &mut RealtimeTrackerApp, 
-        _conn: &Connection, 
-        _qh: &QueueHandle<RealtimeTrackerApp>, 
-        _name: u32, 
-        _interface: &str
-    ) {}
+        _data: &mut RealtimeTrackerApp,
+        _conn: &Connection,
+        _qh: &QueueHandle<RealtimeTrackerApp>,
+        _name: u32,
+        _interface: &str,
+    ) {
+    }
 }
 
 impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for RealtimeTrackerApp {
-    fn event(_: &mut Self, _: &ZwlrForeignToplevelManagerV1, _: ManagerEvent, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
+    fn event(
+        _: &mut Self,
+        _: &ZwlrForeignToplevelManagerV1,
+        _: ManagerEvent,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
     event_created_child!(RealtimeTrackerApp, ZwlrForeignToplevelManagerV1, [0 => (ZwlrForeignToplevelHandleV1, ())]);
 }
 
 impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for RealtimeTrackerApp {
-    fn event(state: &mut Self, proxy: &ZwlrForeignToplevelHandleV1, event: HandleEvent, _: &(), _: &Connection, _: &QueueHandle<Self>) {
+    fn event(
+        state: &mut Self,
+        proxy: &ZwlrForeignToplevelHandleV1,
+        event: HandleEvent,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
         let id = proxy.id().protocol_id();
         let entry = state.window_cache.entry(id).or_default();
 
         match event {
             HandleEvent::AppId { app_id } => {
-                entry.app_name = if app_id.is_empty() { "taskman".to_string() } else { app_id.clone() };
-                
+                entry.app_name = if app_id.is_empty() {
+                    "taskman".to_string()
+                } else {
+                    app_id.clone()
+                };
+
                 // Dynamically query desktop file metadata for user-facing name and icon
                 let (desktop_name, desktop_icon) = query_desktop_file_metadata(&app_id);
                 if let Some(name) = desktop_name {
@@ -439,7 +508,8 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for RealtimeTrackerApp {
                 if let Some(icon_path) = locate_actual_icon_path(&entry.icon_name, &app_id) {
                     if let Some((w, h, raw_bytes)) = load_image_raw_rgba(&icon_path, 32) {
                         let b64_data = STANDARD.encode(&raw_bytes);
-                        entry.terminal_icon_code = format!("\x1b_Ga=T,f=32,s={},v={};{}\x1b\\", w, h, b64_data);
+                        entry.terminal_icon_code =
+                            format!("\x1b_Ga=T,f=32,s={},v={};{}\x1b\\", w, h, b64_data);
                     } else {
                         entry.terminal_icon_code = "📁 [Rasterize Error]".to_string();
                     }
@@ -447,9 +517,17 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for RealtimeTrackerApp {
                     entry.terminal_icon_code = "📁 [No Icon Found]".to_string();
                 }
             }
-            HandleEvent::Title { title } => entry.title = if title.is_empty() { "[Untitled]".to_string() } else { title },
+            HandleEvent::Title { title } => {
+                entry.title = if title.is_empty() {
+                    "[Untitled]".to_string()
+                } else {
+                    title
+                }
+            }
             HandleEvent::Done => {
-                state.sys_scanner.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
+                state
+                    .sys_scanner
+                    .refresh_processes(sysinfo::ProcessesToUpdate::All, true);
 
                 if let Some((pid, _proc)) = state.sys_scanner.processes().iter().find(|(_, p)| {
                     let proc_name = p.name().to_string_lossy().to_lowercase();
@@ -459,12 +537,18 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for RealtimeTrackerApp {
                     entry.matched_pid = Some(pid.as_u32());
 
                     // Dynamic Steam lookup if applicable
-                    if let Some((appid, steam_name, steam_icon_path)) = resolve_steam_game_details(&entry.app_name, &entry.title, &state.sys_scanner, *pid) {
+                    if let Some((appid, steam_name, steam_icon_path)) = resolve_steam_game_details(
+                        &entry.app_name,
+                        &entry.title,
+                        &state.sys_scanner,
+                        *pid,
+                    ) {
                         entry.app_name = steam_name;
                         entry.icon_name = format!("steam_icon_{}", appid);
                         if let Some((w, h, raw_bytes)) = load_image_raw_rgba(&steam_icon_path, 32) {
                             let b64_data = STANDARD.encode(&raw_bytes);
-                            entry.terminal_icon_code = format!("\x1b_Ga=T,f=32,s={},v={};{}\x1b\\", w, h, b64_data);
+                            entry.terminal_icon_code =
+                                format!("\x1b_Ga=T,f=32,s={},v={};{}\x1b\\", w, h, b64_data);
                         } else {
                             entry.terminal_icon_code = "📁 [Rasterize Error]".to_string();
                         }
@@ -472,17 +556,19 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for RealtimeTrackerApp {
 
                     println!("---------------------------------------------------------");
                     println!("[LINK ESTABLISHED]: Wayland Handle -> Linux OS Process");
-                    println!("  Wayland Protocol ID: {}", id); 
-                    println!("  Wayland Window ID  : {}", id); 
+                    println!("  Wayland Protocol ID: {}", id);
+                    println!("  Wayland Window ID  : {}", id);
                     println!("  Resolved App Name  : {}", entry.app_name);
                     println!("  System Icon Key    : {}", entry.icon_name);
                     println!("  Window Title Text  : {}", entry.title);
                     println!("  Linked Process PID : {}", pid.as_u32());
-                    println!("  Application Icon   : {}", entry.terminal_icon_code); 
+                    println!("  Application Icon   : {}", entry.terminal_icon_code);
                     println!("---------------------------------------------------------");
                 }
             }
-            HandleEvent::Closed => { state.window_cache.remove(&id); }
+            HandleEvent::Closed => {
+                state.window_cache.remove(&id);
+            }
             _ => {}
         }
     }
@@ -496,9 +582,14 @@ fn main() {
     let mut app = RealtimeTrackerApp {
         registry_state: RegistryState::new(&globals),
         window_cache: HashMap::new(),
-        sys_scanner: System::new_with_specifics(RefreshKind::nothing().with_processes(ProcessRefreshKind::everything())),
+        sys_scanner: System::new_with_specifics(
+            RefreshKind::nothing().with_processes(ProcessRefreshKind::everything()),
+        ),
     };
     let qh = event_queue.handle();
-    let _manager: ZwlrForeignToplevelManagerV1 = globals.bind(&qh, 1..=3, ()).expect("Manager bind failed");
-    loop { event_queue.blocking_dispatch(&mut app).unwrap(); }
+    let _manager: ZwlrForeignToplevelManagerV1 =
+        globals.bind(&qh, 1..=3, ()).expect("Manager bind failed");
+    loop {
+        event_queue.blocking_dispatch(&mut app).unwrap();
+    }
 }

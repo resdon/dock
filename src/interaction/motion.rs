@@ -1,7 +1,7 @@
+use crate::pointer::coordinates::map_coordinates;
+use crate::AppState;
 use smithay_client_toolkit::seat::pointer::{PointerEvent, PointerEventKind};
 use wayland_client::protocol::wl_surface::WlSurface;
-use crate::AppState;
-use crate::pointer::coordinates::map_coordinates;
 
 /// Handles pointer motion and entry events, updating pointer coordinates and drag threshold.
 pub fn handle_motion_events(
@@ -13,7 +13,10 @@ pub fn handle_motion_events(
     let mut layer_changed = false;
 
     for event in events {
-        if matches!(event.kind, PointerEventKind::Enter { .. } | PointerEventKind::Motion { .. }) {
+        if matches!(
+            event.kind,
+            PointerEventKind::Enter { .. } | PointerEventKind::Motion { .. }
+        ) {
             // Set cursor_moved to true because a Wayland motion/enter event occurred
             state.menu_state.cursor_moved = true;
 
@@ -22,10 +25,13 @@ pub fn handle_motion_events(
                 layer_changed = true;
             }
 
-            let (mapped_x, mapped_y) = map_coordinates(event, state, dock_surface_ptr, scale_factor);
+            let (mapped_x, mapped_y) =
+                map_coordinates(event, state, dock_surface_ptr, scale_factor);
             let (new_x, new_y) = (mapped_x as f64, mapped_y as f64);
 
-            if state.interaction.pointer_position.x != new_x || state.interaction.pointer_position.y != new_y {
+            if state.interaction.pointer_position.x != new_x
+                || state.interaction.pointer_position.y != new_y
+            {
                 state.interaction.pointer_position.x = new_x;
                 state.interaction.pointer_position.y = new_y;
                 layer_changed = true;

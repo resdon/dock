@@ -53,7 +53,7 @@ pub struct WindowDiagnostics {
     pub matched_pid: Option<u32>,
     pub icon_name: String,
     pub terminal_icon_code: String,
-    pub app_id: String,       
+    pub app_id: String,
     pub is_activated: bool,
     pub is_minimized: bool,
     pub icon_rgba: Option<Vec<u8>>,

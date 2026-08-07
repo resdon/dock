@@ -78,9 +78,13 @@ impl FadeAnimation {
         }
 
         // Trigger edge-state transitions
-        if (self.current_alpha - self.min_alpha).abs() < f32::EPSILON && self.target_alpha == self.min_alpha {
+        if (self.current_alpha - self.min_alpha).abs() < f32::EPSILON
+            && self.target_alpha == self.min_alpha
+        {
             self.just_became_hidden = true;
-        } else if (self.current_alpha - self.max_alpha).abs() < f32::EPSILON && self.target_alpha == self.max_alpha {
+        } else if (self.current_alpha - self.max_alpha).abs() < f32::EPSILON
+            && self.target_alpha == self.max_alpha
+        {
             self.just_became_visible = true;
         }
 
