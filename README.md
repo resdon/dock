@@ -40,13 +40,13 @@ Ensure the following build tools and development libraries are installed on your
 
 #### Installing Dependencies on Arch Linux:
 ```bash
-sudo pacman -S --needed base-devel cargo wayland wayland-protocols libxkbcommon dbus cairo glib2 mesa
+sudo pacman -S --needed base-devel cargo wayland wayland-protocols libxkbcommon fontconfig dbus cairo glib2 mesa
 ```
 
 #### Installing Dependencies on Ubuntu / Debian:
 ```bash
 sudo apt update
-sudo apt install -y build-essential cargo pkg-config libwayland-dev wayland-protocols libxkbcommon-dev libdbus-1-dev libglib2.0-dev libcairo2-dev libegl1-mesa-dev libgles2-mesa-dev
+sudo apt install -y build-essential cargo pkg-config libwayland-dev wayland-protocols libxkbcommon-dev libfontconfig1-dev libdbus-1-dev libglib2.0-dev libcairo2-dev libegl1-mesa-dev libgles2-mesa-dev
 ```
 
 ## Installation
