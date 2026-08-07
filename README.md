@@ -15,6 +15,7 @@ A lightweight, high-performance Wayland dock written in Rust
 - **Pins**: Pin or unpin applications, and drag-and-drop icons to reorder them anywhere on the dock.
 - **Wayland Native**: Built with Layer Shell and Foreign Toplevel protocols for smooth integration.
 - **Fast & Lightweight**: Low resource consumption with seamless animations and hover effects.
+- **RAM & CPU**: RAM: 35-40 MB | CPU One-thread: Idle 0.6%; Active Max 60%, average 25%.
 - **Desktop & Steam Integration**: Resolves application icons, `.desktop` files, and Steam game launcher shortcuts dynamically.
 - **Built-in Utilities**: Window management, context menus, drag-and-drop support, and status indicators.
 
