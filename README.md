@@ -58,7 +58,7 @@ tar -xzf dock-linux-amd64.tar.gz
 cd dock-linux-amd64
 make install
 ```
-Or:
+Or download via terminal:
 ```bash
 curl -sSL https://github.com/resdon/dock/releases/latest/download/dock-linux-amd64.tar.gz | tar -xz
 cd dock-linux-amd64
