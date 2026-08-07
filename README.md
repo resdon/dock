@@ -60,7 +60,7 @@ cd dock-linux-amd64
 make install
 ```
 
-#### Building From Source
+### Building From Source
 
 ### 1. Clone the Repository
 ```bash
