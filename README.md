@@ -8,6 +8,11 @@ A lightweight, high-performance Wayland dock written in Rust
 
 ## Features
 
+- **Auto-hide**: The dock stays hidden until you hover near the bottom of the screen, at which point it slides into view.
+- **Smart focus**: Click an icon to focus the application, or hover over it to see a preview of open windows.
+- **Window list**: Hover over an icon to see a preview of open windows. Use the scroll wheel to cycle through them, or click the red box on a preview to close that window.
+- **Context Menu**: Right-click an icon to access app-specific actions (e.g., "Open in Incognito Mode").
+- **Pins**: Pin or unpin applications, and drag-and-drop icons to reorder them anywhere on the dock.
 - **Wayland Native**: Built with Layer Shell and Foreign Toplevel protocols for smooth integration.
 - **Fast & Lightweight**: Low resource consumption with seamless animations and hover effects.
 - **Desktop & Steam Integration**: Resolves application icons, `.desktop` files, and Steam game launcher shortcuts dynamically.
