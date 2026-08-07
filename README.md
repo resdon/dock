@@ -60,7 +60,7 @@ make install
 ```
 Or:
 ```bash
-curl -sSL [https://github.com/resdon/dock/releases/latest/download/dock-linux-amd64.tar.gz](https://github.com/resdon/dock/releases/latest/download/dock-linux-amd64.tar.gz) | tar -xz
+curl -sSL https://github.com/resdon/dock/releases/latest/download/dock-linux-amd64.tar.gz | tar -xz
 cd dock-linux-amd64
 make install
 ```
