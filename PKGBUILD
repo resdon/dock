@@ -5,8 +5,22 @@ pkgrel=1
 pkgdesc="A Wayland dock application"
 arch=('x86_64')
 license=('custom')
-depends=('wayland' 'libxkbcommon' 'fontconfig' 'gcc-libs')
-makedepends=('rust' 'cargo')
+depends=(
+  'wayland'
+  'wayland-protocols'
+  'libxkbcommon'
+  'fontconfig'
+  'dbus'
+  'cairo'
+  'glib2'
+  'mesa'
+  'gcc-libs'
+)
+makedepends=(
+  'rust'
+  'cargo'
+  'pkgconf'
+)
 source=('Cargo.toml' 'src' 'assets' 'scripts')
 sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
 
