@@ -6,7 +6,7 @@ pub mod timers;
 pub use timers::{reset_all, update_timers};
 
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use wayland_client::backend::ObjectId;
 
 use crate::geometry::popup::PopupType;
@@ -21,9 +21,26 @@ pub fn update(
     scale_factor: f32,
     layout: (i32, i32, i32, i32),
 ) -> bool {
+    // PARAMETERS:
+    // ----------
+    // Maximum inactivity duration before popups are closed
+    let hard_timeout = Duration::from_millis(8000);
+    // Context menu inactivity threshold before fading out
+    let menu_time_out = Duration::from_millis(5000);
+    // Context menu fade animation speed in seconds
+    let menu_fade_time: f32 = 1.0;
+    // Window list inactivity threshold before fading out
+    let list_time_out = Duration::from_millis(5000);
+    // Window list fade animation speed in seconds
+    let list_fade_time: f32 = 1.0;
+    // Dock inactivity threshold before hiding
+    let dock_time_out = Duration::from_millis(5000);
+    // Delay in milliseconds before the dock initiates its hide
+    let dock_time_delay_ms: u64 = 1000;
+    // ----------
+    
     let mut layer_changed = false;
     let cursor_moved = state.menu_state.cursor_moved;
-    let hard_timeout = Duration::from_millis(2000);
 
     // State tracking flags
     let pointer_inside_dock = state.interaction.pointer_inside;
@@ -71,35 +88,11 @@ pub fn update(
     // Pointer on dock check
     let on_dock = pointer_inside_dock && !on_context_menu && !on_window_list;
 
-    // --- 1. Calculate on_window_list BEFORE timers ---
-    let window_list_target = state
-        .window_list_state
-        .target_app_id
-        .as_deref()
-        .unwrap_or_default();
-    let window_count = state
-        .open_windows
-        .iter()
-        .filter(|w| w.1.app_id == window_list_target)
-        .count();
-
-    let on_window_list = state.window_list_state.is_open
-        && window_count > 0
-        && (state.window_list_state.pointer_inside_popup
-            || pointer_on_popup(
-                state,
-                PopupType::WindowList,
-                window_list_target,
-                window_count,
-                apps_in_dock,
-                scale_factor,
-                layout,
-            ));
-
     if state.menu_state.just_opened {
         timers::reset_all(state);
 
         for dock in &mut state.docks {
+            dock.menu_fade.duration_secs = menu_fade_time;
             dock.menu_fade.set_visible(true);
             dock.menu_fade.current_alpha = 0.0;
         }
@@ -122,7 +115,7 @@ pub fn update(
         on_window_list,
     );
 
-    // Evaluate Hard Close Timeouts (>= 2000ms)
+    // Evaluate Hard Close Timeouts
     let no_motion_timed_out = elapsed.no_motion >= hard_timeout;
     let dock_timed_out = elapsed.dock >= hard_timeout;
     let context_menu_timed_out = elapsed.context_menu >= hard_timeout;
@@ -154,32 +147,16 @@ pub fn update(
         }
     }
 
-    // Debug logging for mouse position and region booleans
-    if state.menu_state.last_debug_print.elapsed() >= Duration::from_millis(15) {
-        println!(
-            "[DEBUG Pointer] pos: {:?} | dock: {} | menu: {} | list: {} | timers -> no_motion: {}ms, dock: {}ms, menu: {}ms, list: {}ms",
-            state.interaction.pointer_position,
-            on_dock,
-            on_context_menu,
-            on_window_list,
-            elapsed.no_motion.as_millis(),
-            elapsed.dock.as_millis(),
-            elapsed.context_menu.as_millis(),
-            elapsed.window_list.as_millis(),
-        );
-
-        state.menu_state.last_debug_print = Instant::now();
-    }
-
     // Context Menu Fade Target Update
     if state.menu_state.is_open && !state.menu_state.items.is_empty() {
-        let fading_out = elapsed.no_motion >= Duration::from_millis(1000)
-            || elapsed.dock >= Duration::from_millis(1000)
-            || elapsed.context_menu >= Duration::from_millis(1000);
+        let fading_out = elapsed.no_motion >= menu_time_out
+            || elapsed.dock >= menu_time_out
+            || elapsed.context_menu >= menu_time_out;
 
         let menu_visible_target = !fading_out;
 
         for dock in &mut state.docks {
+            dock.menu_fade.duration_secs = menu_fade_time;
             let was_target_visible = dock.menu_fade.target_alpha > 0.0;
             dock.menu_fade.set_visible(menu_visible_target);
             if was_target_visible != menu_visible_target {
@@ -192,15 +169,16 @@ pub fn update(
         }
     }
 
-    // Window List Fade Target & Grace Period Update (Matching Context Menu Pattern)
+    // Window List Fade Target Update
     if state.window_list_state.is_open {
-        let window_fading_out = elapsed.no_motion >= Duration::from_millis(1000)
-            || elapsed.dock >= Duration::from_millis(1000)
-            || elapsed.window_list >= Duration::from_millis(1000);
+        let window_fading_out = elapsed.no_motion >= list_time_out
+            || elapsed.dock >= list_time_out
+            || elapsed.window_list >= list_time_out;
 
         let window_visible_target = !window_fading_out && window_count > 0;
 
         for dock in &mut state.docks {
+            dock.window_list_fade.duration_secs = list_fade_time;
             let was_target_visible = dock.window_list_fade.target_alpha > 0.0;
             dock.window_list_fade.set_visible(window_visible_target);
             if was_target_visible != window_visible_target {
@@ -237,7 +215,7 @@ pub fn update(
 
     // --- AUTO-HIDE STATE ENGINE ---
     let pointer_near_edge = state.interaction.is_pointer_near;
-    let no_motion_timed_out = elapsed.no_motion >= Duration::from_millis(1000);
+    let auto_hide_timed_out = elapsed.no_motion >= dock_time_out;
 
     if is_active_drag {
         if state.hide_state.is_fully_hidden()
@@ -247,18 +225,18 @@ pub fn update(
             layer_changed = true;
         }
         state.hide_state.hide_timer = None;
-    } else if pointer_near_edge && !no_motion_timed_out {
+    } else if pointer_near_edge && !auto_hide_timed_out {
         if state.hide_state.is_fully_hidden()
             || state.hide_state.mode == crate::graphics::hide::Mode::Hiding
         {
             state.hide_state.show();
             layer_changed = true;
         }
-    } else if pointer_inside_dock && !no_motion_timed_out {
+    } else if pointer_inside_dock && !auto_hide_timed_out {
         state.hide_state.hide_timer = None;
     } else {
         state.hide_state.start_hide_timer();
-        state.hide_state.update_timer(500);
+        state.hide_state.update_timer(dock_time_delay_ms);
     }
 
     if state.hide_state.tick() {

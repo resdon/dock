@@ -34,6 +34,11 @@ impl FadeAnimation {
             self.last_update = Instant::now();
         }
     }
+    
+    pub fn show_with_duration(&mut self, duration_secs: f32) {
+        self.duration_secs = duration_secs;
+        self.show();
+    }
 
     pub fn hide(&mut self) {
         if self.target_alpha != self.min_alpha {
@@ -42,12 +47,22 @@ impl FadeAnimation {
         }
     }
 
+    pub fn hide_with_duration(&mut self, duration_secs: f32) {
+        self.duration_secs = duration_secs;
+        self.hide();
+    }
+
     pub fn set_visible(&mut self, visible: bool) {
         if visible {
             self.show();
         } else {
             self.hide();
         }
+    }
+
+    pub fn set_visible_with_duration(&mut self, visible: bool, duration_secs: f32) {
+        self.duration_secs = duration_secs;
+        self.set_visible(visible);
     }
 
     /// Advances the animation frame based on elapsed time.
