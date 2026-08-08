@@ -53,7 +53,7 @@ sudo pacman -S --needed base-devel cargo wayland wayland-protocols libxkbcommon 
 #### Installing Dependencies on Ubuntu / Debian:
 ```bash
 sudo apt update
-sudo apt install -y build-essential cargo pkg-config libwayland-dev wayland-protocols libxkbcommon-dev libfontconfig1-dev libdbus-1-dev libglib2.0-dev libcairo2-dev libegl1-mesa-dev libgles2-mesa-dev
+sudo apt install -y build-essential cargo pkg-config libwayland-dev wayland-protocols libxkbcommon-dev libfontconfig1-dev libdbus-1-dev libglib2.0-dev libcairo2-dev libegl1-mesa-dev libgles2-mesa-[...]
 ```
 
 ## Installation
@@ -119,22 +119,22 @@ dock &
 
 ```text
 dock/
-├── assets/          # Bundled fonts and connection indicator icons
-├── scripts/         # Launcher and icon listing scripts
+├── assets/          # Bundled fonts, icons, and demo images used by the project and runtime
+├── scripts/         # Helper scripts: launcher, icon listing, packaging and development helpers
 ├── src/             # Core Rust source files
-│   ├── app/         # Main event loop and draw calls
-│   ├── cache/       # Icon indexing and state persistence
-│   ├── geometry/    # Dock layout math and bounding boxes
-│   ├── graphics/    # Animation, fade, and visual effects
-│   ├── handlers/    # Window list and context menu event handlers
-│   ├── interaction/ # Proximity, motion, and hover routines
-│   ├── pointer/     # Click, drag, and scroll input handling
-│   ├── render/      # Framebuffer drawing and font rendering
-│   ├── resolvers/   # Desktop file parser and Steam app resolver
-│   └── services/    # Display & monitor detection services
-├── Cargo.toml       # Cargo package manifest
-├── Makefile         # Build & installation targets
-└── PKGBUILD         # Arch Linux packaging file
+│   ├── app/         # Program entry, main event loop, and overall application state
+│   ├── cache/       # Icon indexing, on-disk cache, and state persistence
+│   ├── geometry/    # Layout maths, sizing, and bounding boxes for dock items
+│   ├── graphics/    # Animation, compositing helpers, visual effects and transitions
+│   ├── handlers/    # Event handlers for menus, window list, and user actions
+│   ├── interaction/ # Proximity detection, hover logic, and motion handling
+│   ├── pointer/     # Pointer input handling: clicks, drags and scroll interactions
+│   ├── render/      # Low-level drawing routines, font rendering, and frame submission
+│   ├── resolvers/   # `.desktop` file parsing and Steam/launcher app resolving
+│   └── services/    # Compositor integration, display/monitor detection and D-Bus services
+├── Cargo.toml       # Cargo package manifest and dependency declarations
+├── Makefile         # Build, test, and install targets
+└── PKGBUILD         # Arch Linux packaging script
 ```
 
 ## License
