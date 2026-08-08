@@ -357,13 +357,11 @@ pub fn handle_click_events(
                             for dock in &state.docks {
                                 if let Some(ref popup) = dock.window_list_popup {
                                     if event.surface == popup.surface {
-                                        ptr_phys_x = ((event.position.0
-                                            + popup.position.0 as f64)
+                                        ptr_phys_x = ((event.position.0 + popup.position.0 as f64)
                                             * dock_scale)
                                             .round()
                                             as i32;
-                                        ptr_phys_y = ((event.position.1
-                                            + popup.position.1 as f64)
+                                        ptr_phys_y = ((event.position.1 + popup.position.1 as f64)
                                             * dock_scale)
                                             .round()
                                             as i32;
