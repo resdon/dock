@@ -24,19 +24,19 @@ pub fn update(
     // PARAMETERS:
     // ----------
     // Maximum inactivity duration before popups are closed
-    let hard_timeout = Duration::from_millis(8000);
+    let hard_timeout = Duration::from_millis(10000);
     // Context menu inactivity threshold before fading out
-    let menu_time_out = Duration::from_millis(5000);
+    let menu_time_out = Duration::from_millis(1000);
     // Context menu fade animation speed in seconds
     let menu_fade_time: f32 = 1.0;
     // Window list inactivity threshold before fading out
     let list_time_out = Duration::from_millis(5000);
     // Window list fade animation speed in seconds
-    let list_fade_time: f32 = 1.0;
+    let list_fade_time: f32 = 5.0;
     // Dock inactivity threshold before hiding
-    let dock_time_out = Duration::from_millis(5000);
+    let dock_time_out = Duration::from_millis(1000);
     // Delay in milliseconds before the dock initiates its hide
-    let dock_time_delay_ms: u64 = 1000;
+    let dock_time_delay_ms: u64 = 500;
     // ----------
     
     let mut layer_changed = false;
