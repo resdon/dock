@@ -32,7 +32,7 @@ use crate::render::font::FontManager;
 
 use crate::app::icon_load::IconLoader;
 use crate::types::{
-	DndState, DockInstance, HoverState, InteractionState, MenuState, WindowListState,
+    DndState, DockInstance, HoverState, InteractionState, MenuState, WindowListState,
 };
 
 pub(crate) mod dock;

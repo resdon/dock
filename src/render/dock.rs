@@ -1,8 +1,7 @@
-use crate::types::DockState;
-use crate::render::font::FontManager;
 use crate::models::{BadgeUpdate, WindowDiagnostics};
+use crate::render::font::FontManager;
 use crate::render::{draw_canvas_badge, draw_text, hsl_to_rgb};
-
+use crate::types::DockState;
 
 use crate::animations::IconAnimation;
 use std::collections::HashMap;

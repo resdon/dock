@@ -4,9 +4,9 @@ use wayland_client::{Connection, QueueHandle};
 
 use super::motion;
 
-use crate::state::AppState;
 use crate::interaction;
 use crate::interaction::{click, scroll};
+use crate::state::AppState;
 
 impl PointerHandler for AppState {
     fn pointer_frame(
@@ -31,12 +31,8 @@ impl PointerHandler for AppState {
         self.menu_state.cursor_moved = has_motion;
 
         // Step 1: Motion Coordinates & Leave Tracking
-        layer_changed |= motion::handle_motion_events(
-            self,
-            events,
-            dock_surface_ptr.as_ref(),
-            scale_factor,
-        );
+        layer_changed |=
+            motion::handle_motion_events(self, events, dock_surface_ptr.as_ref(), scale_factor);
 
         // Step 2: State Retrieval & Layout Metrics
         let running_by_app = self.get_running_by_app();

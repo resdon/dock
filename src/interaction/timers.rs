@@ -74,7 +74,10 @@ pub fn update_timers(
     }
 
     // 4. Window List Tracking
-    let is_window_list_rendering = state.docks.iter().any(|d| d.window_list_fade.current_alpha > 0.0);
+    let is_window_list_rendering = state
+        .docks
+        .iter()
+        .any(|d| d.window_list_fade.current_alpha > 0.0);
 
     if state.window_list_state.is_open {
         if pointer_on_window_list_target {
@@ -94,9 +97,21 @@ pub fn update_timers(
         }
     }
     TimerElapsed {
-        no_motion: state.menu_state.no_motion_timer.map_or(Duration::ZERO, |t| t.elapsed()),
-        dock: state.menu_state.dock_timer.map_or(Duration::ZERO, |t| t.elapsed()),
-        context_menu: state.menu_state.context_menu_timer.map_or(Duration::ZERO, |t| t.elapsed()),
-        window_list: state.menu_state.window_list_timer.map_or(Duration::ZERO, |t| t.elapsed()),
+        no_motion: state
+            .menu_state
+            .no_motion_timer
+            .map_or(Duration::ZERO, |t| t.elapsed()),
+        dock: state
+            .menu_state
+            .dock_timer
+            .map_or(Duration::ZERO, |t| t.elapsed()),
+        context_menu: state
+            .menu_state
+            .context_menu_timer
+            .map_or(Duration::ZERO, |t| t.elapsed()),
+        window_list: state
+            .menu_state
+            .window_list_timer
+            .map_or(Duration::ZERO, |t| t.elapsed()),
     }
 }

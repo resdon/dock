@@ -37,10 +37,7 @@ impl Rect {
     }
 
     pub fn contains(&self, p: Point) -> bool {
-        p.x >= self.x 
-            && p.x <= self.x + self.width 
-            && p.y >= self.y 
-            && p.y <= self.y + self.height
+        p.x >= self.x && p.x <= self.x + self.width && p.y >= self.y && p.y <= self.y + self.height
     }
 
     pub fn scale(&self, scale_factor: f64) -> Self {
@@ -51,7 +48,7 @@ impl Rect {
             height: self.height * scale_factor,
         }
     }
-    
+
     pub fn inset(&self, border: f64) -> Self {
         Self {
             x: self.x + border,

@@ -1,6 +1,6 @@
 #[allow(clippy::module_inception)]
-
 pub mod dock;
+#[allow(clippy::module_inception)]
 pub mod handlers;
 pub mod popup;
 pub mod utils;

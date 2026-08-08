@@ -1,4 +1,3 @@
-
 use library::init::{initialize_app, AppContext};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -87,7 +86,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let running_by_app = state.get_running_by_app();
 
         let scale_factor = state.scale_factor as f32;
-        let screen_width = state.width as i32;
+        let screen_width = state.width;
 
         let dock_height = 60;
         let box_size = 48;

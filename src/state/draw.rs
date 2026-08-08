@@ -8,12 +8,12 @@ use wayland_client::backend::ObjectId;
 use wayland_client::protocol::wl_shm;
 use wayland_client::QueueHandle;
 
-use crate::types::{DockState, PinItem, PopupSurface};
 use crate::geometry::popup::{PopupGeometry, PopupType};
 use crate::graphics::fade::FadeAnimation;
 use crate::models::WindowDiagnostics;
 use crate::render;
 use crate::render::dock::DockRenderResources;
+use crate::types::{DockState, PinItem, PopupSurface};
 use crate::Rect;
 
 use crate::state::AppState;
@@ -65,17 +65,22 @@ impl AppState {
             }
 
             // Advance fade state timers for the current frame
-			let hover_animating = dock.hover_fade.tick();
+            let hover_animating = dock.hover_fade.tick();
             let menu_animating = dock.menu_fade.tick();
             let window_list_animating = dock.window_list_fade.tick();
             let hide_animating =
                 (self.hide_state.current_alpha - self.hide_state.target_alpha).abs() >= 0.001;
-            
+
             // Ensure window_list_fade's active animation state keeps the frame loop running
-            let fade_animating = dock.window_list_fade.current_alpha != dock.window_list_fade.target_alpha;
-            let is_animating = hover_animating || menu_animating || window_list_animating || hide_animating || fade_animating;
-			// -----
-			
+            let fade_animating =
+                dock.window_list_fade.current_alpha != dock.window_list_fade.target_alpha;
+            let is_animating = hover_animating
+                || menu_animating
+                || window_list_animating
+                || hide_animating
+                || fade_animating;
+            // -----
+
             let dock_output = dock.output.clone();
 
             // 1. Replace the filtered_windows block (around line 46):
@@ -153,43 +158,46 @@ impl AppState {
             let phys_width = (dock_width as f64 * dock_scale).round() as u32;
             let phys_height = (target_logical_height as f64 * dock_scale).round() as u32;
 
-			// =========================================================================
-			// WINDOW LIST SUBSURFACE MANAGEMENT & RENDERING
-			// =========================================================================
-			let show_window_list = self.window_list_state.is_open;
-			if show_window_list {
-			    if let Some(target_app_id) = &self.window_list_state.target_app_id {
-			        let app_windows: Vec<&WindowDiagnostics> =
-			            running_by_app.get(target_app_id).cloned().unwrap_or_default();
+            // =========================================================================
+            // WINDOW LIST SUBSURFACE MANAGEMENT & RENDERING
+            // =========================================================================
+            let show_window_list = self.window_list_state.is_open;
+            if show_window_list {
+                if let Some(target_app_id) = &self.window_list_state.target_app_id {
+                    let app_windows: Vec<&WindowDiagnostics> = running_by_app
+                        .get(target_app_id)
+                        .cloned()
+                        .unwrap_or_default();
 
-			        if !app_windows.is_empty() {
-			            let total_apps = apps_in_dock_ptrs.len();
-			            let target_index = apps_in_dock_ptrs
-			                .iter()
-			                .position(|id| id == target_app_id)
-			                .unwrap_or(0);
+                    if !app_windows.is_empty() {
+                        let total_apps = apps_in_dock_ptrs.len();
+                        let target_index = apps_in_dock_ptrs
+                            .iter()
+                            .position(|id| id == target_app_id)
+                            .unwrap_or(0);
 
-			            let scale = dock_scale as f32;
-			            let icon_base_size = (box_size as f32 * scale) as i32;
-			            let icon_spacing = (spacing as f32 * scale) as i32;
-			            let total_icons_width = total_apps as i32 * icon_base_size
-			                + (total_apps as i32 - 1).max(0) * icon_spacing;
-			            let start_x_offset = (phys_width as i32 - total_icons_width) / 2;
+                        let scale = dock_scale as f32;
+                        let icon_base_size = (box_size as f32 * scale) as i32;
+                        let icon_spacing = (spacing as f32 * scale) as i32;
+                        let total_icons_width = total_apps as i32 * icon_base_size
+                            + (total_apps as i32 - 1).max(0) * icon_spacing;
+                        let start_x_offset = (phys_width as i32 - total_icons_width) / 2;
 
-			            let anchor_x = if total_apps > 0 {
-			                let pin_x =
-			                    start_x_offset + target_index as i32 * (icon_base_size + icon_spacing);
-			                pin_x + icon_base_size / 2
-			            } else {
-			                phys_width as i32 / 2
-			            };
-			            let anchor_y = 0;
-                        
-                        let item_count = if let Some(ref target_app) = self.window_list_state.target_app_id {
-                            running_by_app.get(target_app).map_or(0, |w| w.len()) as i32
+                        let anchor_x = if total_apps > 0 {
+                            let pin_x = start_x_offset
+                                + target_index as i32 * (icon_base_size + icon_spacing);
+                            pin_x + icon_base_size / 2
                         } else {
-                            0
-                        };                        
+                            phys_width as i32 / 2
+                        };
+                        let anchor_y = 0;
+
+                        let item_count =
+                            if let Some(ref target_app) = self.window_list_state.target_app_id {
+                                running_by_app.get(target_app).map_or(0, |w| w.len()) as i32
+                            } else {
+                                0
+                            };
                         let phys_dock_height = (dock_height as f64 * dock_scale).round() as i32;
 
                         let geom = PopupGeometry::compute_bounds(
@@ -202,61 +210,64 @@ impl AppState {
                             dock_scale as f32,
                         );
 
-			            let scale_i32 = dock_scale.round() as i32;
+                        let scale_i32 = dock_scale.round() as i32;
 
-			            let popup = dock.window_list_popup.get_or_insert_with(|| {
-			                let surf = self.compositor_state.create_surface(qh);
-			                let sub = self
-			                    .subcompositor
-			                    .as_ref()
-			                    .expect("Subcompositor global not bound")
-			                    .get_subsurface(&surf, surface.wl_surface(), qh, ());
-			                sub.set_desync();
+                        let popup = dock.window_list_popup.get_or_insert_with(|| {
+                            let surf = self.compositor_state.create_surface(qh);
+                            let sub = self
+                                .subcompositor
+                                .as_ref()
+                                .expect("Subcompositor global not bound")
+                                .get_subsurface(&surf, surface.wl_surface(), qh, ());
+                            sub.set_desync();
 
-			                PopupSurface {
-			                    subsurface: sub,
-			                    surface: surf,
-			                    current_buffer: None,
-			                    width: 0,
-			                    height: 0,
-			                    current_app_id: Some(target_app_id.clone()),
-			                    position: (0, 0),
-			                }
-			            });
+                            PopupSurface {
+                                subsurface: sub,
+                                surface: surf,
+                                current_buffer: None,
+                                width: 0,
+                                height: 0,
+                                current_app_id: Some(target_app_id.clone()),
+                                position: (0, 0),
+                            }
+                        });
 
-			            // Ensure current_app_id is updated if the popup instance was reused
-			            popup.current_app_id = Some(target_app_id.clone());
+                        // Ensure current_app_id is updated if the popup instance was reused
+                        popup.current_app_id = Some(target_app_id.clone());
 
-			            let popup_x = (geom.x as f64 / dock_scale).round() as i32;
-			            let popup_y = (geom.y as f64 / dock_scale).round() as i32;
-			            popup.position = (popup_x, popup_y);
-			            popup.subsurface.set_position(popup_x, popup_y);
+                        let popup_x = (geom.x as f64 / dock_scale).round() as i32;
+                        let popup_y = (geom.y as f64 / dock_scale).round() as i32;
+                        popup.position = (popup_x, popup_y);
+                        popup.subsurface.set_position(popup_x, popup_y);
 
-			            popup.width = geom.logical_width as u32;
-			            popup.height = geom.logical_height as u32;
+                        popup.width = geom.logical_width as u32;
+                        popup.height = geom.logical_height as u32;
 
-			            if geom.phys_width > 0 && geom.phys_height > 0 {
-			                let (buffer, canvas) = self
-			                    .pool
-			                    .create_buffer(
-			                        geom.phys_width,
-			                        geom.phys_height,
-			                        geom.phys_width * 4,
-			                        wl_shm::Format::Argb8888,
-			                    )
-			                    .expect("Failed to allocate window list popup buffer");
+                        if geom.phys_width > 0 && geom.phys_height > 0 {
+                            let (buffer, canvas) = self
+                                .pool
+                                .create_buffer(
+                                    geom.phys_width,
+                                    geom.phys_height,
+                                    geom.phys_width * 4,
+                                    wl_shm::Format::Argb8888,
+                                )
+                                .expect("Failed to allocate window list popup buffer");
 
-			                // Clear canvas memory to avoid recycled memory garbage
-			                canvas.fill(0);
-			                let local_ptr_x = ((self.interaction.pointer_position.x * dock_scale)
-			                    - geom.x as f64)
-			                    .max(0.0) as i32;
-			                let local_ptr_y = ((self.interaction.pointer_position.y * dock_scale)
-			                    - geom.y as f64)
-			                    .max(0.0) as i32;
-                            
+                            // Clear canvas memory to avoid recycled memory garbage
+                            canvas.fill(0);
+                            let local_ptr_x = ((self.interaction.pointer_position.x * dock_scale)
+                                - geom.x as f64)
+                                .max(0.0) as i32;
+                            let local_ptr_y = ((self.interaction.pointer_position.y * dock_scale)
+                                - geom.y as f64)
+                                .max(0.0) as i32;
+
                             let empty_windows: &[&WindowDiagnostics] = &[];
-                            let windows = self.window_list_state.target_app_id.as_ref()
+                            let windows = self
+                                .window_list_state
+                                .target_app_id
+                                .as_ref()
                                 .and_then(|id| running_by_app.get(id))
                                 .map(|v| v.as_slice())
                                 .unwrap_or(empty_windows);
@@ -265,46 +276,46 @@ impl AppState {
                                 canvas, // Replace 'frame' with your actual canvas/buffer variable name
                                 &geom,
                                 dock_scale as f32,
-                                &windows,
+                                windows,
                                 &mut self.font_manager,
                                 local_ptr_x,
                                 local_ptr_y,
                             );
 
-			                dock.window_list_fade.apply_alpha_to_canvas(canvas);
+                            dock.window_list_fade.apply_alpha_to_canvas(canvas);
 
-			                popup.surface.set_buffer_scale(scale_i32);
-			                buffer
-			                    .attach_to(&popup.surface)
-			                    .expect("Failed to attach window list buffer");
-			                popup
-			                    .surface
-			                    .damage_buffer(0, 0, geom.phys_width, geom.phys_height);
+                            popup.surface.set_buffer_scale(scale_i32);
+                            buffer
+                                .attach_to(&popup.surface)
+                                .expect("Failed to attach window list buffer");
+                            popup
+                                .surface
+                                .damage_buffer(0, 0, geom.phys_width, geom.phys_height);
 
-			                let compositor = self.compositor_state.wl_compositor();
-			                let region = compositor.create_region(qh, ());
-			                region.add(0, 0, geom.phys_width, geom.phys_height);
-			                popup.surface.set_input_region(Some(&region));
-			                region.destroy();
+                            let compositor = self.compositor_state.wl_compositor();
+                            let region = compositor.create_region(qh, ());
+                            region.add(0, 0, geom.phys_width, geom.phys_height);
+                            popup.surface.set_input_region(Some(&region));
+                            region.destroy();
 
-			                popup.surface.commit();
-			                popup.current_buffer = Some(buffer);         
-			            } else if let Some(popup) = dock.window_list_popup.take() {
-			                popup.surface.attach(None, 0, 0);
-			                popup.surface.commit();
-			            }
-			        } else if let Some(popup) = dock.window_list_popup.take() {
-			            popup.surface.attach(None, 0, 0);
-			            popup.surface.commit();
-			        }
-			    } else if let Some(popup) = dock.window_list_popup.take() {
-			        popup.surface.attach(None, 0, 0);
-			        popup.surface.commit();
-			    }
-			} else if let Some(popup) = dock.window_list_popup.take() {
-			    popup.surface.attach(None, 0, 0);
-			    popup.surface.commit();
-			}
+                            popup.surface.commit();
+                            popup.current_buffer = Some(buffer);
+                        } else if let Some(popup) = dock.window_list_popup.take() {
+                            popup.surface.attach(None, 0, 0);
+                            popup.surface.commit();
+                        }
+                    } else if let Some(popup) = dock.window_list_popup.take() {
+                        popup.surface.attach(None, 0, 0);
+                        popup.surface.commit();
+                    }
+                } else if let Some(popup) = dock.window_list_popup.take() {
+                    popup.surface.attach(None, 0, 0);
+                    popup.surface.commit();
+                }
+            } else if let Some(popup) = dock.window_list_popup.take() {
+                popup.surface.attach(None, 0, 0);
+                popup.surface.commit();
+            }
             // =========================================================================
             // CONTEXT MENU SUBSURFACE MANAGEMENT & RENDERING
             // =========================================================================
@@ -323,11 +334,7 @@ impl AppState {
                     .context_menu_popup
                     .as_ref()
                     .and_then(|popup| popup.current_app_id.as_deref());
-                let target_app_id = self
-                    .menu_state
-                    .target_app_id
-                    .as_deref()
-                    .or(popup_owner);
+                let target_app_id = self.menu_state.target_app_id.as_deref().or(popup_owner);
 
                 let target_index = target_app_id
                     .and_then(|app_id| apps_in_dock_ptrs.iter().position(|id| id == &app_id))

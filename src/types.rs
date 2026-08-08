@@ -15,9 +15,9 @@ use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1:
 use std::time::Instant;
 
 // Project Types
-use crate::render::font::FontManager;
-use crate::graphics::fade::FadeAnimation;
 use crate::geometry::{Point, Rect};
+use crate::graphics::fade::FadeAnimation;
+use crate::render::font::FontManager;
 use crate::state::AppState;
 use crate::DesktopAction;
 
@@ -120,7 +120,7 @@ impl PopupSurface {
         // Unmap the surface first
         self.surface.attach(None, 0, 0);
         self.surface.commit();
-        
+
         // Destroy Wayland protocol objects on the server
         self.subsurface.destroy();
         self.surface.destroy();
@@ -232,7 +232,7 @@ pub struct PopupState<T> {
     pub no_motion_timer: Option<Instant>,
     pub dock_timer: Option<Instant>,
     pub popup_timer: Option<Instant>,
-    
+
     // Compatibility & Interaction fields
     pub pointer_inside_popup: bool,
     pub x: i32,

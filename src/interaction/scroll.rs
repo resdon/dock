@@ -49,19 +49,19 @@ pub fn handle_scroll_events(
                     }
                 }
 
-/*                if target_app.is_none() && state.hover_state.is_visible {
+                /*                if target_app.is_none() && state.hover_state.is_visible {
                     if let Some(ref app_id) = state.hover_state.app_id {
                         if let Some(wins) = running_by_app.get(app_id) {
                             let total_apps = apps_in_dock.len();
                             let hovered_app_index =
                                 apps_in_dock.iter().position(|id| id == app_id).unwrap_or(0);
 
-							let click_x = (state.interaction.pointer_position.x * scale_factor as f64).round() as i32;
-							let dock_height = state.docks.first().map_or(60.0, |d| d.height as f64);
-							let dock_top_logical = (state.height as f64 - dock_height).max(0.0);
-							let click_y = ((dock_top_logical + state.interaction.pointer_position.y) * scale_factor as f64).round() as i32;
+                            let click_x = (state.interaction.pointer_position.x * scale_factor as f64).round() as i32;
+                            let dock_height = state.docks.first().map_or(60.0, |d| d.height as f64);
+                            let dock_top_logical = (state.height as f64 - dock_height).max(0.0);
+                            let click_y = ((dock_top_logical + state.interaction.pointer_position.y) * scale_factor as f64).round() as i32;
 
-							let (menu_x, menu_y, menu_width, menu_height, _, _) = gPopupGeometry::compute_bounds(
+                            let (menu_x, menu_y, menu_width, menu_height, _, _) = gPopupGeometry::compute_bounds(
                                 PopupType::WindowList, x, y, w, h, count as i32, scale as f32
                             )
 

@@ -23,8 +23,11 @@ impl AppState {
         scale_factor: f32,
     ) {
         // Call create_region on the underlying wl_compositor() using self.qh
-        let region = self.compositor_state.wl_compositor().create_region(&self.qh, ());
-        
+        let region = self
+            .compositor_state
+            .wl_compositor()
+            .create_region(&self.qh, ());
+
         let logical_w = (width as f32 / scale_factor).round().max(1.0) as i32;
         let logical_h = (height as f32 / scale_factor).round().max(1.0) as i32;
 
@@ -179,14 +182,12 @@ impl AppState {
 
             let pid_opt = window.matched_pid.map(sysinfo::Pid::from_u32);
 
-            if let Some((appid, steam_name, steam_icon_path)) =
-                crate::resolve_steam_game_details(
-                    &search_id,
-                    &window.title,
-                    &self.sys_scanner,
-                    pid_opt,
-                )
-            {
+            if let Some((appid, steam_name, steam_icon_path)) = crate::resolve_steam_game_details(
+                &search_id,
+                &window.title,
+                &self.sys_scanner,
+                pid_opt,
+            ) {
                 let target_size = 48;
                 if let Some((_, _, rgba_data)) =
                     crate::terminal_graphics::load_image_raw_rgba(&steam_icon_path, target_size)

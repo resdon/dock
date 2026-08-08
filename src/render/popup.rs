@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use crate::models::WindowDiagnostics;
 use crate::geometry::popup::{PopupGeometry, SurfaceGeometry};
+use crate::models::WindowDiagnostics;
 
-use crate::render::text::draw_text;
 use crate::render::font::FontManager;
+use crate::render::text::draw_text;
 use crate::types::{MenuItemType, MenuState};
 
 pub const HOVER_ITEM_HEIGHT: i32 = PopupGeometry::BASE_ITEM_HEIGHT;
@@ -174,7 +174,7 @@ pub fn render_window_list_surface(
         // Convert logical pointer coordinates to physical pixels for close button bounds check
         let ptr_phys_x = (local_pointer_x as f32 * scale_factor).round() as i32;
         let ptr_phys_y = (local_pointer_y as f32 * scale_factor).round() as i32;
-        
+
         let is_close_hovered = ptr_phys_x >= close_btn_x
             && ptr_phys_x < close_btn_x + close_btn_size
             && ptr_phys_y >= close_btn_y

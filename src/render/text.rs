@@ -1,8 +1,7 @@
 use std::path::Path;
 
-use crate::render::font::FontManager;
 use crate::render::font::CachedGlyph;
-
+use crate::render::font::FontManager;
 
 #[allow(clippy::too_many_arguments)]
 pub fn draw_text(

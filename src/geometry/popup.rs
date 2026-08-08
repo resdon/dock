@@ -41,7 +41,7 @@ impl PopupGeometry {
 
         // Convert inputs to f64 for precision during scaling math
         let scale = scale_factor as f64;
-        
+
         let phys_item_h = (item_height as f64 * scale).round() as i32;
         let phys_w = (base_width as f64 * scale).round() as i32;
         let phys_h = (item_count * phys_item_h).max(0);

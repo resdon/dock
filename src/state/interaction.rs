@@ -70,10 +70,19 @@ impl AppState {
             .unwrap_or(phys_height.max(1));
         let scale = dock.map(|d| d.scale_factor as f32).unwrap_or(scale_factor);
 
-        let target = self.window_list_state.target_app_id.as_deref().unwrap_or_default();
+        let target = self
+            .window_list_state
+            .target_app_id
+            .as_deref()
+            .unwrap_or_default();
         let apps = self.get_apps_in_dock();
         let anchor_x = crate::pointer::coordinates::calculate_popup_anchor(
-            self, target, &apps, dock_width, scale as f64, (60, 48, 8, 0),
+            self,
+            target,
+            &apps,
+            dock_width,
+            scale as f64,
+            (60, 48, 8, 0),
         );
         let item_count = self
             .open_windows
@@ -81,7 +90,13 @@ impl AppState {
             .filter(|w| w.app_id == target)
             .count() as i32;
         let geom = PopupGeometry::compute_bounds(
-            PopupType::WindowList, anchor_x, 0, dock_width, dock_height, item_count, scale,
+            PopupType::WindowList,
+            anchor_x,
+            0,
+            dock_width,
+            dock_height,
+            item_count,
+            scale,
         );
         (geom.x, geom.y, geom.logical_width, geom.logical_height)
     }
@@ -105,11 +120,22 @@ impl AppState {
         let target = self.menu_state.target_app_id.as_deref().unwrap_or_default();
         let apps = self.get_apps_in_dock();
         let anchor_x = crate::pointer::coordinates::calculate_popup_anchor(
-            self, target, &apps, dock_width, scale as f64, (60, 48, 8, 0),
+            self,
+            target,
+            &apps,
+            dock_width,
+            scale as f64,
+            (60, 48, 8, 0),
         );
         let item_count = self.menu_state.items.len() as i32;
         let geom = PopupGeometry::compute_bounds(
-            PopupType::ContextMenu, anchor_x, 0, dock_width, dock_height, item_count, scale,
+            PopupType::ContextMenu,
+            anchor_x,
+            0,
+            dock_width,
+            dock_height,
+            item_count,
+            scale,
         );
         (geom.x, geom.y, geom.logical_width, geom.logical_height)
     }
@@ -148,7 +174,7 @@ impl AppState {
 
     pub fn update_hover_and_hide_timers(&mut self) -> bool {
         let mut state_changed = false;
-		/*
+        /*
         // 1. Immediately dismiss hover popup when pointer leaves surface
         if !self.interaction.pointer_inside && self.hover_state.is_visible {
             self.hover_state.is_visible = false;

@@ -1,7 +1,7 @@
+use super::utils;
 pub use crate::models::LastState;
 use crate::models::WindowDiagnostics;
 use crate::AppState;
-use super::utils;
 
 use std::io::Read;
 use std::os::fd::AsFd;
@@ -213,7 +213,6 @@ impl Dispatch<WlDataDevice, ()> for AppState {
         }
     }
 }
-
 
 impl Dispatch<WpFractionalScaleManagerV1, ()> for AppState {
     fn event(

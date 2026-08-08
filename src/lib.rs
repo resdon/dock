@@ -30,11 +30,11 @@ pub use resolvers::desktop::{
 };
 pub use resolvers::icon::{self as icon_utils, extract_icon_name, get_icon_path};
 pub use resolvers::steam::resolve_steam_game_details;
+pub use state::AppState;
 pub use terminal_graphics::load_image_raw_rgba;
 pub use types::{
-	DockInstance, DockRenderState, InteractionState, MenuState, PopupSurface, WindowListState,
+    DockInstance, DockRenderState, InteractionState, MenuState, PopupSurface, WindowListState,
 };
-pub use state::AppState;
 
 pub mod terminal_graphics {
     use super::*;

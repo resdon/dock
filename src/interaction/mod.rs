@@ -9,9 +9,9 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use wayland_client::backend::ObjectId;
 
-use crate::AppState;
 use crate::geometry::popup::PopupType;
 use crate::pointer::proximity::pointer_on_popup;
+use crate::AppState;
 
 /// Top-level coordinator for interaction state updates.
 pub fn update(
@@ -21,7 +21,6 @@ pub fn update(
     scale_factor: f32,
     layout: (i32, i32, i32, i32),
 ) -> bool {
-
     let mut layer_changed = false;
     let cursor_moved = state.menu_state.cursor_moved;
     let hard_timeout = Duration::from_millis(2000);
@@ -29,7 +28,11 @@ pub fn update(
     // State tracking flags
     let pointer_inside_dock = state.interaction.pointer_inside;
     // Context menu state
-    let target_app = state.menu_state.target_app_id.as_deref().unwrap_or_default();
+    let target_app = state
+        .menu_state
+        .target_app_id
+        .as_deref()
+        .unwrap_or_default();
     let on_context_menu = state.menu_state.is_open
         && pointer_on_popup(
             state,
@@ -41,8 +44,16 @@ pub fn update(
             layout,
         );
     // Window list state
-    let window_list_target = state.window_list_state.target_app_id.as_deref().unwrap_or_default();
-    let window_count = state.open_windows.iter().filter(|w| w.1.app_id == window_list_target).count();
+    let window_list_target = state
+        .window_list_state
+        .target_app_id
+        .as_deref()
+        .unwrap_or_default();
+    let window_count = state
+        .open_windows
+        .iter()
+        .filter(|w| w.1.app_id == window_list_target)
+        .count();
 
     let on_window_list = state.window_list_state.is_open
         && window_count > 0
@@ -61,8 +72,16 @@ pub fn update(
     let on_dock = pointer_inside_dock && !on_context_menu && !on_window_list;
 
     // --- 1. Calculate on_window_list BEFORE timers ---
-    let window_list_target = state.window_list_state.target_app_id.as_deref().unwrap_or_default();
-    let window_count = state.open_windows.iter().filter(|w| w.1.app_id == window_list_target).count();
+    let window_list_target = state
+        .window_list_state
+        .target_app_id
+        .as_deref()
+        .unwrap_or_default();
+    let window_count = state
+        .open_windows
+        .iter()
+        .filter(|w| w.1.app_id == window_list_target)
+        .count();
 
     let on_window_list = state.window_list_state.is_open
         && window_count > 0
@@ -100,7 +119,7 @@ pub fn update(
         is_active_drag,
         on_dock,
         on_context_menu,
-        on_window_list, 
+        on_window_list,
     );
 
     // Evaluate Hard Close Timeouts (>= 2000ms)
@@ -110,7 +129,8 @@ pub fn update(
     let window_list_timed_out = elapsed.window_list >= hard_timeout;
 
     // Context menu timers rules
-    if state.menu_state.is_open && (no_motion_timed_out || dock_timed_out || context_menu_timed_out) {
+    if state.menu_state.is_open && (no_motion_timed_out || dock_timed_out || context_menu_timed_out)
+    {
         state.menu_state.is_open = false;
         timers::reset_all(state);
         layer_changed = true;
@@ -121,7 +141,9 @@ pub fn update(
     }
 
     // Window list timers rules
-    if state.window_list_state.is_open && (no_motion_timed_out || dock_timed_out || window_list_timed_out) {
+    if state.window_list_state.is_open
+        && (no_motion_timed_out || dock_timed_out || window_list_timed_out)
+    {
         state.window_list_state.is_open = false;
         state.window_list_state.target_app_id = None;
         timers::reset_all(state);
@@ -130,7 +152,7 @@ pub fn update(
         for dock in &mut state.docks {
             dock.window_list_fade.set_visible(false);
         }
-    }    
+    }
 
     // Debug logging for mouse position and region booleans
     if state.menu_state.last_debug_print.elapsed() >= Duration::from_millis(15) {
@@ -186,7 +208,12 @@ pub fn update(
             }
         }
 
-        if !window_visible_target && state.docks.iter().all(|d| d.window_list_fade.current_alpha == 0.0) {
+        if !window_visible_target
+            && state
+                .docks
+                .iter()
+                .all(|d| d.window_list_fade.current_alpha == 0.0)
+        {
             state.window_list_state.is_open = false;
             state.window_list_state.target_app_id = None;
             layer_changed = true;
@@ -199,14 +226,15 @@ pub fn update(
 
     let animating = state.docks.iter().any(|d| {
         (d.menu_fade.current_alpha - d.menu_fade.target_alpha).abs() > f32::EPSILON
-            || (d.window_list_fade.current_alpha - d.window_list_fade.target_alpha).abs() > f32::EPSILON
+            || (d.window_list_fade.current_alpha - d.window_list_fade.target_alpha).abs()
+                > f32::EPSILON
     });
     if animating {
         layer_changed = true;
     }
 
     state.menu_state.cursor_moved = false;
-    
+
     // --- AUTO-HIDE STATE ENGINE ---
     let pointer_near_edge = state.interaction.is_pointer_near;
     let no_motion_timed_out = elapsed.no_motion >= Duration::from_millis(1000);

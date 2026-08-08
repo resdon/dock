@@ -78,7 +78,11 @@ pub fn calculate_popup_anchor(
             .and_then(|ds| ds.pins.first())
             .is_some_and(|first_pin| apps_in_dock.first() == Some(&first_pin.app_id));
 
-        let slot_idx = if is_full_list { idx } else { pinned_count + idx };
+        let slot_idx = if is_full_list {
+            idx
+        } else {
+            pinned_count + idx
+        };
         let start_x = start_offset_x + spacing + slot_idx as i32 * (box_size + spacing);
         let pin_center_logical = start_x as f32 + (box_size as f32 / 2.0);
         return (pin_center_logical * dock_scale as f32).round() as i32;

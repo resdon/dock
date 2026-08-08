@@ -1,10 +1,9 @@
 pub mod badges;
 pub mod dock;
 pub mod font;
+pub mod popup;
 pub mod text;
 pub mod utils;
-pub mod popup;
-
 
 pub use badges::{draw_canvas_badge, draw_dock_item_badge};
 pub use dock::{
@@ -15,4 +14,3 @@ pub use dock::{
 pub use popup::*;
 pub use text::draw_text;
 pub use utils::hsl_to_rgb;
-

@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use wayland_client::backend::ObjectId;
 
 use crate::geometry::popup::{PopupGeometry, PopupType};
-use crate::handlers::popup::{execute_menu_action, open_context_menu};
 use crate::handlers::dock::{get_windows_for_app, handle_dock_press, handle_dock_release};
+use crate::handlers::popup::{execute_menu_action, open_context_menu};
 use crate::pointer::coordinates::calculate_popup_anchor;
 use crate::pointer::motion::{get_hovered_app, IconLayout};
 
@@ -85,23 +85,51 @@ pub fn handle_click_events(
                     }
 
                     if !clicked_on_popup {
-                        let ptr_phys_x = (state.interaction.pointer_position.x as f32 * dock_scale as f32).round() as i32;
-                        let ptr_phys_y = (state.interaction.pointer_position.y as f32 * dock_scale as f32).round() as i32;
+                        let ptr_phys_x = (state.interaction.pointer_position.x as f32
+                            * dock_scale as f32)
+                            .round() as i32;
+                        let ptr_phys_y = (state.interaction.pointer_position.y as f32
+                            * dock_scale as f32)
+                            .round() as i32;
 
                         if state.window_list_state.is_open {
                             if let Some(ref app_id) = state.window_list_state.target_app_id {
-                                let windows = get_windows_for_app(app_id, running_by_app, &state.open_windows);
+                                let windows = get_windows_for_app(
+                                    app_id,
+                                    running_by_app,
+                                    &state.open_windows,
+                                );
                                 if !windows.is_empty() {
-                                    let anchor_x = calculate_popup_anchor(state, app_id, &apps_in_dock, phys_width, scale_factor as f64, layout);
+                                    let anchor_x = calculate_popup_anchor(
+                                        state,
+                                        app_id,
+                                        apps_in_dock,
+                                        phys_width,
+                                        scale_factor as f64,
+                                        layout,
+                                    );
                                     let anchor_y = 0;
                                     let item_count = windows.len() as i32;
-                                    let geom = PopupGeometry::compute_bounds(PopupType::WindowList, anchor_x, anchor_y, phys_width, phys_dock_height, item_count, dock_scale as f32);
+                                    let geom = PopupGeometry::compute_bounds(
+                                        PopupType::WindowList,
+                                        anchor_x,
+                                        anchor_y,
+                                        phys_width,
+                                        phys_dock_height,
+                                        item_count,
+                                        dock_scale as f32,
+                                    );
                                     let menu_x = geom.x;
                                     let menu_y = geom.y;
-                                    let menu_width = (geom.logical_width as f64 * dock_scale).round() as i32;
+                                    let menu_width =
+                                        (geom.logical_width as f64 * dock_scale).round() as i32;
                                     let menu_height = geom.phys_height;
 
-                                    if ptr_phys_x >= menu_x && ptr_phys_x <= menu_x + menu_width && ptr_phys_y >= menu_y && ptr_phys_y <= menu_y + menu_height {
+                                    if ptr_phys_x >= menu_x
+                                        && ptr_phys_x <= menu_x + menu_width
+                                        && ptr_phys_y >= menu_y
+                                        && ptr_phys_y <= menu_y + menu_height
+                                    {
                                         clicked_on_popup = true;
                                     }
                                 }
@@ -151,11 +179,11 @@ pub fn handle_click_events(
                             scale_factor,
                             layout,
                         );
-
                     }
                     BTN_MIDDLE if is_over_icons => {
                         if let Some(dock) = state.docks.first_mut() {
-                            let apps_refs: Vec<&str> = apps_in_dock.iter().map(|s| s.as_str()).collect();
+                            let apps_refs: Vec<&str> =
+                                apps_in_dock.iter().map(|s| s.as_str()).collect();
                             let icon_layout = IconLayout {
                                 box_size: 48.0,
                                 spacing: 8.0,
@@ -164,19 +192,23 @@ pub fn handle_click_events(
                             };
                             if let Some((_, app_id)) = get_hovered_app(
                                 &apps_refs,
-                                (state.interaction.pointer_position.x, state.interaction.pointer_position.y),
+                                (
+                                    state.interaction.pointer_position.x,
+                                    state.interaction.pointer_position.y,
+                                ),
                                 state.interaction.pointer_inside,
                                 dock_width,
                                 dock_height_val,
                                 &icon_layout,
                             ) {
                                 let app_string = app_id.to_string();
-                                
+
                                 state.menu_state.is_open = false;
                                 state.menu_state.target_app_id = None;
 
                                 if state.window_list_state.is_open
-                                    && state.window_list_state.target_app_id.as_deref() == Some(&app_string)
+                                    && state.window_list_state.target_app_id.as_deref()
+                                        == Some(&app_string)
                                 {
                                     state.window_list_state.is_open = false;
                                     state.window_list_state.target_app_id = None;
@@ -205,34 +237,70 @@ pub fn handle_click_events(
 
                 // 1. Handle Context Menu Click on Release
                 if state.menu_state.is_open && !state.menu_state.items.is_empty() {
-                    let target_app = state.menu_state.target_app_id.as_deref().unwrap_or_default();
-                    let anchor_x = calculate_popup_anchor(state, target_app, &apps_in_dock, phys_width, scale_factor as f64, layout);
+                    let target_app = state
+                        .menu_state
+                        .target_app_id
+                        .as_deref()
+                        .unwrap_or_default();
+                    let anchor_x = calculate_popup_anchor(
+                        state,
+                        target_app,
+                        apps_in_dock,
+                        phys_width,
+                        scale_factor as f64,
+                        layout,
+                    );
                     let anchor_y = 0;
                     let item_count = state.menu_state.items.len() as i32;
-                    let geom = PopupGeometry::compute_bounds(PopupType::ContextMenu, anchor_x, anchor_y, phys_width, phys_dock_height, item_count, dock_scale as f32);
+                    let geom = PopupGeometry::compute_bounds(
+                        PopupType::ContextMenu,
+                        anchor_x,
+                        anchor_y,
+                        phys_width,
+                        phys_dock_height,
+                        item_count,
+                        dock_scale as f32,
+                    );
                     let menu_x = geom.x;
                     let menu_y = geom.y;
                     let menu_width = (geom.logical_width as f64 * dock_scale).round() as i32;
                     let menu_height = geom.phys_height;
 
-                    let mut ptr_phys_x = (state.interaction.pointer_position.x as f32 * dock_scale as f32).round() as i32;
-                    let mut ptr_phys_y = (state.interaction.pointer_position.y as f32 * dock_scale as f32).round() as i32;
+                    let mut ptr_phys_x = (state.interaction.pointer_position.x as f32
+                        * dock_scale as f32)
+                        .round() as i32;
+                    let mut ptr_phys_y = (state.interaction.pointer_position.y as f32
+                        * dock_scale as f32)
+                        .round() as i32;
 
                     let mut on_popup = false;
                     for dock in &state.docks {
                         if let Some(ref popup) = dock.context_menu_popup {
                             if event.surface == popup.surface {
-                                ptr_phys_x = ((event.position.0 as f64 + popup.position.0 as f64) * dock_scale).round() as i32;
-                                ptr_phys_y = ((event.position.1 as f64 + popup.position.1 as f64) * dock_scale).round() as i32;
+                                ptr_phys_x = ((event.position.0 + popup.position.0 as f64)
+                                    * dock_scale)
+                                    .round() as i32;
+                                ptr_phys_y = ((event.position.1 + popup.position.1 as f64)
+                                    * dock_scale)
+                                    .round() as i32;
                                 on_popup = true;
                                 break;
                             }
                         }
                     }
 
-                    if on_popup || (ptr_phys_x >= menu_x && ptr_phys_x <= menu_x + menu_width && ptr_phys_y >= menu_y && ptr_phys_y <= menu_y + menu_height) {
+                    if on_popup
+                        || (ptr_phys_x >= menu_x
+                            && ptr_phys_x <= menu_x + menu_width
+                            && ptr_phys_y >= menu_y
+                            && ptr_phys_y <= menu_y + menu_height)
+                    {
                         let clicked_idx = ((ptr_phys_y - menu_y) / item_h) as usize;
-                        let item_type_opt = state.menu_state.items.get(clicked_idx).map(|item| item.item_type.clone());
+                        let item_type_opt = state
+                            .menu_state
+                            .items
+                            .get(clicked_idx)
+                            .map(|item| item.item_type.clone());
 
                         if let Some(item_type) = item_type_opt {
                             execute_menu_action(state, &item_type);
@@ -250,33 +318,67 @@ pub fn handle_click_events(
                 // 2. Handle Window List Click on Release
                 if state.window_list_state.is_open {
                     if let Some(ref app_id) = state.window_list_state.target_app_id {
-                        let windows = get_windows_for_app(app_id, running_by_app, &state.open_windows);
+                        let windows =
+                            get_windows_for_app(app_id, running_by_app, &state.open_windows);
                         if !windows.is_empty() {
-                            let anchor_x = calculate_popup_anchor(state, app_id, &apps_in_dock, phys_width, scale_factor as f64, layout);
+                            let anchor_x = calculate_popup_anchor(
+                                state,
+                                app_id,
+                                apps_in_dock,
+                                phys_width,
+                                scale_factor as f64,
+                                layout,
+                            );
                             let anchor_y = 0;
                             let item_count = windows.len() as i32;
-                            let geom = PopupGeometry::compute_bounds(PopupType::WindowList, anchor_x, anchor_y, phys_width, phys_dock_height, item_count, dock_scale as f32);
+                            let geom = PopupGeometry::compute_bounds(
+                                PopupType::WindowList,
+                                anchor_x,
+                                anchor_y,
+                                phys_width,
+                                phys_dock_height,
+                                item_count,
+                                dock_scale as f32,
+                            );
                             let menu_x = geom.x;
                             let menu_y = geom.y;
-                            let menu_width = (geom.logical_width as f64 * dock_scale).round() as i32;
+                            let menu_width =
+                                (geom.logical_width as f64 * dock_scale).round() as i32;
                             let menu_height = geom.phys_height;
 
-                            let mut ptr_phys_x = (state.interaction.pointer_position.x as f32 * dock_scale as f32).round() as i32;
-                            let mut ptr_phys_y = (state.interaction.pointer_position.y as f32 * dock_scale as f32).round() as i32;
+                            let mut ptr_phys_x = (state.interaction.pointer_position.x as f32
+                                * dock_scale as f32)
+                                .round() as i32;
+                            let mut ptr_phys_y = (state.interaction.pointer_position.y as f32
+                                * dock_scale as f32)
+                                .round() as i32;
 
                             let mut on_popup = false;
                             for dock in &state.docks {
                                 if let Some(ref popup) = dock.window_list_popup {
                                     if event.surface == popup.surface {
-                                        ptr_phys_x = ((event.position.0 as f64 + popup.position.0 as f64) * dock_scale).round() as i32;
-                                        ptr_phys_y = ((event.position.1 as f64 + popup.position.1 as f64) * dock_scale).round() as i32;
+                                        ptr_phys_x = ((event.position.0
+                                            + popup.position.0 as f64)
+                                            * dock_scale)
+                                            .round()
+                                            as i32;
+                                        ptr_phys_y = ((event.position.1
+                                            + popup.position.1 as f64)
+                                            * dock_scale)
+                                            .round()
+                                            as i32;
                                         on_popup = true;
                                         break;
                                     }
                                 }
                             }
 
-                            if on_popup || (ptr_phys_x >= menu_x && ptr_phys_x <= menu_x + menu_width && ptr_phys_y >= menu_y && ptr_phys_y <= menu_y + menu_height) {
+                            if on_popup
+                                || (ptr_phys_x >= menu_x
+                                    && ptr_phys_x <= menu_x + menu_width
+                                    && ptr_phys_y >= menu_y
+                                    && ptr_phys_y <= menu_y + menu_height)
+                            {
                                 let clicked_idx = ((ptr_phys_y - menu_y) / item_h) as usize;
                                 let mut should_close_window_list = true;
 
@@ -286,7 +388,8 @@ pub fn handle_click_events(
 
                                     match button {
                                         BTN_LEFT => {
-                                            if let Some(win) = state.open_windows.get_mut(handle_id) {
+                                            if let Some(win) = state.open_windows.get_mut(handle_id)
+                                            {
                                                 if is_on_close_box {
                                                     win.handle.close();
                                                     should_close_window_list = false;
@@ -296,7 +399,8 @@ pub fn handle_click_events(
                                             }
                                         }
                                         BTN_MIDDLE => {
-                                            if let Some(win) = state.open_windows.get_mut(handle_id) {
+                                            if let Some(win) = state.open_windows.get_mut(handle_id)
+                                            {
                                                 win.handle.close();
                                                 should_close_window_list = false;
                                             }

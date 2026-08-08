@@ -58,17 +58,19 @@ pub fn handle_motion_events(
             dock.window_list_popup
                 .as_ref()
                 .is_some_and(|popup| popup.surface == event.surface)
-                || dock.context_menu_popup
+                || dock
+                    .context_menu_popup
                     .as_ref()
                     .is_some_and(|popup| popup.surface == event.surface)
-                || dock.hover_popup
+                || dock
+                    .hover_popup
                     .as_ref()
                     .is_some_and(|popup| popup.surface == event.surface)
         });
 
         match event.kind {
             smithay_client_toolkit::seat::pointer::PointerEventKind::Leave { .. } => {
-                let is_dock_surface = dock_surface_ptr.map_or(false, |ds| ds == &event.surface);
+                let is_dock_surface = dock_surface_ptr == Some(&event.surface);
 
                 if is_popup_surface {
                     state.window_list_state.pointer_inside_popup = false;
@@ -88,7 +90,7 @@ pub fn handle_motion_events(
                     layer_changed = true;
                 }
             }
-            smithay_client_toolkit::seat::pointer::PointerEventKind::Enter { .. } 
+            smithay_client_toolkit::seat::pointer::PointerEventKind::Enter { .. }
             | smithay_client_toolkit::seat::pointer::PointerEventKind::Motion { .. } => {
                 if is_popup_surface {
                     state.window_list_state.pointer_inside_popup = true;
@@ -135,7 +137,8 @@ pub fn handle_motion_events(
                 if !is_popup_surface && !state.menu_state.is_open {
                     let hovered_app = if let Some(dock) = state.docks.first() {
                         let apps_in_dock = state.get_apps_in_dock();
-                        let apps_refs: Vec<&str> = apps_in_dock.iter().map(|s| s.as_str()).collect();
+                        let apps_refs: Vec<&str> =
+                            apps_in_dock.iter().map(|s| s.as_str()).collect();
 
                         let dock_scale = dock.scale_factor;
                         let phys_dock_width = (dock.width as f64 * dock_scale).round() as u32;
@@ -158,7 +161,8 @@ pub fn handle_motion_events(
                             phys_dock_width,
                             phys_dock_height,
                             &layout,
-                        ).map(|(_idx, app_id)| app_id.to_string())
+                        )
+                        .map(|(_idx, app_id)| app_id.to_string())
                     } else {
                         None
                     };

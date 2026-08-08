@@ -1,10 +1,10 @@
-use crate::graphics::fade::FadeAnimation;
-use crate::state::AppState;
 use crate::cache::persistence;
+use crate::graphics::fade::FadeAnimation;
 use crate::graphics::AutoHideState;
-use crate::render::font::FontManager;
-use crate::types::*;
 use crate::models::BadgeUpdate;
+use crate::render::font::FontManager;
+use crate::state::AppState;
+use crate::types::*;
 
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer, LayerShell};
 use smithay_client_toolkit::shell::WaylandSurface;
@@ -24,7 +24,7 @@ use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_m
 
 use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
-use std::io::{Write};
+use std::io::Write;
 use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -99,7 +99,7 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
     let layer_shell = LayerShell::bind(&globals, &qh).expect("wlr_layer_shell required");
     let shm_state = Shm::bind(&globals, &qh).expect("wl_shm required");
     let seat_state = SeatState::new(&globals, &qh);
-    
+
     let subcompositor = registry_state
         .bind_one::<WlSubcompositor, _, _>(&qh, 1..=1, ())
         .expect("wp_subcompositor not available");
@@ -127,11 +127,8 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
     .find(|p| p.exists())
     .unwrap_or_else(|| PathBuf::from("assets/24"));
 
-    let fallback_anim = crate::animations::IconAnimation::new(
-        anim_dir.to_str().unwrap_or("assets/24"),
-        48,
-        24,
-    );
+    let fallback_anim =
+        crate::animations::IconAnimation::new(anim_dir.to_str().unwrap_or("assets/24"), 48, 24);
 
     let pinned_vector = persistence::load_pinned_apps();
     let mut permanent_icon_cache = HashMap::new();
