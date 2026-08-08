@@ -4,20 +4,21 @@
 
 A lightweight, high-performance Wayland dock written in Rust
 
-![Dock Demo](dock.gif)
+![Dock Demo](showcase.gif)
 
 ## Features
 
-- **Auto-hide**: The dock stays hidden until you hover near the bottom of the screen, at which point it slides into view.
-- **Smart focus**: Click an icon to focus the application, or hover over it to see a preview of open windows.
-- **Window list**: Hover over an icon to see a preview of open windows. Use the scroll wheel to cycle through them, or click the red box on a preview to close that window.
+- **Auto-hide**: Remains hidden until the cursor hovers near the screen edge, sliding smoothly into view.
+- **Smart focus**: Click an application icon to switch focus, bring its window to the foreground, or background.
+- **Window list**: Hover over an icon to see a list of open windows. Use the scroll wheel to cycle through them, or click the red box on a preview to close that window.
+- **Drag&Drop**: Drag files directly onto dock icons to pass context or launch them with specific applications.
 - **Context Menu**: Right-click an icon to access app-specific actions (e.g., "Open in Incognito Mode").
 - **Pins**: Pin or unpin applications, and drag-and-drop icons to reorder them anywhere on the dock.
 - **Wayland Native**: Built with Layer Shell and Foreign Toplevel protocols for smooth integration.
-- **Fast & Lightweight**: Low resource consumption with seamless animations and hover effects.
-- **RAM & CPU**: RAM: 35-40 MB | CPU One-thread: Idle 0.6%; Active Max 60%, average 25%.
+- **Fast & Transparent**: Low resource consumption with seamless transparent animations.
+- **RAM & CPU**: ~35–40 MB RAM | Single-thread CPU: 0.6% idle, ~25% active average (60% peak).
 - **Desktop & Steam Integration**: Resolves application icons, `.desktop` files, and Steam game launcher shortcuts dynamically.
-- **Built-in Utilities**: Window management, context menus, drag-and-drop support, and status indicators.
+- **D-Bus Support**: Integrates with system protocols for dynamic window management, drag-and-drop handling, and running status indicators.
 
 ## Supported Compositors (Wayland)
 

@@ -11,13 +11,24 @@ pub const DOCK_HEIGHT: f64 = 60.0;
 impl AppState {
     /// Returns the current ordered list of app IDs in the dock (pinned + unpinned running).
     pub fn get_apps_in_dock(&self) -> Vec<String> {
+        // HashMap iteration order is intentionally not stable.  Using it
+        // directly here caused the dock/app order to change between frames,
+        // which also moved popup anchors and made context/window-list popups
+        // appear to flicker. Keep pinned order, then add running apps in a
+        // deterministic order based on the stable WindowDiagnostics::id.
         let mut apps_in_dock = self.pinned_apps.clone();
-        for window in self.open_windows.values() {
+
+        let mut windows: Vec<&crate::models::WindowDiagnostics> =
+            self.open_windows.values().collect();
+        windows.sort_by_key(|window| window.id);
+
+        for window in windows {
             let id = window.resolved_app_id().to_string();
             if !apps_in_dock.contains(&id) {
                 apps_in_dock.push(id);
             }
         }
+
         apps_in_dock
     }
 
@@ -32,19 +43,15 @@ impl AppState {
                 .push(id.clone());
         }
 
-        // Sort by PID/stable ID instead of title
+        // ObjectId/HashMap iteration order is not a presentation order.
+        // Use the stable foreign-toplevel diagnostic id as the final row
+        // identity so window-list rows never reshuffle just because the
+        // HashMap was iterated in a different order. PID remains a useful
+        // primary key when available, but id is the deterministic tie-breaker.
         for windows in running_by_app.values_mut() {
-            windows.sort_by(|a, b| {
-                let win_a = self.open_windows.get(a);
-                let win_b = self.open_windows.get(b);
-                let pid_a = win_a.and_then(|w| w.matched_pid);
-                let pid_b = win_b.and_then(|w| w.matched_pid);
-
-                pid_a.cmp(&pid_b).then_with(|| {
-                    let ptr_a = win_a.map(std::ptr::from_ref);
-                    let ptr_b = win_b.map(std::ptr::from_ref);
-                    ptr_a.cmp(&ptr_b)
-                })
+            windows.sort_by_key(|id| {
+                let win = self.open_windows.get(id);
+                win.map(|w| w.id).unwrap_or(u64::MAX)
             });
         }
 

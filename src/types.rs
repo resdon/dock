@@ -1,10 +1,9 @@
-use crate::graphics::fade::FadeAnimation;
 use wayland_client::backend::ObjectId;
 use wayland_client::protocol::{
     wl_data_offer::WlDataOffer, wl_output::WlOutput, wl_subsurface::WlSubsurface,
     wl_surface::WlSurface,
 };
-
+use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_handle_v1::ZwlrForeignToplevelHandleV1;
 // SCTK Types
 use smithay_client_toolkit::shell::wlr_layer::LayerSurface;
 use smithay_client_toolkit::shell::WaylandSurface;
@@ -16,6 +15,8 @@ use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_v1:
 use std::time::Instant;
 
 // Project Types
+use crate::render::font::FontManager;
+use crate::graphics::fade::FadeAnimation;
 use crate::geometry::{Point, Rect};
 use crate::state::AppState;
 use crate::DesktopAction;
@@ -55,8 +56,8 @@ pub struct DockRenderState<'a> {
     pub open_windows: &'a std::collections::HashMap<ObjectId, crate::models::WindowDiagnostics>,
     pub icon_cache: &'a std::collections::HashMap<String, (Vec<u8>, u32)>,
     pub badges: &'a std::collections::HashMap<String, crate::models::BadgeUpdate>,
-    pub font_manager: &'a mut crate::FontManager,
-    pub fallback_anim: &'a dockman_lib::animations::IconAnimation,
+    pub font_manager: &'a mut FontManager,
+    pub fallback_anim: &'a crate::animations::IconAnimation,
     pub is_dragging: bool,
     pub dragged_app_id: Option<&'a String>,
     pub pointer_position: (i32, i32),
@@ -76,6 +77,7 @@ pub struct InteractionState {
     pub pointer_position: Point,
     pub pointer_inside: bool,
     pub is_pointer_near: bool,
+    pub focused_surface: Option<WlSurface>,
 }
 
 impl InteractionState {
@@ -87,6 +89,7 @@ impl InteractionState {
             pointer_position: Point { x: 0.0, y: 0.0 },
             pointer_inside: false,
             is_pointer_near: false,
+            focused_surface: None,
         }
     }
 }
@@ -105,6 +108,23 @@ pub struct PopupSurface {
     pub current_buffer: Option<Buffer>,
     pub width: u32,
     pub height: u32,
+    pub current_app_id: Option<String>,
+    /// Position of the popup subsurface in dock-surface logical coordinates.
+    /// This is the authoritative coordinate used to map pointer events back
+    /// into dock coordinates.
+    pub position: (i32, i32),
+}
+
+impl PopupSurface {
+    pub fn destroy(self) {
+        // Unmap the surface first
+        self.surface.attach(None, 0, 0);
+        self.surface.commit();
+        
+        // Destroy Wayland protocol objects on the server
+        self.subsurface.destroy();
+        self.surface.destroy();
+    }
 }
 
 pub struct DockInstance {
@@ -119,9 +139,12 @@ pub struct DockInstance {
     pub menu_popup: Option<PopupSurface>,
     pub configured: bool,
     pub context_menu_popup: Option<PopupSurface>,
+    pub window_list_popup: Option<PopupSurface>,
     pub dock_state: Option<DockState>,
     pub hover_fade: FadeAnimation,
     pub menu_fade: FadeAnimation,
+    pub window_list_fade: FadeAnimation,
+    pub active_hovered_app: Option<(usize, String)>,
 }
 
 impl DockInstance {
@@ -179,6 +202,7 @@ pub enum MenuItemType {
     Action(DesktopAction),
     TogglePin,
     CloseApp,
+    FocusWindow(ZwlrForeignToplevelHandleV1),
 }
 
 #[derive(Clone, Debug)]
@@ -187,35 +211,76 @@ pub struct ContextMenuItem {
     pub item_type: MenuItemType,
 }
 
-pub struct MenuState {
-    pub x: usize,
-    pub y: usize,
-    pub target_window: Option<ObjectId>,
-    pub target_app_id: Option<String>,
-    pub is_open: bool,
-    pub items: Vec<ContextMenuItem>,
-    pub opened_by_button: Option<u32>, // Track which button opened it
-    pub waiting_for_initial_release: bool, // Guard against the opening click
-    pub just_opened: bool,
-    pub fade: FadeAnimation,
-    pub consecutive_false_count: u32,
-    pub cursor_moved: bool,
-    pub last_pointer_x: f64,
-    pub last_pointer_y: f64,
-    pub last_debug_print: std::time::Instant,
-    pub consecutive_no_motion_count: i32,
-    pub consecutive_on_dock_count: i32,
-    pub consecutive_on_window_list_count: i32,
-    pub consecutive_on_context_menu_count: i32,
-    pub no_motion_timer: Option<Instant>,
-    pub dock_timer: Option<Instant>,
-    pub context_menu_timer: Option<Instant>,
-    pub window_list_timer: Option<Instant>,
-}
-
 pub struct HoverState {
     pub x: usize,
     pub app_id: Option<String>,
     pub is_visible: bool,
     pub last_leave_time: Option<std::time::Instant>,
 }
+
+// --- Unified Popup State ---
+pub struct PopupState<T> {
+    pub target_app_id: Option<String>,
+    pub target_window: Option<ObjectId>,
+    pub is_open: bool,
+    pub items: T,
+    pub waiting_for_initial_release: bool,
+    pub just_opened: bool,
+    pub cursor_moved: bool,
+    pub fade: FadeAnimation,
+    pub last_debug_print: Instant,
+    pub no_motion_timer: Option<Instant>,
+    pub dock_timer: Option<Instant>,
+    pub popup_timer: Option<Instant>,
+    
+    // Compatibility & Interaction fields
+    pub pointer_inside_popup: bool,
+    pub x: i32,
+    pub y: i32,
+    pub opened_by_button: Option<u32>,
+    pub consecutive_false_count: u32,
+    pub last_pointer_x: f64,
+    pub last_pointer_y: f64,
+    pub consecutive_no_motion_count: u32,
+    pub consecutive_on_dock_count: u32,
+    pub consecutive_on_context_menu_count: u32,
+    pub consecutive_on_window_list_count: u32,
+    pub context_menu_timer: Option<Instant>,
+    pub window_list_timer: Option<Instant>,
+}
+
+impl<T: Default> Default for PopupState<T> {
+    fn default() -> Self {
+        Self {
+            target_app_id: None,
+            target_window: None,
+            is_open: false,
+            items: T::default(),
+            waiting_for_initial_release: false,
+            just_opened: false,
+            cursor_moved: false,
+            fade: FadeAnimation::new(0.0, 1.0, 0.25),
+            last_debug_print: Instant::now(),
+            no_motion_timer: None,
+            dock_timer: None,
+            popup_timer: None,
+            pointer_inside_popup: false,
+            x: 0,
+            y: 0,
+            opened_by_button: None,
+            consecutive_false_count: 0,
+            last_pointer_x: 0.0,
+            last_pointer_y: 0.0,
+            consecutive_no_motion_count: 0,
+            consecutive_on_dock_count: 0,
+            consecutive_on_context_menu_count: 0,
+            consecutive_on_window_list_count: 0,
+            context_menu_timer: None,
+            window_list_timer: None,
+        }
+    }
+}
+
+// Type aliases for clarity and backward compatibility
+pub type MenuState = PopupState<Vec<ContextMenuItem>>;
+pub type WindowListState = PopupState<()>;

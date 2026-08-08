@@ -4,10 +4,22 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use std::path::Path;
 
+pub mod app;
+pub mod cache;
+pub mod geometry;
 pub mod graphics;
+pub mod handlers;
+pub mod init;
+pub mod interaction;
 pub mod listeners;
 pub mod models;
+pub mod pointer;
+pub mod render;
 pub mod resolvers;
+pub mod state;
+pub mod types;
+
+pub use geometry::*;
 
 // Re-exports for public crate API backwards-compatibility
 pub use graphics::animation::{self as animations, Frame, IconAnimation};
@@ -19,6 +31,10 @@ pub use resolvers::desktop::{
 pub use resolvers::icon::{self as icon_utils, extract_icon_name, get_icon_path};
 pub use resolvers::steam::resolve_steam_game_details;
 pub use terminal_graphics::load_image_raw_rgba;
+pub use types::{
+	DockInstance, DockRenderState, InteractionState, MenuState, PopupSurface, WindowListState,
+};
+pub use state::AppState;
 
 pub mod terminal_graphics {
     use super::*;

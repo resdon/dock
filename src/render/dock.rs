@@ -1,7 +1,10 @@
-use crate::app::types::DockState;
+use crate::types::DockState;
+use crate::render::font::FontManager;
 use crate::models::{BadgeUpdate, WindowDiagnostics};
 use crate::render::{draw_canvas_badge, draw_text, hsl_to_rgb};
-use dockman_lib::animations::IconAnimation;
+
+
+use crate::animations::IconAnimation;
 use std::collections::HashMap;
 
 pub struct DockRenderResources<'a> {
@@ -10,7 +13,7 @@ pub struct DockRenderResources<'a> {
     pub running_by_app: &'a HashMap<String, Vec<&'a WindowDiagnostics>>,
     pub icon_cache: &'a HashMap<String, (Vec<u8>, u32)>,
     pub badges: &'a HashMap<String, BadgeUpdate>,
-    pub font_manager: &'a mut crate::FontManager,
+    pub font_manager: &'a mut FontManager,
     pub fallback_anim: &'a IconAnimation,
     pub is_dragging: bool,
     pub dragged_app_id: Option<&'a String>,

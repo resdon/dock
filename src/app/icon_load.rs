@@ -1,4 +1,4 @@
-use dockman_lib::animations::IconAnimation;
+use crate::animations::IconAnimation;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;

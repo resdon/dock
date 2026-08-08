@@ -11,7 +11,7 @@ use super::steam::resolve_steam_game_details;
 /// Resolves default path for generated icon_list.txt
 pub fn get_icon_list_path() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_default();
-    let cache_dir = PathBuf::from(format!("{}/.cache/dockman", home));
+    let cache_dir = PathBuf::from(format!("{}/.cache/dock", home));
     let _ = std::fs::create_dir_all(&cache_dir);
     cache_dir.join("icon_list.txt")
 }

@@ -1,12 +1,10 @@
 pub use crate::models::LastState;
 use crate::models::WindowDiagnostics;
 use crate::AppState;
+use super::utils;
 
-use std::env;
 use std::io::Read;
 use std::os::fd::AsFd;
-use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use smithay_client_toolkit::{
@@ -39,95 +37,17 @@ use wayland_client::protocol::wl_data_device_manager::{DndAction, WlDataDeviceMa
 use wayland_client::protocol::wl_data_offer::{self, WlDataOffer};
 use wayland_client::protocol::wl_subcompositor::WlSubcompositor;
 use wayland_client::protocol::wl_subsurface::WlSubsurface;
+
 use wayland_protocols_wlr::foreign_toplevel::v1::client::{
     zwlr_foreign_toplevel_handle_v1::{self, ZwlrForeignToplevelHandleV1},
     zwlr_foreign_toplevel_manager_v1::{self, ZwlrForeignToplevelManagerV1},
 };
-
 // Fractional scaling
 use wayland_protocols::wp::fractional_scale::v1::client::{
     wp_fractional_scale_manager_v1::{self, WpFractionalScaleManagerV1},
     wp_fractional_scale_v1::{self, WpFractionalScaleV1},
 };
 // -----
-
-// Resolved launcher.sh path
-pub fn get_launcher_path() -> String {
-    let dev_script = Path::new("./scripts/launcher.sh");
-    if dev_script.exists() {
-        return dev_script.to_string_lossy().into_owned();
-    }
-
-    let data_home = env::var("XDG_DATA_HOME").unwrap_or_else(|_| {
-        let home = env::var("HOME").unwrap_or_default();
-        format!("{}/.local/share", home)
-    });
-    let user_path = format!("{}/dock/launcher.sh", data_home);
-
-    if Path::new(&user_path).exists() {
-        return user_path;
-    }
-
-    "/usr/share/dock/launcher.sh".to_string()
-}
-
-fn parse_window_states(state_bytes: &[u8]) -> (bool, bool) {
-    let mut activated = false;
-    let mut minimized = false;
-
-    for chunk in state_bytes.chunks_exact(4) {
-        let value = u32::from_ne_bytes(chunk.try_into().unwrap());
-        match value {
-            2 => activated = true,
-            1 => minimized = true,
-            _ => {}
-        }
-    }
-    (activated, minimized)
-}
-
-/// Parses a `text/uri-list` string into valid local PathBuf instances.
-pub fn parse_uri_list(buffer: &str) -> Vec<PathBuf> {
-    buffer
-        .lines()
-        .map(|line| line.trim())
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
-        .filter_map(|line| {
-            let path_str = if let Some(stripped) = line.strip_prefix("file://localhost") {
-                stripped
-            } else if let Some(stripped) = line.strip_prefix("file://") {
-                stripped
-            } else {
-                line
-            };
-
-            percent_decode(path_str).map(PathBuf::from)
-        })
-        .collect()
-}
-
-fn percent_decode(input: &str) -> Option<String> {
-    let mut bytes = Vec::new();
-    let mut chars = input.bytes();
-
-    while let Some(b) = chars.next() {
-        if b == b'%' {
-            let h1 = chars.next()?;
-            let h2 = chars.next()?;
-
-            let hex_bytes = [h1, h2];
-            let hex_str = std::str::from_utf8(&hex_bytes).ok()?;
-            let byte = u8::from_str_radix(hex_str, 16).ok()?;
-
-            bytes.push(byte);
-        } else {
-            bytes.push(b);
-        }
-    }
-
-    String::from_utf8(bytes).ok()
-}
-
 impl wayland_client::Dispatch<WlSubcompositor, ()> for AppState {
     fn event(
         _state: &mut Self,
@@ -264,7 +184,7 @@ impl Dispatch<WlDataDevice, ()> for AppState {
                             let mut reader = read_pipe;
                             let mut buffer = String::new();
                             if let Ok(_bytes_read) = reader.read_to_string(&mut buffer) {
-                                let paths = parse_uri_list(&buffer);
+                                let paths = utils::parse_uri_list(&buffer);
                                 if !paths.is_empty() {
                                     state.handle_file_drop_on_icon(drop_x, drop_y, paths);
                                 }
@@ -293,6 +213,7 @@ impl Dispatch<WlDataDevice, ()> for AppState {
         }
     }
 }
+
 
 impl Dispatch<WpFractionalScaleManagerV1, ()> for AppState {
     fn event(
@@ -582,7 +503,7 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for AppState {
                 state.needs_redraw = true;
             }
             zwlr_foreign_toplevel_handle_v1::Event::State { state: state_bytes } => {
-                let (activated, minimized) = parse_window_states(&state_bytes);
+                let (activated, minimized) = utils::parse_window_states(&state_bytes);
                 if let Some(window) = state.open_windows.get_mut(&handle.id()) {
                     window.is_activated = activated;
                     window.is_minimized = minimized;

@@ -3,8 +3,11 @@ use std::time::Instant;
 use wayland_client::backend::ObjectId;
 
 use super::dock::{get_windows_for_app, launch_app, normalize_app_id};
+use crate::cache;
+use crate::types::{ContextMenuItem, MenuItemType};
 use crate::AppState;
 
+/// Opens the right-click context menu for an application in the dock[cite: 27].
 pub fn open_context_menu(
     state: &mut AppState,
     ptr_log_x: i32,
@@ -58,33 +61,33 @@ pub fn open_context_menu(
 
             let is_running = !windows.is_empty();
             let is_pinned = state.pinned_apps.contains(&normalize_app_id(app_id));
-            let actions = dockman_lib::get_desktop_actions(app_id);
+            let actions = crate::get_desktop_actions(app_id);
 
             let mut items = Vec::new();
             if is_running {
-                items.push(crate::ContextMenuItem {
+                items.push(ContextMenuItem {
                     label: "Focus".into(),
-                    item_type: crate::MenuItemType::Focus,
+                    item_type: MenuItemType::Focus,
                 });
-                items.push(crate::ContextMenuItem {
+                items.push(ContextMenuItem {
                     label: "New Instance".into(),
-                    item_type: crate::MenuItemType::LaunchNew,
+                    item_type: MenuItemType::LaunchNew,
                 });
-                items.push(crate::ContextMenuItem {
+                items.push(ContextMenuItem {
                     label: "Minimize".into(),
-                    item_type: crate::MenuItemType::Minimize,
+                    item_type: MenuItemType::Minimize,
                 });
             } else {
-                items.push(crate::ContextMenuItem {
+                items.push(ContextMenuItem {
                     label: "Launch".into(),
-                    item_type: crate::MenuItemType::LaunchNew,
+                    item_type: MenuItemType::LaunchNew,
                 });
             }
 
             for action in actions {
-                items.push(crate::ContextMenuItem {
+                items.push(ContextMenuItem {
                     label: action.name.clone(),
-                    item_type: crate::MenuItemType::Action(action),
+                    item_type: MenuItemType::Action(action),
                 });
             }
 
@@ -93,15 +96,15 @@ pub fn open_context_menu(
             } else {
                 "Pin to Dock"
             };
-            items.push(crate::ContextMenuItem {
+            items.push(ContextMenuItem {
                 label: pin_label.into(),
-                item_type: crate::MenuItemType::TogglePin,
+                item_type: MenuItemType::TogglePin,
             });
 
             if is_running {
-                items.push(crate::ContextMenuItem {
+                items.push(ContextMenuItem {
                     label: "Quit Application".into(),
-                    item_type: crate::MenuItemType::CloseApp,
+                    item_type: MenuItemType::CloseApp,
                 });
             }
 
@@ -122,6 +125,59 @@ pub fn open_context_menu(
     false
 }
 
+/// Opens the window list popup menu when hovering or clicking a multi-window app[cite: 28].
+pub fn open_window_list_menu(
+    state: &mut AppState,
+    _ptr_log_x: i32,
+    _apps_in_dock: &[String],
+    running_by_app: &HashMap<String, Vec<ObjectId>>,
+    _scale_factor: f32,
+) -> bool {
+    let Some(app_id) = &state.window_list_state.target_app_id else {
+        return false;
+    };
+
+    let Some(windows) = running_by_app.get(app_id) else {
+        return false;
+    };
+
+    if windows.is_empty() {
+        return false;
+    }
+
+    state.menu_state.target_app_id = Some(app_id.clone());
+
+    let items: Vec<ContextMenuItem> = windows
+        .iter()
+        .filter_map(|win_id| state.open_windows.get(win_id))
+        .map(|win_info| ContextMenuItem {
+            label: if win_info.title.is_empty() {
+                "Window".into()
+            } else {
+                win_info.title.clone()
+            },
+            item_type: MenuItemType::FocusWindow(win_info.handle.clone()),
+        })
+        .collect();
+
+    if items.is_empty() {
+        return false;
+    }
+
+    state.menu_state.items = items;
+    state.menu_state.is_open = true;
+    state.menu_state.just_opened = true;
+    state.menu_state.waiting_for_initial_release = true;
+    state.needs_redraw = true;
+
+    for dock in &mut state.docks {
+        dock.menu_fade.show();
+    }
+
+    true
+}
+
+/// Checks pointer position relative to menu bounds and handles dismiss logic[cite: 27, 28].
 pub fn check_and_consume_menu_press(
     state: &mut AppState,
     scale_factor: f32,
@@ -161,6 +217,7 @@ pub fn check_and_consume_menu_press(
     (inside_menu, layer_changed)
 }
 
+/// Evaluates menu click coordinates on pointer release and executes selected item[cite: 27, 28].
 pub fn handle_menu_release(
     state: &mut AppState,
     phys_width: i32,
@@ -212,53 +269,60 @@ pub fn handle_menu_release(
     false
 }
 
-pub fn execute_menu_action(state: &mut AppState, item_type: &crate::MenuItemType) {
+/// Dispatches selected menu item action to system or app state[cite: 27, 28].
+pub fn execute_menu_action(state: &mut AppState, item_type: &MenuItemType) {
     match item_type {
-        crate::MenuItemType::Focus => {
+        MenuItemType::Focus => {
             if let Some(handle_id) = &state.menu_state.target_window {
                 if let Some(window_info) = state.open_windows.get_mut(handle_id) {
                     if let Some(seat) = &state.wl_seat {
                         window_info.handle.activate(seat);
                         state.focus_action_performed = true;
                         state.focus_action_time = Some(Instant::now());
-                        eprintln!("[DEBUG] Focus action executed for window {:?}", handle_id);
                     }
                 }
             }
         }
-        crate::MenuItemType::LaunchNew => {
+        MenuItemType::FocusWindow(handle) => {
+            if let Some(seat) = &state.wl_seat {
+                handle.activate(seat);
+                state.focus_action_performed = true;
+                state.focus_action_time = Some(Instant::now());
+            }
+        }
+        MenuItemType::LaunchNew => {
             if let Some(app_id) = &state.menu_state.target_app_id {
                 launch_app(app_id);
             }
         }
-        crate::MenuItemType::Minimize => {
+        MenuItemType::Minimize => {
             if let Some(handle_id) = &state.menu_state.target_window {
                 if let Some(window_info) = state.open_windows.get_mut(handle_id) {
                     window_info.handle.set_minimized();
                 }
             }
         }
-        crate::MenuItemType::Action(action) => {
+        MenuItemType::Action(action) => {
             let _ = std::process::Command::new("sh")
                 .arg("-c")
                 .arg(&action.exec)
                 .spawn();
         }
-        crate::MenuItemType::TogglePin => {
+        MenuItemType::TogglePin => {
             if let Some(app_id) = &state.menu_state.target_app_id {
                 let app_id = normalize_app_id(app_id);
-                let mut pinned = crate::cache::persistence::load_pinned_apps();
+                let mut pinned = cache::persistence::load_pinned_apps();
                 if pinned.contains(&app_id) {
                     pinned.retain(|x| x != &app_id);
                 } else {
                     pinned.push(app_id.clone());
                     if let Some((rgba, size)) = state.icon_cache.get(&app_id) {
-                        crate::cache::save_cached_icon(&app_id, *size, *size, rgba);
+                        cache::save_cached_icon(&app_id, *size, *size, rgba);
                     } else if let Some(window_info) =
                         state.open_windows.values().find(|w| w.app_id == app_id)
                     {
                         if let Some(rgba) = &window_info.icon_rgba {
-                            crate::cache::save_cached_icon(
+                            cache::save_cached_icon(
                                 &app_id,
                                 window_info.icon_size,
                                 window_info.icon_size,
@@ -267,11 +331,11 @@ pub fn execute_menu_action(state: &mut AppState, item_type: &crate::MenuItemType
                         }
                     }
                 }
-                crate::cache::persistence::save_pinned_apps(&pinned);
+                cache::persistence::save_pinned_apps(&pinned);
                 state.pinned_apps = pinned;
             }
         }
-        crate::MenuItemType::CloseApp => {
+        MenuItemType::CloseApp => {
             if let Some(app_id) = state.menu_state.target_app_id.clone() {
                 state.close_application_completely(&app_id);
             }

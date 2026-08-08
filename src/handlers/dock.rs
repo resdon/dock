@@ -1,5 +1,5 @@
 use crate::models::WindowDiagnostics;
-use crate::pointer::drag::handle_drag_release;
+use crate::interaction::drag::handle_drag_release;
 use crate::AppState;
 use std::collections::HashMap;
 use wayland_client::backend::ObjectId;

@@ -15,6 +15,23 @@ fn normalize_app_id(app_id: &str) -> &str {
 }
 
 impl AppState {
+    pub fn set_popup_input_region(
+        &self,
+        surface: &wayland_client::protocol::wl_surface::WlSurface,
+        width: i32,
+        height: i32,
+        scale_factor: f32,
+    ) {
+        // Call create_region on the underlying wl_compositor() using self.qh
+        let region = self.compositor_state.wl_compositor().create_region(&self.qh, ());
+        
+        let logical_w = (width as f32 / scale_factor).round().max(1.0) as i32;
+        let logical_h = (height as f32 / scale_factor).round().max(1.0) as i32;
+
+        region.add(0, 0, logical_w, logical_h);
+        surface.set_input_region(Some(&region));
+        region.destroy();
+    }
     /// Returns true if at least one window, pinned app, or background icon search is active
     pub fn is_animating(&self) -> bool {
         let windows_loading = self
@@ -103,11 +120,7 @@ impl AppState {
         }
 
         // Sorting
-        matching_windows.sort_by(|a, b| {
-            a.1.matched_pid
-                .cmp(&b.1.matched_pid)
-                .then_with(|| std::ptr::from_ref(a.1).cmp(&std::ptr::from_ref(b.1)))
-        });
+        matching_windows.sort_by_key(|(_, win)| win.id);
 
         let active_idx = matching_windows
             .iter()
@@ -167,7 +180,7 @@ impl AppState {
             let pid_opt = window.matched_pid.map(sysinfo::Pid::from_u32);
 
             if let Some((appid, steam_name, steam_icon_path)) =
-                dockman_lib::resolve_steam_game_details(
+                crate::resolve_steam_game_details(
                     &search_id,
                     &window.title,
                     &self.sys_scanner,

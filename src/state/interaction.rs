@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use std::process::Command;
 use wayland_client::QueueHandle;
 
+use crate::geometry::popup::{PopupGeometry, PopupType};
+
 impl AppState {
     pub fn update_focus_timer(&mut self) {
         if self.focus_action_performed {
@@ -51,53 +53,65 @@ impl AppState {
         }
     }
 
+    /// Computes window-list bounds in the dock surface's physical coordinate space.
+    /// Popup subsurfaces are children of the dock, so y=0 is the top of the dock.
+    pub fn get_window_list_bounds(
+        &self,
+        phys_width: i32,
+        phys_height: i32,
+        scale_factor: f32,
+    ) -> (i32, i32, i32, i32) {
+        let dock = self.docks.first();
+        let dock_width = dock
+            .map(|d| (d.width as f64 * d.scale_factor).round() as i32)
+            .unwrap_or(phys_width.max(1));
+        let dock_height = dock
+            .map(|d| (d.height as f64 * d.scale_factor).round() as i32)
+            .unwrap_or(phys_height.max(1));
+        let scale = dock.map(|d| d.scale_factor as f32).unwrap_or(scale_factor);
+
+        let target = self.window_list_state.target_app_id.as_deref().unwrap_or_default();
+        let apps = self.get_apps_in_dock();
+        let anchor_x = crate::pointer::coordinates::calculate_popup_anchor(
+            self, target, &apps, dock_width, scale as f64, (60, 48, 8, 0),
+        );
+        let item_count = self
+            .open_windows
+            .values()
+            .filter(|w| w.app_id == target)
+            .count() as i32;
+        let geom = PopupGeometry::compute_bounds(
+            PopupType::WindowList, anchor_x, 0, dock_width, dock_height, item_count, scale,
+        );
+        (geom.x, geom.y, geom.logical_width, geom.logical_height)
+    }
+
+    /// Computes context-menu bounds in the dock surface's physical coordinate space.
     pub fn get_context_menu_bounds(
         &self,
         phys_width: i32,
         phys_height: i32,
         scale_factor: f32,
     ) -> (i32, i32, i32, i32) {
-        let screen_w = (self.width as f32 * scale_factor).round() as i32;
-        let screen_h = (self.height as f32 * scale_factor).round() as i32;
+        let dock = self.docks.first();
+        let dock_width = dock
+            .map(|d| (d.width as f64 * d.scale_factor).round() as i32)
+            .unwrap_or(phys_width.max(1));
+        let dock_height = dock
+            .map(|d| (d.height as f64 * d.scale_factor).round() as i32)
+            .unwrap_or(phys_height.max(1));
+        let scale = dock.map(|d| d.scale_factor as f32).unwrap_or(scale_factor);
 
-        let monitor_width = if phys_width < 200 {
-            screen_w.max(1)
-        } else {
-            phys_width
-        };
-        let monitor_height = if phys_height < 100 {
-            screen_h.max(1)
-        } else {
-            phys_height
-        };
-
-        let click_x = if self.menu_state.x != 0 {
-            self.menu_state.x as i32
-        } else {
-            (self.interaction.pointer_position.x * scale_factor as f64).round() as i32
-        };
-
-        let click_y = if self.menu_state.y != 0 {
-            self.menu_state.y as i32
-        } else {
-            // Account for the dock's position at the bottom of the screen
-            let dock_height = self.docks.first().map_or(60.0, |d| d.height as f64);
-            let dock_top_logical = (self.height as f64 - dock_height).max(0.0);
-            ((dock_top_logical + self.interaction.pointer_position.y) * scale_factor as f64).round()
-                as i32
-        };
-
-        let item_count = self.menu_state.items.len() as i32;
-        let (x, y, _phys_w, _phys_h, w, h) = crate::render::context_menu::get_context_menu_bounds(
-            click_x,
-            click_y,
-            monitor_width,
-            monitor_height,
-            item_count,
-            scale_factor,
+        let target = self.menu_state.target_app_id.as_deref().unwrap_or_default();
+        let apps = self.get_apps_in_dock();
+        let anchor_x = crate::pointer::coordinates::calculate_popup_anchor(
+            self, target, &apps, dock_width, scale as f64, (60, 48, 8, 0),
         );
-        // Return i32 values directly without calling floating-point round()
-        (x, y, w, h)
+        let item_count = self.menu_state.items.len() as i32;
+        let geom = PopupGeometry::compute_bounds(
+            PopupType::ContextMenu, anchor_x, 0, dock_width, dock_height, item_count, scale,
+        );
+        (geom.x, geom.y, geom.logical_width, geom.logical_height)
     }
 
     /// Sends an icon load request to the background worker pool asynchronously
@@ -134,7 +148,7 @@ impl AppState {
 
     pub fn update_hover_and_hide_timers(&mut self) -> bool {
         let mut state_changed = false;
-
+		/*
         // 1. Immediately dismiss hover popup when pointer leaves surface
         if !self.interaction.pointer_inside && self.hover_state.is_visible {
             self.hover_state.is_visible = false;
@@ -143,6 +157,7 @@ impl AppState {
             self.needs_redraw = true;
             state_changed = true;
         }
+        */
 
         // 2. Evaluate proximity (sole authority for proximity updates)
         let is_near = self.check_dock_proximity();
@@ -151,6 +166,7 @@ impl AppState {
         // 3. Advance fade animation
         if self.hide_state.tick() {
             self.needs_redraw = true;
+
             state_changed = true;
         }
 

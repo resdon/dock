@@ -1,0 +1,307 @@
+use crate::graphics::fade::FadeAnimation;
+use crate::state::AppState;
+use crate::cache::persistence;
+use crate::graphics::AutoHideState;
+use crate::render::font::FontManager;
+use crate::types::*;
+use crate::models::BadgeUpdate;
+
+use smithay_client_toolkit::shell::wlr_layer::{Anchor, Layer, LayerShell};
+use smithay_client_toolkit::shell::WaylandSurface;
+use smithay_client_toolkit::shm::slot::SlotPool;
+use smithay_client_toolkit::{
+    compositor::CompositorState, output::OutputState, registry::RegistryState, seat::SeatState,
+    shm::Shm,
+};
+
+use wayland_client::globals::registry_queue_init;
+use wayland_client::protocol::wl_data_device_manager::WlDataDeviceManager;
+use wayland_client::protocol::wl_subcompositor::WlSubcompositor;
+use wayland_client::{Connection, QueueHandle};
+
+use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1;
+use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1;
+
+use std::collections::HashMap;
+use std::fs::{self, OpenOptions};
+use std::io::{Write};
+use std::path::PathBuf;
+use std::thread;
+use std::time::{Duration, Instant};
+
+pub struct AppContext {
+    pub state: AppState,
+    pub event_queue: wayland_client::EventQueue<AppState>,
+    pub qh: QueueHandle<AppState>,
+    pub badge_rx: tokio::sync::mpsc::UnboundedReceiver<BadgeUpdate>, // <-- Fixed type
+}
+
+pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let log_dir = PathBuf::from(format!("{}/.local/share/dock", home));
+    let _ = fs::create_dir_all(&log_dir);
+
+    // 1. Internal App Log Stream
+    let app_log_path = log_dir.join("app.log");
+    let mut app_logger = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&app_log_path)
+        .expect("Failed to initialize app.log");
+
+    writeln!(
+        app_logger,
+        "[{}] INFO: Dock application starting up.",
+        Instant::now().elapsed().as_secs()
+    )?;
+
+    // 2. External Mouse Position Log Stream
+    let mouse_log_path = log_dir.join("mouse.log");
+    thread::spawn(move || {
+        let mut mouse_logger = match OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&mouse_log_path)
+        {
+            Ok(file) => file,
+            Err(_) => return,
+        };
+
+        loop {
+            let (x, y) = (0, 0);
+            let _ = writeln!(
+                mouse_logger,
+                "pos_x: {}, pos_y: {}, time: {:?}",
+                x,
+                y,
+                Instant::now()
+            );
+            thread::sleep(Duration::from_millis(20));
+        }
+    });
+
+    crate::cache::icon_indexer::spawn_startup_indexer();
+
+    let (badge_tx, badge_rx) = tokio::sync::mpsc::unbounded_channel();
+    let runtime = tokio::runtime::Runtime::new()?;
+    runtime.spawn(async move {
+        let _ = crate::listeners::start_unity_dbus_listener(badge_tx).await;
+    });
+
+    let conn = Connection::connect_to_env().expect("Failed to connect to Wayland display");
+    let (globals, mut event_queue) = registry_queue_init::<AppState>(&conn)
+        .expect("Failed to initialize Wayland registry queue");
+
+    let qh = event_queue.handle();
+    let registry_state = RegistryState::new(&globals);
+    let compositor_state = CompositorState::bind(&globals, &qh).expect("Failed to bind compositor");
+    let output_state = OutputState::new(&globals, &qh);
+    let layer_shell = LayerShell::bind(&globals, &qh).expect("wlr_layer_shell required");
+    let shm_state = Shm::bind(&globals, &qh).expect("wl_shm required");
+    let seat_state = SeatState::new(&globals, &qh);
+    
+    let subcompositor = registry_state
+        .bind_one::<WlSubcompositor, _, _>(&qh, 1..=1, ())
+        .expect("wp_subcompositor not available");
+
+    let pool = SlotPool::new(1024 * 1024 * 16, &shm_state).expect("Failed to create memory pool");
+
+    let user_data_font = format!("{}/.local/share/dock/font.ttf", home);
+    let font_path = [
+        PathBuf::from("assets/font.ttf"),
+        PathBuf::from("font.ttf"),
+        PathBuf::from(user_data_font),
+        PathBuf::from("/usr/share/dock/font.ttf"),
+        PathBuf::from("/usr/share/fonts/TTF/DejaVuSans.ttf"),
+    ]
+    .into_iter()
+    .find(|p| p.exists())
+    .expect("No valid font file found!");
+
+    let anim_dir = [
+        PathBuf::from("assets/24"),
+        PathBuf::from(format!("{}/.local/share/dock/24", home)),
+        PathBuf::from("/usr/share/dock/24"),
+    ]
+    .into_iter()
+    .find(|p| p.exists())
+    .unwrap_or_else(|| PathBuf::from("assets/24"));
+
+    let fallback_anim = crate::animations::IconAnimation::new(
+        anim_dir.to_str().unwrap_or("assets/24"),
+        48,
+        24,
+    );
+
+    let pinned_vector = persistence::load_pinned_apps();
+    let mut permanent_icon_cache = HashMap::new();
+    for app_id in &pinned_vector {
+        if let Some((rgba, size)) = crate::cache::load_cached_icon(app_id) {
+            permanent_icon_cache.insert(app_id.clone(), (rgba, size));
+        }
+    }
+
+    let (icon_tx, icon_rx) = std::sync::mpsc::channel();
+    let icon_loader = crate::app::icon_load::IconLoader::new(icon_tx.clone());
+
+    let mut state = AppState {
+        qh: qh.clone(),
+        connection: conn.clone(),
+        registry_state,
+        compositor_state,
+        output_state,
+        layer_shell,
+        shm_state,
+        pool,
+        seat_state,
+        layer_surface: None,
+        current_buffer: None,
+        width: 100,
+        height: 60,
+        toplevel_manager: None,
+        font_manager: FontManager::from_file(&font_path).expect("Failed to memory-map font file"),
+        wl_seat: None,
+        wl_pointer: None,
+        open_windows: HashMap::new(),
+        pinned_apps: pinned_vector,
+        icon_cache: permanent_icon_cache,
+        pending_icon_searches: std::collections::HashSet::new(),
+        icon_rx,
+        icon_tx,
+        menu_state: MenuState {
+            x: 0,
+            y: 0,
+            target_window: None,
+            target_app_id: None,
+            is_open: false,
+            items: Vec::new(),
+            opened_by_button: None,
+            waiting_for_initial_release: false,
+            just_opened: false,
+            fade: FadeAnimation::new(0.0, 1.0, 0.15),
+            consecutive_false_count: 0,
+            cursor_moved: false,
+            last_pointer_x: 0.0,
+            last_pointer_y: 0.0,
+            last_debug_print: std::time::Instant::now(),
+            consecutive_no_motion_count: 0,
+            consecutive_on_dock_count: 0,
+            consecutive_on_context_menu_count: 0,
+            consecutive_on_window_list_count: 0,
+            no_motion_timer: None,
+            dock_timer: None,
+            context_menu_timer: None,
+            window_list_timer: None,
+            pointer_inside_popup: false,
+            popup_timer: None,
+        },
+        hover_state: HoverState {
+            x: 0,
+            app_id: None,
+            is_visible: false,
+            last_leave_time: None,
+        },
+        last_interact_time: Instant::now(),
+        needs_redraw: false,
+        last_mouse_pos: None,
+        is_dragging: false,
+        drag_start_x: 0,
+        drag_start_y: 0,
+        dragged_app_id: None,
+        last_drag_draw: Instant::now(),
+        sys_scanner: sysinfo::System::new_with_specifics(
+            sysinfo::RefreshKind::nothing()
+                .with_processes(sysinfo::ProcessRefreshKind::everything()),
+        ),
+        current_output: None,
+        docks: Vec::new(),
+        fractional_scale_manager: None,
+        fractional_scale_notifier: None,
+        scale_factor: 1.0,
+        fallback_anim,
+        dnd_state: DndState::default(),
+        data_device_manager: None,
+        data_device: None,
+        badges: HashMap::new(),
+        subcompositor: Some(subcompositor),
+        icon_load: icon_loader,
+        animations: HashMap::new(),
+        hide_state: AutoHideState::new(),
+        interaction: InteractionState::new(),
+        focus_action_performed: true,
+        focus_action_time: Some(Instant::now()),
+        window_list_state: WindowListState::default(),
+    };
+
+    state.data_device_manager = state
+        .registry_state
+        .bind_one::<WlDataDeviceManager, _, _>(&qh, 1..=3, ())
+        .ok();
+
+    state.toplevel_manager = state
+        .registry_state
+        .bind_one::<ZwlrForeignToplevelManagerV1, _, _>(&qh, 1..=3, ())
+        .ok();
+
+    state.fractional_scale_manager = state
+        .registry_state
+        .bind_one::<WpFractionalScaleManagerV1, _, _>(&qh, 1..=1, ())
+        .ok();
+
+    event_queue.roundtrip(&mut state).unwrap();
+
+    for output in state.output_state.outputs() {
+        let raw_surface = state.compositor_state.create_surface(&qh);
+        let layer_surface = state.layer_shell.create_layer_surface(
+            &qh,
+            raw_surface,
+            Layer::Top,
+            Some("dock_panel"),
+            Some(&output),
+        );
+
+        let scale_notifier = state.fractional_scale_manager.as_ref().map(|manager| {
+            manager.get_fractional_scale(layer_surface.wl_surface(), &qh, output.clone())
+        });
+
+        let dock_width = 540;
+        let dock_height = 60;
+        let scale_factor = 1.0;
+        let phys_width = (dock_width as f64 * scale_factor).round() as u32;
+        let phys_height = (dock_height as f64 * scale_factor).round() as u32;
+
+        layer_surface.set_keyboard_interactivity(
+            smithay_client_toolkit::shell::wlr_layer::KeyboardInteractivity::None,
+        );
+        layer_surface.set_size(phys_width, phys_height);
+        layer_surface.set_anchor(Anchor::BOTTOM);
+        layer_surface.wl_surface().commit();
+
+        state.docks.push(DockInstance {
+            surface: layer_surface,
+            output,
+            width: dock_width,
+            height: dock_height,
+            current_buffer: None,
+            scale_notifier,
+            scale_factor,
+            hover_popup: None,
+            menu_popup: None,
+            window_list_popup: None,
+            configured: false,
+            context_menu_popup: None,
+            dock_state: None,
+            hover_fade: FadeAnimation::new(0.0, 1.0, 1.0),
+            menu_fade: FadeAnimation::new(0.0, 1.0, 1.0),
+            window_list_fade: FadeAnimation::new(0.0, 1.0, 1.0),
+            active_hovered_app: None,
+        });
+    }
+
+    Ok(AppContext {
+        state,
+        event_queue,
+        qh,
+        badge_rx,
+    })
+}

@@ -8,20 +8,19 @@ pub fn handle_scroll_events(
     state: &mut AppState,
     events: &[PointerEvent],
     apps_in_dock: &[String],
-    running_by_app: &HashMap<String, Vec<ObjectId>>,
+    _running_by_app: &HashMap<String, Vec<ObjectId>>,
     scale_factor: f32,
     layout: (i32, i32, i32, i32),
 ) -> bool {
     let (dock_height, box_size, spacing, start_offset_x) = layout;
     let mut layer_changed = false;
 
-    let dock_top_bound = state.height.saturating_sub(dock_height);
-    let is_over_icons = state.interaction.pointer_position.y >= dock_top_bound.into();
+    // Pointer coordinates are local to the dock layer surface.
+    let is_over_icons = state.interaction.pointer_position.y >= 0.0
+        && state.interaction.pointer_position.y <= dock_height as f64;
 
-    let phys_width = (state.width as f32 * scale_factor).round() as i32;
-    let phys_height = (state.height as f32 * scale_factor).round() as i32;
-
-    let geometry = crate::geometry::WindowListGeometry::default();
+    let _phys_width = (state.width as f32 * scale_factor).round() as i32;
+    let _phys_height = (state.height as f32 * scale_factor).round() as i32;
 
     for event in events {
         if let PointerEventKind::Axis { vertical, .. } = &event.kind {
@@ -50,22 +49,21 @@ pub fn handle_scroll_events(
                     }
                 }
 
-                if target_app.is_none() && state.hover_state.is_visible {
+/*                if target_app.is_none() && state.hover_state.is_visible {
                     if let Some(ref app_id) = state.hover_state.app_id {
                         if let Some(wins) = running_by_app.get(app_id) {
                             let total_apps = apps_in_dock.len();
                             let hovered_app_index =
                                 apps_in_dock.iter().position(|id| id == app_id).unwrap_or(0);
 
-                            let (menu_x, menu_y, menu_width, menu_height, _, _) = geometry
-                                .compute_bounds(
-                                    phys_width,
-                                    phys_height,
-                                    total_apps,
-                                    hovered_app_index,
-                                    wins.len(),
-                                    scale_factor as f64,
-                                );
+							let click_x = (state.interaction.pointer_position.x * scale_factor as f64).round() as i32;
+							let dock_height = state.docks.first().map_or(60.0, |d| d.height as f64);
+							let dock_top_logical = (state.height as f64 - dock_height).max(0.0);
+							let click_y = ((dock_top_logical + state.interaction.pointer_position.y) * scale_factor as f64).round() as i32;
+
+							let (menu_x, menu_y, menu_width, menu_height, _, _) = gPopupGeometry::compute_bounds(
+                                PopupType::WindowList, x, y, w, h, count as i32, scale as f32
+                            )
 
                             let ptr_x = (state.interaction.pointer_position.x as f32 * scale_factor)
                                 .round() as i32;
@@ -81,7 +79,7 @@ pub fn handle_scroll_events(
                             }
                         }
                     }
-                }
+                }*/
 
                 if let Some(app_id) = target_app {
                     state.cycle_window_for_app(&app_id, scroll_val < 0.0);

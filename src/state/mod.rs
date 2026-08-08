@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::Instant;
 
-use dockman_lib::animations::IconAnimation;
+use crate::animations::IconAnimation;
 
 use smithay_client_toolkit::{
     compositor::CompositorState,
@@ -31,11 +31,14 @@ use crate::models::{BadgeUpdate, WindowDiagnostics};
 use crate::render::font::FontManager;
 
 use crate::app::icon_load::IconLoader;
-use crate::app::types::{DndState, DockInstance, HoverState, InteractionState, MenuState};
+use crate::types::{
+	DndState, DockInstance, HoverState, InteractionState, MenuState, WindowListState,
+};
 
 pub(crate) mod dock;
+pub mod draw;
 mod interaction;
-mod window;
+mod popup;
 
 pub struct IconLoadResult {
     pub app_id: String,
@@ -50,6 +53,7 @@ pub struct AppState {
     pub registry_state: RegistryState,
     pub compositor_state: CompositorState,
     pub output_state: OutputState,
+    pub qh: smithay_client_toolkit::reexports::client::QueueHandle<AppState>,
     pub layer_shell: LayerShell,
     pub shm_state: Shm,
     pub pool: SlotPool,
@@ -69,7 +73,6 @@ pub struct AppState {
     pub interaction: InteractionState,
     pub open_windows: HashMap<ObjectId, WindowDiagnostics>,
     pub pinned_apps: Vec<String>,
-    pub menu_state: MenuState,
     pub hover_state: HoverState,
     pub last_interact_time: std::time::Instant,
     pub needs_redraw: bool,
@@ -111,6 +114,9 @@ pub struct AppState {
     // Focus check
     pub focus_action_performed: bool,
     pub focus_action_time: Option<Instant>,
+    // Popups
+    pub window_list_state: WindowListState,
+    pub menu_state: MenuState,
 }
 
 /// Generates a blank/generic 48x48 RGBA fallback icon when an icon cannot be found anywhere
