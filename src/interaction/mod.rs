@@ -38,7 +38,7 @@ pub fn update(
     // Delay in milliseconds before the dock initiates its hide
     let dock_time_delay_ms: u64 = 500;
     // ----------
-    
+
     let mut layer_changed = false;
     let cursor_moved = state.menu_state.cursor_moved;
 

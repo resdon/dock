@@ -34,7 +34,7 @@ impl FadeAnimation {
             self.last_update = Instant::now();
         }
     }
-    
+
     pub fn show_with_duration(&mut self, duration_secs: f32) {
         self.duration_secs = duration_secs;
         self.show();
