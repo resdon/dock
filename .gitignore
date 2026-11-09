@@ -1,0 +1,48 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+
+# IDE files
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Config files (user-specific)
+!.config/
+.config/dock/pins.json
+.config/dock/config.json
+.config/dock/pipewire_restore_token
+
+# Temporary files
+/tmp/
+*.tmp
+*.log
+
+# Chooser script temp files
+chooser-selected-title.txt
+chooser-index.txt
+
+# GIF/video files
+*.gif
+*.mp4
+*.webm
+
+# Package manager
+*.pkg.tar.zst
+*.pkg.tar.xz
+
+# Slint generated files
+slint-generated/
+
+# Font cache
+.cache/dock/

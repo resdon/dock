@@ -1,0 +1,364 @@
+struct DockItem {
+    name: string,
+    icon: image,
+    running: bool,
+    loading: bool,
+    badge_count: int,
+    badge_color: string,
+    window_count: int,
+    app_id: int,
+    index_on_dock: int,
+    focused: bool,
+    open_animation: bool,
+    pinned: bool,
+    minimized: bool,
+    is_hovered: bool,
+    is_dragging: bool,
+    /// Horizontal offset for sliding animation during drag (in pixels)
+    offset_x: float,
+    /// Combined animation scale factor (1.0 = normal, up to 1.25 = 25% larger), computed in Rust
+    /// This includes both click animation and bounce animation
+    anim_scale: float,
+    /// Scaled icon width (icon_size * anim_scale), computed in Rust
+    icon_width: float,
+    /// Scaled icon height (icon_size * anim_scale), computed in Rust
+    icon_height: float,
+    /// Scaled icon X offset to keep centered, computed in Rust
+    icon_x: float,
+    /// Scaled icon Y offset to keep centered, computed in Rust
+    icon_y: float,
+}
+
+export component DockWidget inherits Window {
+    in property <int> dock_width: 520;
+    in property <int> dock_height: 60;
+    
+    width: root.dock_width * 1px;
+    height: root.dock_height * 1px;
+    title: "";
+    background: transparent;
+
+    in property <[DockItem]> dock_items: [];
+    
+    in property <int> icon_size: 48;
+    in property <int> item_spacing: 8;
+    
+    // Configurable colors and settings
+    in property <brush> hover_color: #00E5FF;
+    in property <brush> dash_focused_color: #00E5FF;
+    in property <brush> dash_inactive_color: #9CA3AF;
+    in property <bool> hover_highlight: false;
+    in property <bool> click_animation: true;
+    in property <bool> bounce_animation: true;
+    in property <brush> background_color: #1D1C22;
+    in property <brush> border_color: #4C4954;
+
+    // Background
+    Rectangle {
+        width: root.dock_width * 1px;
+        height: root.dock_height * 1px;
+        background: #00000000;
+
+        // Main dock container - fills the entire width
+        dock_bg := Rectangle {
+            x: 0px;
+            y: 0px;
+            width: root.dock_width * 1px;
+            height: root.dock_height * 1px;
+            background: root.background_color;
+            border-color: root.border_color;
+            border-width: 1px;
+
+            // Dock items container - centered horizontally within dock_bg
+            // Matches the Rust layout: app_row_width = count * (48+8) - 8, padding = 12px each side
+            items_container := Rectangle {
+                x: 12px;
+                y: 0px;
+                width: root.dock_items.length * (root.icon_size * 1px + root.item_spacing * 1px) - root.item_spacing * 1px;
+                height: root.dock_height * 1px;
+                background: transparent;
+
+                // Icons centered vertically: 60px height - 48px icon = 12px, so 6px top/bottom padding
+                // Dashes sit on bottom border: y = 58px (58 + 2px height = 60px bottom edge)
+                for item[idx] in root.dock_items : item_touch := TouchArea {
+                        x: idx * (root.icon_size * 1px + root.item_spacing * 1px) + item.offset_x * 1px;
+                        y: 0px;
+                        width: root.icon_size * 1px;
+                        height: root.dock_height * 1px;
+
+
+                        // Icon image - size and position controlled by Rust via anim_scale
+                        // Outline layer - slightly larger colorized image behind original for hover highlight
+                        icon_outline := Image {
+                            x: item.icon_x * 1px - 2px;
+                            y: item.icon_y * 1px + 4px - 2px;
+                            width: (item.icon_width + 4) * 1px;
+                            height: (item.icon_height + 4) * 1px;
+                            source: item.icon;
+                            colorize: root.hover_color;
+                            visible: false;
+                        }
+
+                        // Main icon image (hidden when dragging — ghost follows cursor instead)
+                        icon_main := Image {
+                            x: item.icon_x * 1px;
+                            y: item.icon_y * 1px;
+                            width: item.icon_width * 1px;
+                            height: item.icon_height * 1px;
+                            source: item.icon;
+                            visible: !item.is_dragging;
+                        }
+                        
+                        // Badge (notification count)
+                        badge := Rectangle {
+                            x: root.icon_size * 1px - 14px;
+                            y: 0px;
+                            width: 14px;
+                            height: 14px;
+                            background: #dc2626;
+                            border-radius: 7px;
+                            visible: item.badge_count > 0;
+
+                            Text {
+                                x: 1px;
+                                y: 1px;
+                                text: item.badge_count > 9 ? "9+" : "";
+                                color: white;
+                                font-size: 8px;
+                            }
+                        }
+
+                        // Fixed total dash span: 32px centered (8px padding each side within 48px icon)
+                        // Gap between dashes: 3px
+                        // 1 window:  1 dash,  32px wide  (x: 8)
+                        // 2 windows: 2 dashes, 14.5px each + 3px gap = 32px (x: 8, 25.5)
+                        // 3 windows: 3 dashes, 8.67px each + 2x3px gap = 32px (x: 8, 19.67, 31.33)
+                        // 4 windows: 4 dashes, 6.25px each + 3x3px gap = 32px (x: 8, 17.25, 26.5, 35.75)
+                        // 5 windows: 5 dashes, 4.8px each + 4x3px gap = 32px (x: 8, 15.8, 23.6, 31.4, 39.2)
+
+                        // Underscore 1 - always starts at x=8
+                        uscore1 := Rectangle {
+                            x: 8px;
+                            y: 58px;
+                            width: 32px;
+                            height: 2px;
+                            background: #9CA3AF;
+                            visible: false;
+                            states [
+                                focused_two when (item.window_count == 2) && item.focused: {
+                                    uscore1.background: root.dash_focused_color;
+                                    uscore1.width: 14.5px;
+                                    uscore1.visible: true;
+                                }
+                                focused_three when (item.window_count == 3) && item.focused: {
+                                    uscore1.background: root.dash_focused_color;
+                                    uscore1.width: 8.67px;
+                                    uscore1.visible: true;
+                                }
+                                focused_four when (item.window_count == 4) && item.focused: {
+                                    uscore1.background: root.dash_focused_color;
+                                    uscore1.width: 6.25px;
+                                    uscore1.visible: true;
+                                }
+                                focused_five when (item.window_count == 5) && item.focused: {
+                                    uscore1.background: root.dash_focused_color;
+                                    uscore1.width: 4.8px;
+                                    uscore1.visible: true;
+                                }
+                                focused_one when (item.window_count == 1) && item.focused: {
+                                    uscore1.background: root.dash_focused_color;
+                                    uscore1.width: 32px;
+                                    uscore1.visible: true;
+                                }
+                                two when item.window_count == 2: {
+                                    uscore1.background: root.dash_inactive_color;
+                                    uscore1.width: 14.5px;
+                                    uscore1.visible: true;
+                                }
+                                three when item.window_count == 3: {
+                                    uscore1.background: root.dash_inactive_color;
+                                    uscore1.width: 8.67px;
+                                    uscore1.visible: true;
+                                }
+                                four when item.window_count == 4: {
+                                    uscore1.background: root.dash_inactive_color;
+                                    uscore1.width: 6.25px;
+                                    uscore1.visible: true;
+                                }
+                                five when item.window_count == 5: {
+                                    uscore1.background: root.dash_inactive_color;
+                                    uscore1.width: 4.8px;
+                                    uscore1.visible: true;
+                                }
+                                visible when item.window_count >= 1: {
+                                    uscore1.visible: true;
+                                }
+                            ]
+                        }
+
+                        // Underscore 2
+                        uscore2 := Rectangle {
+                            x: 25.5px;
+                            y: 58px;
+                            width: 14.5px;
+                            height: 2px;
+                            background: root.dash_inactive_color;
+                            visible: false;
+                            states [
+                                focused_three when (item.window_count == 3) && item.focused: {
+                                    uscore2.background: root.dash_focused_color;
+                                    uscore2.x: 19.67px;
+                                    uscore2.width: 8.67px;
+                                    uscore2.visible: true;
+                                }
+                                focused_four when (item.window_count == 4) && item.focused: {
+                                    uscore2.background: root.dash_focused_color;
+                                    uscore2.x: 17.25px;
+                                    uscore2.width: 6.25px;
+                                    uscore2.visible: true;
+                                }
+                                focused_five when (item.window_count == 5) && item.focused: {
+                                    uscore2.background: root.dash_focused_color;
+                                    uscore2.x: 15.8px;
+                                    uscore2.width: 4.8px;
+                                    uscore2.visible: true;
+                                }
+                                focused_two when (item.window_count == 2) && item.focused: {
+                                    uscore2.background: root.dash_focused_color;
+                                    uscore2.x: 25.5px;
+                                    uscore2.width: 14.5px;
+                                    uscore2.visible: true;
+                                }
+                                three when item.window_count == 3: {
+                                    uscore2.background: root.dash_inactive_color;
+                                    uscore2.x: 19.67px;
+                                    uscore2.width: 8.67px;
+                                    uscore2.visible: true;
+                                }
+                                four when item.window_count == 4: {
+                                    uscore2.background: root.dash_inactive_color;
+                                    uscore2.x: 17.25px;
+                                    uscore2.width: 6.25px;
+                                    uscore2.visible: true;
+                                }
+                                five when item.window_count == 5: {
+                                    uscore2.background: root.dash_inactive_color;
+                                    uscore2.x: 15.8px;
+                                    uscore2.width: 4.8px;
+                                    uscore2.visible: true;
+                                }
+                                visible when item.window_count >= 2: {
+                                    uscore2.visible: true;
+                                }
+                            ]
+                        }
+
+                        // Underscore 3
+                        uscore3 := Rectangle {
+                            x: 31.33px;
+                            y: 58px;
+                            width: 8.67px;
+                            height: 2px;
+                            background: root.dash_inactive_color;
+                            visible: false;
+                            states [
+                                focused_four when (item.window_count == 4) && item.focused: {
+                                    uscore3.background: root.dash_focused_color;
+                                    uscore3.x: 26.5px;
+                                    uscore3.width: 6.25px;
+                                    uscore3.visible: true;
+                                }
+                                focused_five when (item.window_count == 5) && item.focused: {
+                                    uscore3.background: root.dash_focused_color;
+                                    uscore3.x: 23.6px;
+                                    uscore3.width: 4.8px;
+                                    uscore3.visible: true;
+                                }
+                                focused_three when (item.window_count == 3) && item.focused: {
+                                    uscore3.background: root.dash_focused_color;
+                                    uscore3.x: 31.33px;
+                                    uscore3.width: 8.67px;
+                                    uscore3.visible: true;
+                                }
+                                four when item.window_count == 4: {
+                                    uscore3.background: root.dash_inactive_color;
+                                    uscore3.x: 26.5px;
+                                    uscore3.width: 6.25px;
+                                    uscore3.visible: true;
+                                }
+                                five when item.window_count == 5: {
+                                    uscore3.background: root.dash_inactive_color;
+                                    uscore3.x: 23.6px;
+                                    uscore3.width: 4.8px;
+                                    uscore3.visible: true;
+                                }
+                                visible when item.window_count >= 3: {
+                                    uscore3.visible: true;
+                                }
+                            ]
+                        }
+
+                        // Underscore 4
+                        uscore4 := Rectangle {
+                            x: 35.75px;
+                            y: 58px;
+                            width: 6.25px;
+                            height: 2px;
+                            background: root.dash_inactive_color;
+                            visible: false;
+                            states [
+                                focused_five when (item.window_count == 5) && item.focused: {
+                                    uscore4.background: root.dash_focused_color;
+                                    uscore4.x: 31.4px;
+                                    uscore4.width: 4.8px;
+                                    uscore4.visible: true;
+                                }
+                                focused_four when (item.window_count == 4) && item.focused: {
+                                    uscore4.background: root.dash_focused_color;
+                                    uscore4.x: 35.75px;
+                                    uscore4.width: 6.25px;
+                                    uscore4.visible: true;
+                                }
+                                five when item.window_count == 5: {
+                                    uscore4.background: root.dash_inactive_color;
+                                    uscore4.x: 31.4px;
+                                    uscore4.width: 4.8px;
+                                    uscore4.visible: true;
+                                }
+                                visible when item.window_count >= 4: {
+                                    uscore4.visible: true;
+                                }
+                            ]
+                        }
+
+                        // Underscore 5
+                        uscore5 := Rectangle {
+                            x: 39.2px;
+                            y: 58px;
+                            width: 4.8px;
+                            height: 2px;
+                            background: root.dash_inactive_color;
+                            visible: false;
+                            states [
+                                focused_five when (item.window_count == 5) && item.focused: {
+                                    uscore5.background: root.dash_focused_color;
+                                    uscore5.x: 39.2px;
+                                    uscore5.width: 4.8px;
+                                    uscore5.visible: true;
+                                }
+                                visible when item.window_count >= 5: {
+                                    uscore5.visible: true;
+                                }
+                            ]
+                        }
+                        
+                        states [
+                            hover when item.is_hovered && root.hover_highlight: {
+                                icon_outline.visible: true;
+                            }
+                        ]
+                    }
+            }
+        }
+    }
+}

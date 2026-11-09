@@ -1,0 +1,302 @@
+//! Font management and glyph rendering.
+//!
+//! Memory-maps TTF files and rasterizes individual glyphs to pixel buffers.
+
+use fontdue::{Font, FontSettings};
+use memmap2::Mmap;
+use std::collections::HashMap;
+use std::fs::{self, File};
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+pub struct CachedGlyph {
+    pub bitmap: Vec<u8>,
+    pub metrics: fontdue::Metrics,
+}
+
+pub struct FontManager {
+    primary_font: Font,
+    _primary_mmap: Option<Mmap>,
+    cache_dir: PathBuf,
+    cache: HashMap<(char, u32), CachedGlyph>,
+}
+
+impl FontManager {
+    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
+        let file = File::open(&path)?;
+        let mmap = unsafe { Mmap::map(&file)? };
+        let primary_font = Font::from_bytes(&mmap[..], FontSettings::default())
+            .map_err(|e| format!("Failed to parse font: {e}"))?;
+
+        let cache_dir = dirs::cache_dir()
+            .unwrap_or_else(|| PathBuf::from("/tmp"))
+            .join("dock/glyphs");
+        let _ = fs::create_dir_all(&cache_dir);
+
+
+        Ok(Self {
+            primary_font,
+            _primary_mmap: Some(mmap),
+            cache_dir,
+            cache: HashMap::new(),
+        })
+    }
+
+    pub fn new(font_data: &[u8]) -> Self {
+        let font = Font::from_bytes(font_data, FontSettings::default()).expect("Invalid font data");
+        let cache_dir = dirs::cache_dir()
+            .unwrap_or_else(|| PathBuf::from("/tmp"))
+            .join("dock/glyphs");
+        let _ = fs::create_dir_all(&cache_dir);
+
+        Self {
+            primary_font: font,
+            _primary_mmap: None,
+            cache_dir,
+            cache: HashMap::new(),
+        }
+    }
+
+    pub fn get_font(&self, _character: char) -> &Font {
+        &self.primary_font
+    }
+
+    fn save_glyph_bin(
+        path: &Path,
+        metrics: &fontdue::Metrics,
+        bitmap: &[u8],
+    ) -> std::io::Result<()> {
+        let mut file = File::create(path)?;
+        file.write_all(&(metrics.width as u32).to_le_bytes())?;
+        file.write_all(&(metrics.height as u32).to_le_bytes())?;
+        file.write_all(&metrics.xmin.to_le_bytes())?;
+        file.write_all(&metrics.ymin.to_le_bytes())?;
+        file.write_all(&metrics.advance_width.to_le_bytes())?;
+        file.write_all(&metrics.advance_height.to_le_bytes())?;
+        file.write_all(bitmap)?;
+
+        Ok(())
+    }
+
+    fn load_glyph_bin(&self, path: &Path, size: f32) -> Option<CachedGlyph> {
+        let mut file = File::open(path).ok()?;
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf).ok()?;
+
+        if buf.len() < 24 {
+            return None;
+        }
+
+        let width = u32::from_le_bytes(buf[0..4].try_into().ok()?) as usize;
+        let height = u32::from_le_bytes(buf[4..8].try_into().ok()?) as usize;
+        let xmin = i32::from_le_bytes(buf[8..12].try_into().ok()?);
+        let ymin = i32::from_le_bytes(buf[12..16].try_into().ok()?);
+        let advance_width = f32::from_le_bytes(buf[16..20].try_into().ok()?);
+        let advance_height = f32::from_le_bytes(buf[20..24].try_into().ok()?);
+        let bitmap = buf[24..].to_vec();
+
+        let (mut metrics, _) = self.primary_font.rasterize(' ', size);
+        metrics.width = width;
+        metrics.height = height;
+        metrics.xmin = xmin;
+        metrics.ymin = ymin;
+        metrics.advance_width = advance_width;
+        metrics.advance_height = advance_height;
+
+        Some(CachedGlyph { bitmap, metrics })
+    }
+
+    fn find_system_font_path_for_char(character: char) -> Option<PathBuf> {
+        let lang = Self::char_to_lang(character);
+        let pattern = format!(":lang={}", lang);
+
+        let output = Command::new("fc-match")
+            .arg(&pattern)
+            .arg("-f")
+            .arg("%{file}")
+            .output();
+
+        match output {
+            Ok(out) if out.status.success() => {
+                let path_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !path_str.is_empty() {
+                    let path = PathBuf::from(&path_str);
+                    if path.exists() {
+                        return Some(path);
+                    }
+                }
+            }
+            Ok(out) => {
+            }
+            Err(e) => {
+            }
+        }
+        None
+    }
+
+    fn char_to_lang(c: char) -> &'static str {
+        match c as u32 {
+            0x4E00..=0x9FFF | 0x3400..=0x4DBF => "zh",
+            0x3040..=0x30FF => "ja",
+            0xAC00..=0xD7AF | 0x1100..=0x11FF => "ko",
+            _ => "en",
+        }
+    }
+
+    /// Rasterize one fallback glyph without retaining entire fallback font
+    /// collections. The former cache stored up to eight parsed font faces per
+    /// file; on CJK TTC files that could consume hundreds of megabytes even
+    /// though the dock only needed one small glyph. Each face is now parsed,
+    /// queried, rasterized if needed, and dropped before trying the next face.
+    fn rasterize_glyph_from_path(
+        path: &Path,
+        character: char,
+        size: f32,
+    ) -> Option<(fontdue::Metrics, Vec<u8>)> {
+        let file = File::open(path).ok()?;
+        let mmap = unsafe { Mmap::map(&file).ok()? };
+
+        for collection_index in 0..8 {
+            let settings = FontSettings {
+                collection_index,
+                ..FontSettings::default()
+            };
+            let font = match Font::from_bytes(&mmap[..], settings) {
+                Ok(font) => font,
+                Err(_) => break,
+            };
+
+            if font.lookup_glyph_index(character) == 0 {
+                continue;
+            }
+
+            let (metrics, bitmap) = font.rasterize(character, size);
+            if metrics.width > 0 && metrics.height > 0 && !bitmap.is_empty() {
+                return Some((metrics, bitmap));
+            }
+        }
+
+        None
+    }
+
+    fn extract_single_glyph(&mut self, character: char, size: f32) -> Option<CachedGlyph> {
+        let bin_path = self
+            .cache_dir
+            .join(format!("{:x}_{}.bin", character as u32, size as u32));
+
+        if bin_path.exists() {
+            if let Some(glyph) = self.load_glyph_bin(&bin_path, size) {
+                return Some(glyph);
+            }
+        }
+
+        let mut candidate_paths = Vec::new();
+
+        if let Some(fc_path) = Self::find_system_font_path_for_char(character) {
+            candidate_paths.push(fc_path);
+        }
+
+        candidate_paths.extend(vec![
+            PathBuf::from("/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc"),
+            PathBuf::from("/usr/share/fonts/wenquanyi/wqy-microhei/wqy-microhei.ttc"),
+            PathBuf::from("/usr/share/fonts/TTF/unifont.ttf"),
+            PathBuf::from("/usr/share/fonts/TTF/DejaVuSans.ttf"),
+        ]);
+
+        for path in candidate_paths {
+            if !path.exists() {
+                continue;
+            }
+
+            if let Some((metrics, bitmap)) = Self::rasterize_glyph_from_path(&path, character, size)
+            {
+                let _ = Self::save_glyph_bin(&bin_path, &metrics, &bitmap);
+
+                let (mut base_metrics, _) = self.primary_font.rasterize(' ', size);
+                base_metrics.width = metrics.width;
+                base_metrics.height = metrics.height;
+                base_metrics.xmin = metrics.xmin;
+                base_metrics.ymin = metrics.ymin;
+                base_metrics.advance_width = metrics.advance_width;
+                base_metrics.advance_height = metrics.advance_height;
+
+                return Some(CachedGlyph {
+                    bitmap,
+                    metrics: base_metrics,
+                });
+            }
+        }
+
+        None
+    }
+
+    pub fn get_glyph(&mut self, character: char, size: f32) -> &CachedGlyph {
+        let key = (character, size as u32);
+
+        if !self.cache.contains_key(&key) {
+            let primary_glyph_idx = self.primary_font.lookup_glyph_index(character);
+
+            let mut valid_primary = false;
+            let mut primary_res = None;
+
+            if primary_glyph_idx > 0 {
+                let (metrics, bitmap) = self.primary_font.rasterize(character, size);
+
+                // Whitespace glyphs (especially U+0020) legitimately have no
+                // bitmap but do have advance metrics. Treat them as valid so
+                // FontManager does not invoke fc-match/fallback font discovery
+                // for every space character.
+                if !bitmap.is_empty()
+                    || metrics.advance_width > 0.0
+                    || (metrics.width == 0 && metrics.height == 0 && character.is_whitespace())
+                {
+                    valid_primary = true;
+                    primary_res = Some(CachedGlyph { bitmap, metrics });
+                }
+            }
+
+            // Only use fallback font discovery for ASCII/printable characters.
+            // For CJK, emoji, and other complex scripts, skip the expensive
+            // fc-match subprocess and TTC file parsing to avoid blocking the
+            // main render thread. Draw a tofu placeholder instead.
+            let cached_glyph = if valid_primary {
+                primary_res.unwrap()
+            } else if (character as u32) < 0x80 {
+                // ASCII missing from primary font — try fallback
+                if let Some(glyph) = self.extract_single_glyph(character, size) {
+                    glyph
+                } else {
+                    let (metrics, bitmap) = self.primary_font.rasterize(character, size);
+                    CachedGlyph { bitmap, metrics }
+                }
+            } else {
+                // Non-ASCII character not in primary font: draw a tofu box
+                // instead of blocking on fc-match + CJK TTC parsing.
+                let (metrics, _) = self.primary_font.rasterize('W', size);
+                let w = metrics.width.max(8);
+                let h = metrics.height.max(8);
+                let mut bitmap = vec![0u8; (w * h) as usize];
+                // Draw a simple rectangle outline (tofu)
+                for y in 0..h {
+                    for x in 0..w {
+                        let is_border = y == 0 || y == h - 1 || x == 0 || x == w - 1;
+                        if is_border {
+                            bitmap[(y * w + x) as usize] = 255;
+                        }
+                    }
+                }
+                CachedGlyph { bitmap, metrics }
+            };
+
+            self.cache.insert(key, cached_glyph);
+        }
+
+        self.cache.get(&key).unwrap()
+    }
+
+    pub fn clear_cache(&mut self) {
+        self.cache.clear();
+        self.cache.shrink_to_fit();
+    }
+}
