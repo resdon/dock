@@ -61,7 +61,11 @@ pub struct AppContext {
     pub tray_rx: tokio::sync::mpsc::UnboundedReceiver<crate::models::TraySnapshot>,
     /// Receiver for system bar snapshots (clock, keyboard, network rates)
     pub system_bar_rx: std::sync::mpsc::Receiver<crate::models::SystemBarSnapshot>,
-    /// Receiver for audio player snapshots (PipeWire/WirePlumber)
+    /// Receiver for audio player snapshots (PipeWire/WirePlumber via wpctl).
+    ///
+    /// The audio monitor thread (`dock-pipewire-audio`) polls `wpctl status`
+    /// every 1.5s and sends snapshots only when they change. The main loop
+    /// consumes these snapshots and triggers sidecar-only redraws.
     pub audio_rx: std::sync::mpsc::Receiver<crate::models::AudioSnapshot>,
     /// Receiver for Bluetooth device snapshots (BlueZ D-Bus)
     pub bluetooth_rx: std::sync::mpsc::Receiver<crate::models::BluetoothSnapshot>,
@@ -128,8 +132,10 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
     let (system_bar_tx, system_bar_rx) = std::sync::mpsc::channel();
     crate::app::system_bar::spawn_system_bar_monitor(system_bar_tx);
 
-    // PipeWire/WirePlumber integration is isolated from the Wayland thread.
-    // `wpctl` runs in the monitor worker; the render path only reads snapshots.
+    // PipeWire/WirePlumber audio integration is isolated from the Wayland thread.
+    // `wpctl` and `playerctl` run in the dedicated monitor worker thread;
+    // the render path only reads snapshots from the channel, never blocks on I/O.
+    // Audio actions (volume/mute) flow in the opposite direction via audio_action_tx.
     let (audio_tx, audio_rx) = std::sync::mpsc::channel();
     let (audio_action_tx, audio_action_rx) = std::sync::mpsc::channel();
     crate::app::audio::spawn_audio_monitor(audio_tx, audio_action_rx);

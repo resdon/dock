@@ -58,19 +58,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Initialize PipeWire window capture service (list-widget integration)
+    // Initialize PipeWire window capture service for the window list popup.
+    //
+    // The service captures live video frames from all open Wayland windows via
+    // XDG Desktop Portal. Each window gets a dedicated stream thread that
+    // continuously receives video buffers. The capture runs in the background
+    // so the dock shows immediately even when the portal is slow to respond.
+    //
+    // Two tokio tasks are spawned:
+    // 1. `init_capture_service` — one-time capture of all windows on startup
+    // 2. `start_monitor_inner` — background monitor that adds/removes streams
+    //    when windows open/close (reacts to probe_signal notifications)
     let pipewire_service = std::sync::Arc::new(
         library::services::pipewire_capture::PipewireCaptureService::new()
     );
-    let pw_service_init = pipewire_service.clone();
+    pipewire_service.set_scale_factor(state.config.pipewire_scale_factor);
     let max_windows = 20;
     let (connection, desktop) = rt.block_on(async {
         use zbus::Proxy;
         let connection = match zbus::Connection::session().await {
             Ok(c) => c,
-            Err(e) => {
-                return (None, None);
-            }
+            Err(_e) => return (None, None),
         };
         let desktop = match Proxy::new(
             &connection,
@@ -79,18 +87,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "org.freedesktop.portal.ScreenCast",
         ).await {
             Ok(d) => d,
-            Err(e) => {
-                return (None, None);
-            }
+            Err(_e) => return (None, None),
         };
-        let _ = library::services::pipewire_capture::init_capture_service(&pw_service_init, &connection, &desktop, max_windows).await;
         (Some(connection), Some(desktop))
     });
+    // Store the service in AppState so the render thread can access frames.
     state.pipewire_capture = Some(pipewire_service.clone());
 
-    // Start background monitor for dynamic window detection
-    // Must be spawned inside the tokio runtime context
+    // Start PipeWire capture and monitor in the background.
+    // `init_capture_service` captures all windows once on startup.
+    // `start_monitor_inner` runs indefinitely, reacting to window create/destroy events.
     if let (Some(conn), Some(dsk)) = (connection, desktop) {
+        let init_service = pipewire_service.clone();
+        let init_conn = conn.clone();
+        let init_dsk = dsk.clone();
+        rt.spawn(async move {
+            let _ = library::services::pipewire_capture::init_capture_service(&init_service, &init_conn, &init_dsk, max_windows).await;
+        });
         let monitor_service = pipewire_service.clone();
         rt.spawn(async move {
             library::services::pipewire_capture::start_monitor_inner(&monitor_service, conn, dsk, max_windows).await;

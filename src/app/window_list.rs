@@ -1,7 +1,22 @@
-//! Window list popup geometry and data.
+//! # Window List Popup
 //!
-//! Calculates popup dimensions, matches windows to PipeWire streams,
-//! and provides the data for rendering the window list popup.
+//! Calculates popup dimensions, matches Wayland windows to PipeWire capture
+//! streams, and provides the data for rendering the window list popup.
+//!
+//! ## Window-to-Stream Matching
+//!
+//! Each Wayland window is matched to a PipeWire capture stream so the popup
+//! can show a live thumbnail. The matching strategy (in priority order):
+//!
+//! 1. **Persistent binding registry**: if the window ID has a bound stream
+//!    index, use it directly (fastest, most reliable)
+//! 2. **Window ID scan**: scan all streams for a matching `window_id` field
+//! 3. **Title matching**: multi-strategy title comparison (exact, partial,
+//!    prefix, word-based) as a last resort
+//!
+//! A `used_streams` set tracks already-assigned streams so two windows from
+//! the same app don't both map to the same stream. This ensures each
+//! PipeWire stream is assigned to at most one Wayland window.
 
 use smithay_client_toolkit::{
     compositor::CompositorState, shell::WaylandSurface, shm::slot::SlotPool,
@@ -68,23 +83,42 @@ pub fn draw_window_list_popup(
             let matched_windows: Vec<(WindowState, Option<usize>)> = if !app_windows.is_empty() {
                 pipewire_capture
                     .map(|service| {
-                        let mut matched: Vec<(WindowState, Option<usize>)> = app_windows
-                            .iter()
-                            .map(|w| {
-                                let window_id = w.id.0.protocol_id();
-                                let stream_idx = if w.title.is_empty() {
-                                    None
+                        // Track which streams have already been assigned to prevent
+                        // multiple windows from matching the same PipeWire stream.
+                        let mut used_streams: Vec<usize> = Vec::new();
+
+                        let mut matched: Vec<(WindowState, Option<usize>)> = Vec::with_capacity(app_windows.len());
+                        for w in &app_windows {
+                            let window_id = w.id.0.protocol_id();
+                            let stream_idx = if w.title.is_empty() {
+                                None
+                            } else {
+                                // Primary: check persistent binding registry
+                                // Once a stream is tied to a window, it stays tied
+                                let bound = service.get_bound_stream(window_id);
+                                if let Some(b) = bound {
+                                    if !used_streams.contains(&b) {
+                                        Some(b)
+                                    } else {
+                                        // Bound stream already used by another window,
+                                        // fall back to title match
+                                        service.find_stream_by_title(&w.title, &used_streams)
+                                    }
                                 } else {
-                                    // Primary: check persistent binding registry
-                                    // Once a stream is tied to a window, it stays tied
-                                    service.get_bound_stream(window_id).or_else(|| {
-                                        // Secondary: fall back to title match for unbound windows
-                                        service.find_stream_by_title(&w.title, &[])
-                                    })
-                                };
-                                ((*w).clone(), stream_idx)
-                            })
-                            .collect();
+                                    // No binding yet, fall back to title match
+                                    service.find_stream_by_title(&w.title, &used_streams)
+                                }
+                            };
+
+                            eprintln!("[WINDOW_LIST] Match: title='{}' window_id={} -> stream_idx={:?}",
+                                w.title, window_id, stream_idx);
+
+                            // Mark this stream as used so the next window can't claim it
+                            if let Some(idx) = stream_idx {
+                                used_streams.push(idx);
+                            }
+                            matched.push(((*w).clone(), stream_idx));
+                        }
 
                         // Third pass: if multiple windows share the same title and one has
                         // a stream, the others can share it (e.g., 3 pcmanfm "dock" windows
@@ -330,7 +364,13 @@ pub fn draw_window_list_popup(
                             && (hovered_item as usize) < matched_windows.len()
                         {
                             let stream_idx = matched_windows[hovered_item as usize].1.unwrap();
+                            eprintln!("[WINDOW_LIST] hovered_item={}, stream_idx={}, local_ptr_y={}, frame_logical_h={}, item_h={}, item_count={}",
+                                hovered_item, stream_idx, local_ptr_y, frame_logical_h, item_h, item_count_usize);
                             service.set_active_row(stream_idx);
+                        } else {
+                            eprintln!("[WINDOW_LIST] Skipping set_active_row: has_valid={}, use_matched={}, in_bounds={}, hovered_item={}, local_ptr_y={}, frame_logical_h={}",
+                                has_valid_stream, use_matched, (hovered_item as usize) < matched_windows.len(),
+                                hovered_item, local_ptr_y, frame_logical_h);
                         }
                     }
 
@@ -338,7 +378,7 @@ pub fn draw_window_list_popup(
                     // Only show frame data if the hovered row has a valid PipeWire stream match.
                     let capture_frame_data = if has_valid_stream {
                         pipewire_capture.and_then(|service| {
-                            let row = *service.active_row.lock().unwrap();
+                            let row = *service.active_row.lock();
                             let (orig_w, orig_h) = service.get_stream_dimensions(row)
                                 .unwrap_or((0, 0));
                             service.get_active_frame().map(|(w, h, rgba)| {
@@ -360,7 +400,7 @@ pub fn draw_window_list_popup(
                     let windows_refs: Vec<&WindowState> = windows.iter().collect();
                     // Get the active row index for blue highlight on the active stream's row
                     let active_row_idx = pipewire_capture.as_ref().map_or(0, |service| {
-                        *service.active_row.lock().unwrap()
+                        *service.active_row.lock()
                     });
                     // Map stream index to window row index: find which matched window
                     // owns the active stream

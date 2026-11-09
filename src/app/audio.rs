@@ -1,6 +1,49 @@
-//! Audio monitor service.
+//! # Audio Monitor Service
 //!
-//! Monitors PipeWire/WirePlumber for audio player state changes via wpctl.
+//! Monitors PipeWire/WirePlumber for audio device and media player state changes.
+//!
+//! Unlike the window capture service, this module uses CLI tools rather than direct
+//! PipeWire API bindings, because audio mixing is event-driven with infrequent
+//! changes — CLI tools are simpler and more stable across WirePlumber versions.
+//!
+//! ## Architecture
+//!
+//! ```text
+//!  ┌──────────────┐     channel      ┌──────────────────┐
+//!  │  Dock UI     │ ◄─────────────── │ Audio Monitor     │
+//!  │  (main loop) │   AudioSnapshot  │ Thread            │
+//!  └──────┬───────┘                  └─────────┬────────┘
+//!         │                                     │
+//!         │  AudioAction                        │  wpctl status -n
+//!         │  (volume/mute)                      │  wpctl list audio sinks/sources
+//!         ▼                                     │  playerctl status/metadata
+//!  ┌──────────────┐                            ▼
+//!  │ User Input   │                  ┌──────────────────┐
+//!  │ (slider/click)│                 │ wpctl / playerctl │
+//!  └──────────────┘                  │ (subprocesses)    │
+//!                                    └──────────────────┘
+//! ```
+//!
+//! ## What it monitors
+//!
+//! - **Output devices** (sinks): volume, mute state, default marker
+//! - **Input devices** (sources): volume, mute state, default marker
+//! - **Active audio streams** (up to 3): per-stream volume and mute
+//! - **MPRIS media players**: status, metadata (artist, title, duration), position
+//!
+//! ## User actions supported
+//!
+//! - Set output/input/stream volume (0.0–1.0, with `--limit 1.0`)
+//! - Toggle mute on any device or stream
+//! - Change default output/input device
+//! - Launch `pavucontrol` for advanced mixing
+//! - Media controls: previous, play/pause, next
+//!
+//! ## Dependencies
+//!
+//! - `wpctl` (WirePlumber CLI) — queries and controls PipeWire nodes
+//! - `playerctl` (MPRIS controller) — media player status and controls
+//! - `pavucontrol` (optional) — advanced volume control GUI
 
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
@@ -9,7 +52,18 @@ use std::time::{Duration, Instant};
 
 use crate::models::{AudioAction, AudioDevice, AudioSnapshot, AudioStream};
 
-/// Runs all PipeWire/WirePlumber CLI calls off the Wayland/render thread.
+/// Spawn the audio monitor thread.
+///
+/// Runs all PipeWire/WirePlumber CLI calls (`wpctl`, `playerctl`) off the
+/// Wayland/render thread so subprocess spawning never blocks rendering.
+///
+/// The monitor thread operates in two modes:
+/// 1. **Polling**: runs `wpctl status -n` every 1.5s to detect external changes
+///    (e.g., another app changing volume). Snapshots are sent only when they change.
+/// 2. **Action processing**: receives `AudioAction` commands from the UI (volume
+///    slider, mute toggle) and applies them via `wpctl`. Actions are coalesced
+///    at ~40Hz so rapid slider motion doesn't spawn a subprocess per pointer event.
+///
 /// `wpctl` operates on PipeWire node IDs directly and is the authoritative
 /// control path for a WirePlumber session.
 pub fn spawn_audio_monitor(snapshot_tx: Sender<AudioSnapshot>, action_rx: Receiver<AudioAction>) {
@@ -76,6 +130,10 @@ pub fn spawn_audio_monitor(snapshot_tx: Sender<AudioSnapshot>, action_rx: Receiv
         .expect("failed to start PipeWire audio monitor");
 }
 
+/// Run a `wpctl` subprocess and return its stdout.
+///
+/// `wpctl` is the WirePlumber CLI tool that queries and controls PipeWire nodes.
+/// Returns an error string if the command fails or returns a non-zero exit code.
 fn run_wpctl(args: &[String]) -> Result<String, String> {
     let output = Command::new("wpctl")
         .args(args)
@@ -88,6 +146,14 @@ fn run_wpctl(args: &[String]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+/// Apply a user audio action by executing the corresponding CLI command.
+///
+/// Maps `AudioAction` variants to `wpctl` or `playerctl` commands:
+/// - Volume changes → `wpctl set-volume <node> <vol> --limit 1.0`
+/// - Mute changes → `wpctl set-mute <node> <0|1>`
+/// - Device switching → `wpctl set-default <node>`
+/// - Media controls → `playerctl <previous|play-pause|next>`
+/// - Mixer launch → spawns `pavucontrol` as a detached process
 fn apply_action(action: AudioAction) {
     let result = match action {
         AudioAction::SetOutputVolume { node_id, volume }
@@ -139,14 +205,29 @@ fn apply_action(action: AudioAction) {
     }
 }
 
+/// Current section while parsing `wpctl status` output.
+///
+/// The wpctl status output has distinct sections (Sinks, Sources, Streams,
+/// Devices). This enum tracks which section the parser is currently in so
+/// each node is categorized correctly.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Section {
+    /// Not inside a recognized section
     None,
+    /// Inside the "Sinks:" section (output devices)
     Outputs,
+    /// Inside the "Sources:" section (input devices)
     Inputs,
+    /// Inside the "Streams:" section (active audio streams)
     Streams,
 }
 
+/// Parse a `wpctl status` line to extract the node ID, name, and default marker.
+///
+/// wpctl lines look like: `            52. alsa_output.pci-0000_00_1f.3 [vol: 0.65]`
+/// or with default marker: ` │  *   52. alsa_output.pci-0000_00_1f.3 [vol: 0.65]`
+///
+/// Returns `(node_id, name, is_default)` or `None` if the line doesn't match.
 fn parse_node_id_and_payload(line: &str) -> Option<(u32, String, bool)> {
     let tokens: Vec<&str> = line.split_whitespace().collect();
     for (index, token) in tokens.iter().enumerate() {
@@ -169,6 +250,11 @@ fn parse_node_id_and_payload(line: &str) -> Option<(u32, String, bool)> {
     None
 }
 
+/// Calculate the indentation level of a `wpctl status` tree row.
+///
+/// wpctl uses Unicode box-drawing characters (│, ├, └) for its tree format.
+/// This function counts the whitespace after the tree prefix to determine
+/// the nesting depth of a row.
 fn status_row_indent(line: &str) -> usize {
     let trimmed = line.trim_start();
     let leading = line.chars().take_while(|ch| ch.is_whitespace()).count();
@@ -183,12 +269,22 @@ fn status_row_indent(line: &str) -> usize {
     }
 }
 
+/// Check if a `wpctl status` line is a top-level stream entry.
+///
+/// wpctl's tree format uses 12 leading spaces for first-level stream rows
+/// and 17+ for their channel/port children. This distinguishes actual streams
+/// (e.g., "Firefox") from their nested audio ports (e.g., "output_FL").
 fn is_top_level_status_row(line: &str) -> bool {
     // wpctl's current tree format uses 12 leading spaces for first-level
     // stream rows and 17 for their channel/port children.
     status_row_indent(line) <= 12
 }
 
+/// Parse volume and mute state from a `wpctl status` line.
+///
+/// Extracts the volume percentage from `[vol: 0.65]` markers and checks
+/// for `[MUTED]` or `muted` text. Returns `(volume, is_muted)` where
+/// volume is clamped to [0.0, 1.0].
 fn parse_volume(text: &str) -> (f32, bool) {
     let volume = text
         .find("[vol:")
@@ -203,6 +299,10 @@ fn parse_volume(text: &str) -> (f32, bool) {
     (volume, muted)
 }
 
+/// Clean a node name by removing volume and mute metadata.
+///
+/// Strips `[vol: ...]` and `[MUTED]` suffixes from the raw name.
+/// Returns "Unknown device" if the result is empty.
 fn clean_node_name(value: &str) -> String {
     let without_volume = value.split("[vol:").next().unwrap_or(value);
     let value = without_volume
@@ -217,6 +317,10 @@ fn clean_node_name(value: &str) -> String {
     }
 }
 
+/// Parse the tab-separated output of `wpctl list audio sinks/sources`.
+///
+/// WirePlumber 0.5+ provides this machine-readable format for device discovery.
+/// Each line: `<id>\t<name>\t<description>\t[*]`
 fn parse_wpctl_list(text: &str) -> Vec<AudioDevice> {
     text.lines()
         .filter_map(|line| {
@@ -241,12 +345,20 @@ fn parse_wpctl_list(text: &str) -> Vec<AudioDevice> {
         .collect()
 }
 
+/// Read the device list for a specific kind ("sinks" or "sources").
+///
+/// Uses `wpctl list audio <kind>` which provides tab-separated output.
+/// Returns `None` if the command fails or returns no devices.
 fn read_device_list(kind: &str) -> Option<Vec<AudioDevice>> {
     let output = run_wpctl(&["list".into(), "audio".into(), kind.into()]).ok()?;
     let devices = parse_wpctl_list(&output);
     (!devices.is_empty()).then_some(devices)
 }
 
+/// Read the current volume and mute state for a specific PipeWire node.
+///
+/// Uses `wpctl get-volume <node_id>` for accurate per-node readings.
+/// Falls back to `(1.0, false)` if the command fails.
 fn read_node_volume(node_id: u32) -> (f32, bool) {
     let Ok(output) = run_wpctl(&["get-volume".into(), node_id.to_string()]) else {
         return (1.0, false);
@@ -259,6 +371,16 @@ fn read_node_volume(node_id: u32) -> (f32, bool) {
     (volume, output.to_ascii_lowercase().contains("muted"))
 }
 
+/// Read a complete snapshot of the current audio state.
+///
+/// Combines data from multiple sources:
+/// 1. `wpctl status -n` — parses sinks, sources, and streams
+/// 2. `wpctl list audio sinks/sources` — device discovery (WirePlumber 0.5+)
+/// 3. `wpctl get-volume` — accurate per-node volume readings
+/// 4. `playerctl` — MPRIS media player status and metadata
+///
+/// The snapshot is sent to the main loop only when it changes, avoiding
+/// unnecessary redraws. Streams are limited to 3 entries.
 fn read_audio_snapshot() -> AudioSnapshot {
     let status = match run_wpctl(&["status".into(), "-n".into()]) {
         Ok(status) => status,
@@ -423,6 +545,10 @@ fn read_audio_snapshot() -> AudioSnapshot {
     snapshot
 }
 
+/// Query the volume of a default alias node.
+///
+/// Used as a fallback when no explicit default device is found.
+/// Targets like `@DEFAULT_AUDIO_SINK@` are resolved by PipeWire.
 fn query_default_volume(target: &str) -> (f32, bool) {
     let Ok(output) = run_wpctl(&["get-volume".into(), target.into()]) else {
         return (1.0, false);

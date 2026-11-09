@@ -259,7 +259,9 @@ impl AppState {
             self.request_icon_load(app_id.to_string());
         }
 
-        // Signal PipeWire to probe for new windows when a window is created
+        // Signal PipeWire to probe for new windows when a window is created.
+        // The monitor task reacts to this signal and incrementally adds streams
+        // for newly opened windows without disrupting existing capture streams.
         if matches!(&event, WindowEvent::Created { .. }) {
             if let Some(pw) = &self.pipewire_capture {
                 pw.request_probe();

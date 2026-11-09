@@ -563,11 +563,12 @@ pub fn draw_popup_menu_item(
         canvas.fill_path(&path, &Paint::color(bg_color));
     }
 
-    // Text
-    let text_color = if is_active {
-        (59, 130, 246) // blue
+    // Text color — green (#00FF00) for high contrast against dark backgrounds
+    // Active rows use green, inactive rows use a slightly dimmer green (#00CC00)
+    let text_color: (u8, u8, u8) = if is_active {
+        (0, 255, 0) // green for active/selected rows
     } else {
-        (240, 246, 252) // white
+        (0, 204, 0) // dimmer green for inactive rows
     };
     let mut paint = Paint::color(Color::rgb(text_color.0, text_color.1, text_color.2));
     paint.set_font_size(font_size);
@@ -600,8 +601,8 @@ pub fn draw_popup_header(
     let line_paint = Paint::color(Color::rgba(48, 54, 61, 200));
     canvas.fill_path(&line_path, &line_paint);
 
-    // Title text
-    let mut text_paint = Paint::color(Color::rgb(240, 246, 252));
+    // Title text — green (#00FF00) for high contrast against dark header background
+    let mut text_paint = Paint::color(Color::rgb(0, 255, 0));
     text_paint.set_font_size(font_size);
     if let Ok(fid) = canvas.add_font("/usr/share/fonts/Adwaita/AdwaitaSans-Regular.ttf") {
         text_paint.set_font(&[fid]);
@@ -660,10 +661,11 @@ pub fn draw_mute_icon(
     size: f32,
     muted: bool,
 ) {
+    // Mute icon color — red when muted, green when active
     let color = if muted {
-        Color::rgb(239, 68, 68) // red
+        Color::rgb(239, 68, 68) // red for muted state
     } else {
-        Color::rgb(240, 246, 252) // white
+        Color::rgb(0, 255, 0) // green for active/unmuted state
     };
     let paint = Paint::color(color);
 
@@ -729,7 +731,8 @@ pub fn render_audio_popup_femtovg(
 
     // Output section
     let section_y = header_h + 10.0 * scale;
-    draw_text(canvas, "Output", 9.0 * scale, 8.0 * scale, section_y + 10.0 * scale, (201, 205, 212));
+    // Output section labels — green for consistency
+    draw_text(canvas, "Output", 9.0 * scale, 8.0 * scale, section_y + 10.0 * scale, (0, 255, 0));
     draw_mute_icon(canvas, 8.0 * scale, section_y + 14.0 * scale, 16.0 * scale, output_muted);
     draw_audio_slider(
         canvas,
@@ -741,26 +744,29 @@ pub fn render_audio_popup_femtovg(
         output_muted,
     );
     let vol_text = format!("{}%", (output_volume * 100.0).round() as u32);
+    // Output volume percentage — dimmer green for secondary info
     draw_text(
         canvas,
         &vol_text,
         9.0 * scale,
         145.0 * scale,
         section_y + 24.0 * scale,
-        (139, 148, 158),
+        (0, 204, 0),
     );
+    // Output device name — dimmer green for secondary info
     draw_text(
         canvas,
         output_device,
         9.0 * scale,
         8.0 * scale,
         section_y + 38.0 * scale,
-        (139, 148, 158),
+        (0, 204, 0),
     );
 
     // Input section
     let input_y = section_y + 50.0 * scale;
-    draw_text(canvas, "Input", 9.0 * scale, 8.0 * scale, input_y + 10.0 * scale, (201, 205, 212));
+    // Input section labels — green for consistency
+    draw_text(canvas, "Input", 9.0 * scale, 8.0 * scale, input_y + 10.0 * scale, (0, 255, 0));
     draw_mute_icon(canvas, 8.0 * scale, input_y + 14.0 * scale, 16.0 * scale, input_muted);
     draw_audio_slider(
         canvas,
@@ -772,21 +778,23 @@ pub fn render_audio_popup_femtovg(
         input_muted,
     );
     let input_vol_text = format!("{}%", (input_volume * 100.0).round() as u32);
+    // Input volume percentage — dimmer green for secondary info
     draw_text(
         canvas,
         &input_vol_text,
         9.0 * scale,
         145.0 * scale,
         input_y + 24.0 * scale,
-        (139, 148, 158),
+        (0, 204, 0),
     );
+    // Input device name — dimmer green for secondary info
     draw_text(
         canvas,
         input_device,
         9.0 * scale,
         8.0 * scale,
         input_y + 38.0 * scale,
-        (139, 148, 158),
+        (0, 204, 0),
     );
 
     // Minimize button
@@ -796,7 +804,8 @@ pub fn render_audio_popup_femtovg(
     btn_path.rounded_rect(btn_x, btn_y, 20.0 * scale, 16.0 * scale, 3.0 * scale);
     let btn_paint = Paint::color(Color::rgba(48, 54, 61, 200));
     canvas.fill_path(&btn_path, &btn_paint);
-    draw_text(canvas, "−", 12.0 * scale, btn_x + 4.0 * scale, btn_y + 12.0 * scale, (139, 148, 158));
+    // Audio popup close button text — green for visibility
+    draw_text(canvas, "−", 12.0 * scale, btn_x + 4.0 * scale, btn_y + 12.0 * scale, (0, 255, 0));
 
     canvas.restore();
 }
@@ -820,10 +829,12 @@ pub fn draw_bluetooth_device_row(
 ) {
     canvas.save();
 
-    let name_color = if connected { (59, 130, 246) } else { (240, 246, 252) };
+    // Device name text — green for connected, dimmer green for disconnected
+    let name_color: (u8, u8, u8) = if connected { (0, 255, 0) } else { (0, 204, 0) };
     draw_text(canvas, name, font_size, x, y + height / 2.0 + font_size / 3.0, name_color);
 
-    let status_color = if connected { (63, 185, 80) } else if paired { (139, 148, 158) } else { (72, 79, 88) };
+    // Status text — green shades based on connection state
+    let status_color: (u8, u8, u8) = if connected { (0, 255, 0) } else if paired { (0, 153, 0) } else { (0, 102, 0) };
     draw_text(canvas, status, font_size * 0.85, x, y + height - 2.0, status_color);
 
     let btn_x = x + width - 54.0;
@@ -842,7 +853,8 @@ pub fn draw_bluetooth_device_row(
     canvas.fill_path(&btn_path, &Paint::color(btn_color));
 
     let btn_text = if connected { "Disconnect" } else if paired { "Connect" } else { "Pair" };
-    let btn_text_color = if connected || paired { (0, 0, 0) } else { (240, 246, 252) };
+    // Button text — black on green buttons, green on dark buttons
+    let btn_text_color: (u8, u8, u8) = if connected || paired { (0, 0, 0) } else { (0, 255, 0) };
     draw_text(canvas, btn_text, font_size * 0.85, btn_x + 6.0, btn_y + btn_h / 2.0 + font_size / 3.0, btn_text_color);
 
     canvas.restore();
@@ -868,7 +880,8 @@ pub fn render_bluetooth_popup_femtovg(
     let header_h = 20.0 * scale;
     draw_popup_header(canvas, "Bluetooth", width, header_h, 11.0 * scale, alpha);
 
-    draw_text(canvas, adapter_name, 9.0 * scale, 8.0 * scale, header_h + 14.0 * scale, (139, 148, 158));
+    // Bluetooth adapter name — dimmer green for secondary info
+    draw_text(canvas, adapter_name, 9.0 * scale, 8.0 * scale, header_h + 14.0 * scale, (0, 204, 0));
 
     let pwr_x = 8.0 * scale;
     let pwr_y = header_h + 20.0 * scale;
@@ -879,7 +892,8 @@ pub fn render_bluetooth_popup_femtovg(
     let pwr_color = if powered { Color::rgb(63, 185, 80) } else { Color::rgb(48, 54, 61) };
     canvas.fill_path(&pwr_path, &Paint::color(pwr_color));
     let pwr_text = if powered { "ON" } else { "OFF" };
-    let pwr_text_color = if powered { (0, 0, 0) } else { (240, 246, 252) };
+    // Power button text — black on green (powered on), green on dark (powered off)
+    let pwr_text_color: (u8, u8, u8) = if powered { (0, 0, 0) } else { (0, 255, 0) };
     draw_text(canvas, pwr_text, 10.0 * scale, pwr_x + 10.0 * scale, pwr_y + 16.0 * scale, pwr_text_color);
 
     let scn_x = pwr_x + pwr_w + 4.0 * scale;
@@ -890,7 +904,8 @@ pub fn render_bluetooth_popup_femtovg(
     let scn_color = if discovering { Color::rgb(59, 130, 246) } else { Color::rgb(48, 54, 61) };
     canvas.fill_path(&scn_path, &Paint::color(scn_color));
     let scn_text = if discovering { "Scanning..." } else { "Scan" };
-    let scn_text_color = if discovering { (0, 0, 0) } else { (240, 246, 252) };
+    // Scan button text — black on green (scanning), green on dark (idle)
+    let scn_text_color: (u8, u8, u8) = if discovering { (0, 0, 0) } else { (0, 255, 0) };
     draw_text(canvas, scn_text, 10.0 * scale, scn_x + 10.0 * scale, scn_y + 16.0 * scale, scn_text_color);
 
     let list_y = header_h + 50.0 * scale;
@@ -908,7 +923,8 @@ pub fn render_bluetooth_popup_femtovg(
     btn_path.rounded_rect(btn_x, btn_y, 20.0 * scale, 16.0 * scale, 3.0 * scale);
     let btn_paint = Paint::color(Color::rgba(48, 54, 61, 200));
     canvas.fill_path(&btn_path, &btn_paint);
-    draw_text(canvas, "−", 12.0 * scale, btn_x + 4.0 * scale, btn_y + 12.0 * scale, (139, 148, 158));
+    // Bluetooth popup close button text — green for visibility
+    draw_text(canvas, "−", 12.0 * scale, btn_x + 4.0 * scale, btn_y + 12.0 * scale, (0, 255, 0));
 
     canvas.restore();
 }
@@ -930,7 +946,8 @@ pub fn render_context_menu_popup_femtovg(
 
     // No background — transparent
 
-    // Use same text style as window list popup: font size 14, text_x 12, color #E0E0E0
+    // Context menu text — green (#00FF00) for all items including CloseApp/Quit
+    // Font size 14, text_x 12, matching window list popup style
     for (i, (label, hovered, active, is_close_app)) in items.iter().enumerate() {
         let row_y = (i as f32) * 29.0 * scale;
         let row_h = 29.0 * scale;
@@ -958,11 +975,12 @@ pub fn render_context_menu_popup_femtovg(
             canvas.fill_path(&border_path, &Paint::color(Color::rgba(100, 149, 230, 255)));
         }
 
-        let label_color = if *is_close_app {
-            (255, 80, 80)
+        // All context menu labels use green — CloseApp/Quit no longer uses red
+        // Green (#00FF00) matches popup_text_color default for consistency
+        let label_color: (u8, u8, u8) = if *is_close_app {
+            (0, 255, 0) // green for CloseApp/Quit
         } else {
-            // Match popup_text_color default: #E0E0E0 = (224, 224, 224)
-            (224, 224, 224)
+            (0, 255, 0) // green for all other items
         };
         draw_text(canvas, label, 14.0 * scale, 12.0 * scale, row_y + row_h / 2.0 + 4.0 * scale, label_color);
     }
@@ -991,18 +1009,20 @@ pub fn render_process_popup_femtovg(
     draw_popup_header(canvas, "Processes", width, header_h, 11.0 * scale, alpha);
 
     let col_y = header_h + 6.0 * scale;
-    draw_text(canvas, "Name", 9.0 * scale, 8.0 * scale, col_y + 10.0 * scale, (139, 148, 158));
-    draw_text(canvas, "CPU", 9.0 * scale, width * 0.6, col_y + 10.0 * scale, (139, 148, 158));
-    draw_text(canvas, "Mem", 9.0 * scale, width * 0.8, col_y + 10.0 * scale, (139, 148, 158));
+    // Column header text — green for consistency
+    draw_text(canvas, "Name", 9.0 * scale, 8.0 * scale, col_y + 10.0 * scale, (0, 255, 0));
+    draw_text(canvas, "CPU", 9.0 * scale, width * 0.6, col_y + 10.0 * scale, (0, 255, 0));
+    draw_text(canvas, "Mem", 9.0 * scale, width * 0.8, col_y + 10.0 * scale, (0, 255, 0));
 
     let list_y = col_y + 16.0 * scale;
     for (i, (name, cpu, mem)) in processes.iter().enumerate().take(10) {
         let row_y = list_y + (i as f32) * 22.0 * scale;
-        draw_text(canvas, name, 9.0 * scale, 8.0 * scale, row_y + 14.0 * scale, (240, 246, 252));
+        // Process name in bright green, CPU/Mem values in dimmer green
+        draw_text(canvas, name, 9.0 * scale, 8.0 * scale, row_y + 14.0 * scale, (0, 255, 0));
         let cpu_text = format!("{:.1}%", cpu);
-        draw_text(canvas, &cpu_text, 9.0 * scale, width * 0.6, row_y + 14.0 * scale, (139, 148, 158));
+        draw_text(canvas, &cpu_text, 9.0 * scale, width * 0.6, row_y + 14.0 * scale, (0, 204, 0));
         let mem_text = format!("{:.1}%", mem);
-        draw_text(canvas, &mem_text, 9.0 * scale, width * 0.8, row_y + 14.0 * scale, (139, 148, 158));
+        draw_text(canvas, &mem_text, 9.0 * scale, width * 0.8, row_y + 14.0 * scale, (0, 204, 0));
     }
 
     canvas.restore();
@@ -1031,7 +1051,8 @@ pub fn render_rclone_popup_femtovg(
     let list_y = header_h + 6.0 * scale;
     for (i, (name, progress, speed)) in transfers.iter().enumerate().take(8) {
         let row_y = list_y + (i as f32) * 36.0 * scale;
-        draw_text(canvas, name, 9.0 * scale, 8.0 * scale, row_y + 12.0 * scale, (240, 246, 252));
+        // Rclone transfer name — bright green for primary info
+        draw_text(canvas, name, 9.0 * scale, 8.0 * scale, row_y + 12.0 * scale, (0, 255, 0));
 
         let bar_x = 8.0 * scale;
         let bar_y = row_y + 18.0 * scale;
@@ -1049,7 +1070,8 @@ pub fn render_rclone_popup_femtovg(
             canvas.fill_path(&fill_path, &Paint::color(Color::rgba(59, 130, 246, 255)));
         }
 
-        draw_text(canvas, speed, 8.0 * scale, width - 60.0 * scale, row_y + 14.0 * scale, (139, 148, 158));
+        // Rclone transfer speed — dimmer green for secondary info
+        draw_text(canvas, speed, 8.0 * scale, width - 60.0 * scale, row_y + 14.0 * scale, (0, 204, 0));
     }
 
     canvas.restore();
@@ -1080,7 +1102,8 @@ pub fn render_widget_bar_femtovg(
     let bt_color = if bluetooth_powered {
         Color::rgb(59, 130, 246)
     } else {
-        Color::rgb(139, 148, 158)
+        // Bluetooth icon color — dimmer green when inactive
+        Color::rgb(0, 204, 0)
     };
     let mut bt_path = Path::new();
     bt_path.rounded_rect(bt_x, bt_y, 20.0 * scale, 20.0 * scale, 4.0 * scale);
@@ -1168,21 +1191,24 @@ pub fn render_system_bar_femtovg(
 
     // Keyboard layout
     if !snapshot.keyboard_layout.is_empty() {
-        draw_text(canvas, &snapshot.keyboard_layout, text_size, x, text_y, (139, 148, 158));
+        // Keyboard layout text — dimmer green for secondary info
+        draw_text(canvas, &snapshot.keyboard_layout, text_size, x, text_y, (0, 204, 0));
         x += snapshot.keyboard_layout.len() as f32 * text_size * 0.6 + 16.0 * scale;
     }
 
     // Network
     if !snapshot.download_rate.is_empty() || !snapshot.upload_rate.is_empty() {
         let net_text = format!("↑{} ↓{}", snapshot.upload_rate, snapshot.download_rate);
-        draw_text(canvas, &net_text, text_size, x, text_y, (139, 148, 158));
+        // Network speed text — dimmer green for secondary info
+        draw_text(canvas, &net_text, text_size, x, text_y, (0, 204, 0));
         let _net_width = net_text.len() as f32 * text_size * 0.6 + 16.0 * scale;
     }
 
     // Clock (right-aligned)
     let clock_text = &snapshot.time;
     let clock_w = clock_text.len() as f32 * text_size * 0.6;
-    draw_text(canvas, clock_text, text_size, width - clock_w - 12.0 * scale, text_y, (240, 246, 252));
+    // System tray clock text — bright green for primary info
+    draw_text(canvas, clock_text, text_size, width - clock_w - 12.0 * scale, text_y, (0, 255, 0));
 
     canvas.restore();
 }
@@ -1214,7 +1240,8 @@ pub fn render_audio_player_bar_femtovg(
     // Track title
     if let Some(ref title) = snapshot.media_title {
         if !title.is_empty() {
-            draw_text(canvas, title, text_size, 12.0 * scale, text_y, (240, 246, 252));
+            // MPRIS media title — bright green for primary info
+            draw_text(canvas, title, text_size, 12.0 * scale, text_y, (0, 255, 0));
         }
     }
 
@@ -1222,7 +1249,8 @@ pub fn render_audio_player_bar_femtovg(
     if let Some(ref artist) = snapshot.media_artist {
         if !artist.is_empty() {
             let artist_y = text_y + text_size + 2.0 * scale;
-            draw_text(canvas, artist, text_size * 0.9, 12.0 * scale, artist_y, (139, 148, 158));
+            // MPRIS artist name — dimmer green for secondary info
+            draw_text(canvas, artist, text_size * 0.9, 12.0 * scale, artist_y, (0, 204, 0));
         }
     }
 

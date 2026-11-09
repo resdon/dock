@@ -1320,6 +1320,7 @@ dependencies = [
  "memmap2 0.9.10",
  "once_cell",
  "os_pipe",
+ "parking_lot",
  "pipewire",
  "pipewire-sys",
  "resvg 0.47.0",

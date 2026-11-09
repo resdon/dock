@@ -169,6 +169,14 @@ pub struct DockConfig {
     /// Popup close button margin from right edge in pixels
     #[serde(default = "default_popup_close_button_margin")]
     pub popup_close_button_margin: u32,
+    /// PipeWire capture frame downscale factor (0.01–1.0, lower = smaller thumbnails).
+    ///
+    /// Controls the resolution of PipeWire window capture thumbnails in the popup grid.
+    /// A value of 0.25 means a 1920×1080 window becomes a 480×270 thumbnail.
+    /// Lower values reduce memory usage and rendering cost at the expense of quality.
+    /// Clamped to [0.01, 1.0] during config validation.
+    #[serde(default = "default_pipewire_scale_factor")]
+    pub pipewire_scale_factor: f32,
 
     // === Popup colors ===
     /// Popup row hover border color in hex format (e.g., "#6495E6")
@@ -189,10 +197,14 @@ pub struct DockConfig {
     /// Popup frame background color in hex format (e.g., "#000000")
     #[serde(default = "default_popup_frame_bg_color")]
     pub popup_frame_bg_color: String,
-    /// Popup "No capture" text color in hex format (e.g., "#808080")
+    /// Popup "No capture" placeholder text color in hex format.
+    /// Default: #00FF00 (green) — displayed when PipeWire capture has no frame for a window.
+    /// Green provides high contrast against the dark frame background.
     #[serde(default = "default_popup_no_capture_color")]
     pub popup_no_capture_color: String,
-    /// Popup text color in hex format (e.g., "#E0E0E0")
+    /// Popup window list text color in hex format.
+    /// Default: #00FF00 (green) — used for window titles in the popup grid.
+    /// Green provides high contrast against the dark popup background.
     #[serde(default = "default_popup_text_color")]
     pub popup_text_color: String,
     /// Popup border style: "full", "dashes", or "none"
@@ -212,16 +224,21 @@ pub struct DockConfig {
     /// Context menu row height in pixels
     #[serde(default = "default_context_menu_row_height")]
     pub context_menu_row_height: u32,
-    /// Context menu Focus text color in hex format (e.g., "#00E5FF")
+    /// Context menu Focus action text color in hex format.
+    /// Default: #00FF00 (green) — used for the "Focus" menu item to bring a window to front.
     #[serde(default = "default_popup_focus_color")]
     pub popup_focus_color: String,
-    /// Context menu Unpin text color in hex format (e.g., "#E6E664")
+    /// Context menu Unpin/TogglePin action text color in hex format.
+    /// Default: #00FF00 (green) — used for the pin/unpin toggle menu item.
     #[serde(default = "default_popup_unpin_color")]
     pub popup_unpin_color: String,
-    /// Context menu Launch text color in hex format (e.g., "#6495E6")
+    /// Context menu Launch action text color in hex format.
+    /// Default: #00FF00 (green) — used for the "Launch" menu item to start a new instance.
     #[serde(default = "default_popup_launch_color")]
     pub popup_launch_color: String,
-    /// Context menu Quit text color in hex format (e.g., "#E66464")
+    /// Context menu Quit/CloseApp action text color in hex format.
+    /// Default: #00FF00 (green) — used for the "Quit" menu item to close the application.
+    /// Previously red (#E66464), changed to green for consistent text color scheme.
     #[serde(default = "default_popup_quit_color")]
     pub popup_quit_color: String,
 
@@ -243,7 +260,9 @@ pub struct DockConfig {
     pub hard_timeout: u64,
 
     // === Icon badge ===
-    /// Badge text color in hex format
+    /// Badge notification number text color in hex format.
+    /// Default: #00FF00 (green) — displayed on the red badge circle (#DC2626).
+    /// Green provides high contrast against the red background for visibility.
     #[serde(default = "default_badge_text_color")]
     pub badge_text_color: String,
     /// Badge background color in hex format
@@ -339,7 +358,7 @@ fn default_border_alpha() -> f32 {
 }
 
 fn default_popup_width() -> u32 {
-    160
+    320
 }
 
 fn default_popup_row_height() -> u32 {
@@ -347,7 +366,7 @@ fn default_popup_row_height() -> u32 {
 }
 
 fn default_popup_frame_height() -> u32 {
-    240
+    480
 }
 
 fn default_popup_font_size() -> u32 {
@@ -382,32 +401,44 @@ fn default_popup_frame_bg_color() -> String {
     "#000000".to_string()
 }
 
+/// Default color for popup "No capture" placeholder text.
+/// Green (#00FF00) provides high contrast against dark backgrounds.
 fn default_popup_no_capture_color() -> String {
-    "#808080".to_string()
+    "#00FF00".to_string()
 }
 
+/// Default color for popup window list text labels.
+/// Green (#00FF00) provides high contrast against dark backgrounds.
 fn default_popup_text_color() -> String {
-    "#E0E0E0".to_string()
+    "#00FF00".to_string()
 }
 
 fn default_popup_border_color() -> String {
     "#6495E6".to_string()
 }
 
+/// Default text color for context menu Focus action item.
+/// Green (#00FF00) provides high contrast against dark backgrounds.
 fn default_popup_focus_color() -> String {
-    "#00E5FF".to_string()
+    "#00FF00".to_string()
 }
 
+/// Default text color for context menu Unpin/TogglePin action item.
+/// Green (#00FF00) provides high contrast against dark backgrounds.
 fn default_popup_unpin_color() -> String {
-    "#E6E664".to_string()
+    "#00FF00".to_string()
 }
 
+/// Default text color for context menu Launch action item.
+/// Green (#00FF00) provides high contrast against dark backgrounds.
 fn default_popup_launch_color() -> String {
-    "#6495E6".to_string()
+    "#00FF00".to_string()
 }
 
+/// Default text color for context menu Quit/CloseApp action item.
+/// Green (#00FF00) provides high contrast against dark backgrounds.
 fn default_popup_quit_color() -> String {
-    "#E66464".to_string()
+    "#00FF00".to_string()
 }
 
 fn default_border_radius() -> u32 { 0 }
@@ -428,9 +459,12 @@ fn default_context_menu_fade_in() -> f32 { 0.25 }
 fn default_popup_timeout() -> u64 { 5000 }
 fn default_context_menu_timeout() -> u64 { 1000 }
 fn default_hard_timeout() -> u64 { 10000 }
-fn default_badge_text_color() -> String { "#FFFFFF".to_string() }
+/// Default text color for icon badge notification numbers.
+/// Green (#00FF00) provides high contrast against the red badge background.
+fn default_badge_text_color() -> String { "#00FF00".to_string() }
 fn default_badge_bg_color() -> String { "#DC2626".to_string() }
 fn default_badge_font_size() -> u32 { 10 }
+fn default_pipewire_scale_factor() -> f32 { 0.25 }
 
 impl Default for DockConfig {
     fn default() -> Self {
@@ -457,6 +491,8 @@ impl Default for DockConfig {
             dash_thickness: default_dash_thickness(),
             dash_segment_length: default_dash_segment_length(),
             dash_gap_length: default_dash_gap_length(),
+            // PipeWire capture
+            pipewire_scale_factor: default_pipewire_scale_factor(),
             // Click animation
             click_animation: default_click_animation(),
             click_animation_scale: default_click_animation_scale(),
@@ -645,6 +681,7 @@ impl DockConfig {
             popup_text_truncate: Self::validate_size(self.popup_text_truncate, "popup_text_truncate", 5, 100, default_cfg.popup_text_truncate),
             popup_frame_border: self.popup_frame_border,
             popup_close_button_margin: self.popup_close_button_margin,
+            pipewire_scale_factor: self.pipewire_scale_factor.clamp(0.01, 1.0),
             
             // Popup colors
             popup_hover_border_color: Self::validate_color(&self.popup_hover_border_color, "popup_hover_border_color", &default_cfg.popup_hover_border_color),

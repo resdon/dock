@@ -55,15 +55,29 @@ impl AppState {
         self.needs_redraw = true;
 
         // Update the shared window title-to-ID map so the PipeWire monitor task
-        // can bind new streams to stable Wayland window IDs.
+        // can bind new streams to stable Wayland window IDs. This is called every
+        // frame so the monitor always has the latest mapping. The IDs are
+        // `protocol_id` values from `foreign_toplevel`.
+        //
+        // Windows with empty `output_ids` are included — some compositors don't
+        // fire `OutputEntered` events for all windows, but they still have open
+        // windows that should appear in the popup.
         if let Some(ref pw) = self.pipewire_capture {
-            let window_ids: Vec<(String, u32)> = self.windows.iter().filter_map(|(id, win)| {
+            // Build the window-to-ID map sorted by title so that when multiple windows
+            // share the same title, they are bound to PipeWire streams in a deterministic
+            // order that matches the popup's title-sorted display order. Without this sort,
+            // HashMap iteration order is arbitrary, causing stream 0 to bind to a random
+            // window among those with the same title, breaking the popup grid mapping.
+            let mut window_ids: Vec<(String, u32)> = self.windows.iter().filter_map(|(id, win)| {
                 if win.title.is_empty() {
                     None
                 } else {
                     Some((win.title.clone(), id.0.protocol_id()))
                 }
             }).collect();
+            window_ids.sort_by(|(a_title, a_id), (b_title, b_id)| {
+                a_title.cmp(b_title).then(a_id.cmp(b_id))
+            });
             pw.update_window_ids(&window_ids);
         }
 
@@ -107,9 +121,14 @@ impl AppState {
                 .windows
                 .values()
                 .filter(|win| {
-                    win.output_ids
-                        .iter()
-                        .any(|id| id.0 == dock_output_id.clone())
+                    // Include windows on this output, plus windows with no output_ids
+                    // (some compositors don't fire OutputEntered for all windows).
+                    // Excluding them would make the popup show no windows even though
+                    // the app has open windows.
+                    win.output_ids.is_empty()
+                        || win.output_ids
+                            .iter()
+                            .any(|id| id.0 == dock_output_id.clone())
                 })
                 .collect();
             ordered_windows.sort_by_key(|win| win.order_index);
@@ -134,7 +153,7 @@ impl AppState {
             for windows in running_by_app.values_mut() {
                 // Sort by title for consistent, predictable popup row order.
                 // This ensures the same window always appears in the same row,
-                // making PipeWire stream title matching reliable.
+                // making PipeWire stream title matching reliable across frames.
                 windows.sort_by(|a, b| a.title.cmp(&b.title));
             }
 

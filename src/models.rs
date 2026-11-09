@@ -112,8 +112,10 @@ pub struct SystemBarSnapshot {
     pub time: String,
 }
 
-/// PipeWire nodes exposed by WirePlumber's `wpctl` CLI. IDs are PipeWire node IDs,
-/// not PulseAudio indexes, so they can be passed directly back to wpctl.
+/// Audio device (sink or source) from PipeWire/WirePlumber.
+///
+/// IDs are PipeWire node IDs, not PulseAudio indexes, so they can be passed
+/// directly to `wpctl` commands for volume/mute control.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AudioDevice {
     pub id: u32,
@@ -123,6 +125,9 @@ pub struct AudioDevice {
     pub is_default: bool,
 }
 
+/// Active audio stream from PipeWire (e.g., a playing application).
+///
+/// Each stream has its own PipeWire node ID that can be controlled independently.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AudioStream {
     pub id: u32,
@@ -131,6 +136,11 @@ pub struct AudioStream {
     pub muted: bool,
 }
 
+/// Complete snapshot of the audio state from PipeWire/WirePlumber.
+///
+/// Contains output/input devices, active streams, default device info,
+/// and MPRIS media player metadata. Sent from the audio monitor thread
+/// to the main loop only when the state changes.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct AudioSnapshot {
     pub available: bool,
@@ -151,6 +161,7 @@ pub struct AudioSnapshot {
     pub media_duration_seconds: Option<f64>,
 }
 
+/// Media player transport controls sent to `playerctl`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MediaControl {
     Previous,
@@ -165,6 +176,10 @@ pub enum AudioSliderTarget {
     Stream(u32),
 }
 
+/// User audio action sent from the UI to the audio monitor thread.
+///
+/// The monitor thread coalesces rapid actions (e.g., slider drag) at ~40Hz
+/// and executes them via `wpctl` or `playerctl` subprocesses.
 #[derive(Debug, Clone)]
 pub enum AudioAction {
     SetOutputVolume { node_id: u32, volume: f32 },

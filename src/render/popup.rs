@@ -147,7 +147,11 @@ fn radio_mark(canvas: &mut [u8], width: i32, height: i32, cx: i32, cy: i32, sele
     }
 }
 
-/// Optional PipeWire capture frame data for the window list popup
+/// PipeWire capture frame data for the window list popup.
+///
+/// Holds the RGBA pixel data for a single captured window frame,
+/// downsampled by the configured `pipewire_scale_factor`. Used by
+/// `draw_capture_frame` to render the thumbnail at the top of the popup.
 pub struct CaptureFrameData {
     pub width: u32,
     pub height: u32,
@@ -158,8 +162,11 @@ pub struct CaptureFrameData {
 }
 
 
-/// Draw a scaled capture frame image into the canvas at the given position.
-/// The frame is scaled to fit within the specified width/height while maintaining aspect ratio.
+/// Draw a scaled PipeWire capture frame image into the canvas.
+///
+/// Scales the frame to fit within the specified width/height while
+/// maintaining aspect ratio. The source data comes from
+/// `PipewireCaptureService::get_active_frame()` which returns RGBA pixels.
 fn draw_capture_frame(
     canvas: &mut [u8],
     canvas_width: i32,
@@ -284,13 +291,16 @@ pub fn render_window_list_surface(
     let rows_area_y = frame_phys_h;
 
     // Parse colors from config (canvas is BGRA: [B, G, R, A])
+    // Text colors default to green (#00FF00) for high contrast against dark backgrounds
     let close_hover_color = DockConfig::parse_hex_color_bgra(&config.popup_close_hover_color);
     let hover_border_color = DockConfig::parse_hex_color_bgra(&config.popup_hover_border_color);
     let close_button_color = DockConfig::parse_hex_color_bgra(&config.popup_close_button_color);
     let close_button_hover_color = DockConfig::parse_hex_color_bgra(&config.popup_close_button_hover_color);
     let close_cross_color = DockConfig::parse_hex_color_bgra(&config.popup_close_cross_color);
     let frame_bg_color = DockConfig::parse_hex_color_bgra(&config.popup_frame_bg_color);
+    // "No capture" placeholder text — green (#00FF00) against dark frame background
     let no_capture_color = DockConfig::parse_hex_color(&config.popup_no_capture_color);
+    // Window title text — green (#00FF00) for high contrast readability
     let text_color = DockConfig::parse_hex_color(&config.popup_text_color);
     let close_btn_size_cfg = config.popup_close_button_size as f32;
     let font_size_cfg = config.popup_font_size as f32;
@@ -590,9 +600,11 @@ pub fn render_context_menu_surface(
     // Canvas pixels stay at alpha 0 (transparent).
     buffer[..expected_len].fill(0);
 
-    // Parse config colors
+    // Parse config colors — all text colors default to green (#00FF00)
+    // for consistent green text color scheme across the dock
     let text_color_cfg = DockConfig::parse_hex_color(&config.popup_text_color);
     let border_color_bgra = DockConfig::parse_hex_color_bgra(&config.popup_border_color);
+    // Context menu action colors — all green for consistency
     let focus_color = DockConfig::parse_hex_color(&config.popup_focus_color);
     let unpin_color = DockConfig::parse_hex_color(&config.popup_unpin_color);
     let launch_color = DockConfig::parse_hex_color(&config.popup_launch_color);

@@ -244,7 +244,12 @@ pub struct AppState {
     pub window_list_state: WindowListState,
     pub menu_state: MenuState,
 
-    // PipeWire window capture (list-widget integration)
+    // PipeWire window capture service for the window list popup.
+    //
+    // Captures live video frames from all open Wayland windows via XDG Desktop
+    // Portal. Each window has a dedicated stream thread. The service provides
+    // RGBA thumbnails for the popup grid and handles window-to-stream matching
+    // via the persistent binding registry.
     pub pipewire_capture: Option<std::sync::Arc<crate::services::pipewire_capture::PipewireCaptureService>>,
 }
 

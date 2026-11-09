@@ -119,11 +119,12 @@ export component DockWidget inherits Window {
                             border-radius: 7px;
                             visible: item.badge_count > 0;
 
+                            // Badge notification text — green (#00FF00) for high contrast against red badge background
                             Text {
                                 x: 1px;
                                 y: 1px;
                                 text: item.badge_count > 9 ? "9+" : "";
-                                color: white;
+                                color: #00FF00;
                                 font-size: 8px;
                             }
                         }

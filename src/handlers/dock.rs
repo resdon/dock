@@ -1,13 +1,15 @@
-//! Dock icon click and press handlers.
+//! # Dock Icon Click Handler
 //!
-//! Handles left-click (focus/launch), middle-click (launch new instance),
-//! right-click (context menu), and drag-and-drop (icon reordering).
+//! Handles click events on dock icons, determining whether to focus,
+//! launch, or activate windows based on the app's running state.
 //!
-//! # Click behavior
-//! - **Left-click on running app**: Focus the window whose PipeWire stream is displayed
+//! ## Click behavior
+//! - **Left-click on running app**: Focus the window whose PipeWire stream
+//!   is currently displayed in the popup (via `active_row`). If no PipeWire
+//!   match is found, falls back to the focused window.
 //! - **Left-click on unlaunched app**: Launch the app with bounce animation
 //! - **Middle-click**: Launch a new instance with bounce animation
-//! - **Right-click**: Open context menu (handled by click.rs, not this module)
+//! - **Right-click**: Open context menu (handled by `click.rs`)
 //! - **Drag**: Reorder icons in the dock
 
 use crate::interaction::drag::handle_drag_release;
@@ -106,7 +108,7 @@ pub fn handle_dock_release(
                         // whose stream is currently displayed (active_row). This ensures
                         // clicking the dock icon focuses the same window whose capture is shown.
                         let target_window = if let Some(service) = &state.pipewire_capture {
-                            let active_row = *service.active_row.lock().unwrap();
+                            let active_row = *service.active_row.lock();
                             // Build a list of (window_id, stream_idx) pairs, matching
                             // windows to streams the same way window_list.rs does.
                             let matched: Vec<(&ObjectId, usize)> = windows.iter()

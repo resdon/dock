@@ -204,7 +204,9 @@ pub fn open_tray_context_menu(
 
 /// Opens the window list popup menu when hovering or clicking a multi-window app.
 ///
-/// Shows the PipeWire capture frame with window rows below it.
+/// Shows the PipeWire capture frame at the top with window rows below it.
+/// Resets `active_row` to 0 so the popup defaults to showing the first stream's
+/// thumbnail when it opens.
 pub fn open_window_list_menu(
     state: &mut AppState,
     _ptr_log_x: i32,

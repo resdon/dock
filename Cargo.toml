@@ -77,6 +77,9 @@ libspa-sys = "0.10"
 dashmap = "6.1"
 lru = "0.12"
 
+# Timeout-based Mutex to prevent PipeWire stream threads from freezing the dock
+parking_lot = "0.12"
+
 [build-dependencies]
 slint-build = { version = "1.18" }
 
