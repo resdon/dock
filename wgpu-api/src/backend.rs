@@ -24,7 +24,7 @@ use crate::texture::{TextureConfig, TextureFormat as TexFormat, TextureId, Textu
 /// Layout: mat2x2 (32 bytes) + vec2 offset (8 bytes) + padding (8 bytes) = 48 bytes.
 /// Must be aligned to 16 bytes for wgpu uniform buffer requirements.
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct UniformBufferObject {
     /// 2x2 transformation matrix (scale + rotation + skew).
     pub transform: [f32; 4],
@@ -427,6 +427,13 @@ impl GpuBackend {
                 },
             ],
         });
+
+        // Initialize the uniform buffer with the identity transform
+        self.queue.write_buffer(
+            &uniform_buffer,
+            0,
+            bytemuck::cast_slice(&[UniformBufferObject::default()]),
+        );
 
         self.uniform_buffer = Some(uniform_buffer);
         self.uniform_bind_group = Some(uniform_bind_group);
