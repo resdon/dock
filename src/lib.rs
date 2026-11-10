@@ -26,6 +26,10 @@ pub mod resolvers;
 pub mod services;
 pub mod state;
 pub mod types;
+pub mod error;
+pub mod errors;
+pub mod diagnostics;
+pub mod recovery;
 
 pub use geometry::*;
 
