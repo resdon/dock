@@ -4,15 +4,16 @@
 //! `render_date_time_block` function, and commits the buffer to the layer surface.
 //! The block is positioned to the right of the dock as a floating widget.
 
+use crate::state::AppState;
 use smithay_client_toolkit::{dmabuf::DmabufState, shell::WaylandSurface, shm::slot::SlotPool};
 use std::os::fd::AsFd;
 use wayland_client::protocol::wl_shm;
 use wayland_client::QueueHandle;
-use wayland_client::Proxy;
-use crate::state::AppState;
 
 use crate::config::DockConfig;
-use crate::render::date_time_block::{format_time, format_day_month, format_year, render_date_time_block};
+use crate::render::date_time_block::{
+    format_day_month, format_time, format_year, render_date_time_block,
+};
 use crate::render::font::FontManager;
 use crate::types::DockInstance;
 use wgpu_api::Renderer as WgpuRenderer;
@@ -61,69 +62,6 @@ pub fn draw_date_time_block(
     // Try GPU rendering via DMA-BUF first
     if let Some(ref mut renderer) = gpu_context {
         let mut draw_commands = Vec::new();
-
-        // Build dashed border draw commands
-        let border_color = DockConfig::parse_hex_color(&config.date_time_block_border_color);
-        let br = border_color.0 as f32 / 255.0;
-        let bg = border_color.1 as f32 / 255.0;
-        let bb = border_color.2 as f32 / 255.0;
-        let border_col = wgpu_api::Color::rgba(br, bg, bb, a);
-        let dash_len = config.date_time_block_dash_length as usize;
-        let gap_len = config.date_time_block_gap_length as usize;
-        let cycle = dash_len + gap_len;
-        let thickness = config.date_time_block_border_thickness as usize;
-        let w = block_width as usize;
-        let h = block_height as usize;
-
-        // Draw dashed border segments as rectangles
-        let mut pos = 0;
-        while pos < w {
-            let dash_end = (pos + dash_len).min(w);
-            draw_commands.push(wgpu_api::DrawCommand::Rectangle {
-                rect: wgpu_api::Rect::new(pos as f32, 0.0, (dash_end - pos) as f32, thickness as f32),
-                color: border_col,
-                radius: 0.0,
-                stroke: None,
-                stroke_width: 0.0,
-            });
-            pos += cycle;
-        }
-        pos = 0;
-        while pos < w {
-            let dash_end = (pos + dash_len).min(w);
-            draw_commands.push(wgpu_api::DrawCommand::Rectangle {
-                rect: wgpu_api::Rect::new(pos as f32, (h - thickness) as f32, (dash_end - pos) as f32, thickness as f32),
-                color: border_col,
-                radius: 0.0,
-                stroke: None,
-                stroke_width: 0.0,
-            });
-            pos += cycle;
-        }
-        pos = 0;
-        while pos < h {
-            let dash_end = (pos + dash_len).min(h);
-            draw_commands.push(wgpu_api::DrawCommand::Rectangle {
-                rect: wgpu_api::Rect::new(0.0, pos as f32, thickness as f32, (dash_end - pos) as f32),
-                color: border_col,
-                radius: 0.0,
-                stroke: None,
-                stroke_width: 0.0,
-            });
-            pos += cycle;
-        }
-        pos = 0;
-        while pos < h {
-            let dash_end = (pos + dash_len).min(h);
-            draw_commands.push(wgpu_api::DrawCommand::Rectangle {
-                rect: wgpu_api::Rect::new((w - thickness) as f32, pos as f32, thickness as f32, (dash_end - pos) as f32),
-                color: border_col,
-                radius: 0.0,
-                stroke: None,
-                stroke_width: 0.0,
-            });
-            pos += cycle;
-        }
 
         // Text: time, day+month, year
         let text_color = DockConfig::parse_hex_color(&config.date_time_block_text_color);
@@ -181,42 +119,52 @@ pub fn draw_date_time_block(
             scale as f32,
             &draw_commands,
         ) {
-            Ok(export_info) => {
-                match dmabuf_state.create_params(qh) {
-                    Ok(params) => {
-                        for (i, plane) in export_info.planes.iter().enumerate() {
-                            params.add(
-                                plane.fd.as_fd(),
-                                i as u32,
-                                plane.offset,
-                                plane.stride,
-                                export_info.modifier,
-                            );
-                        }
-                        let (wl_buffer, _params) = params.create_immed(
+            Ok(export_info) => match dmabuf_state.create_params(qh) {
+                Ok(params) => {
+                    for (i, plane) in export_info.planes.iter().enumerate() {
+                        params.add(
+                            plane.fd.as_fd(),
+                            i as u32,
+                            plane.offset,
+                            plane.stride,
+                            export_info.modifier,
+                        );
+                    }
+                    let (wl_buffer, _params) = params.create_immed(
                             phys_width as i32,
                             phys_height as i32,
                             export_info.fourcc as u32,
                             wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_buffer_params_v1::Flags::empty(),
                             qh,
                         );
-                        block.surface.wl_surface().set_buffer_scale(scale.round().max(1.0) as i32);
-                        block.surface.wl_surface().attach(Some(&wl_buffer), 0, 0);
-                        block.surface.wl_surface().damage_buffer(0, 0, phys_width, phys_height);
-                        block.surface.wl_surface().commit();
-                        return;
-                    }
-                    Err(_) => {}
+                    block
+                        .surface
+                        .wl_surface()
+                        .set_buffer_scale(scale.round().max(1.0) as i32);
+                    block.surface.wl_surface().attach(Some(&wl_buffer), 0, 0);
+                    block
+                        .surface
+                        .wl_surface()
+                        .damage_buffer(0, 0, phys_width, phys_height);
+                    block.surface.wl_surface().commit();
+                    return;
                 }
-            }
+                Err(_) => {}
+            },
             Err(_) => {}
         }
     }
 
     // CPU fallback rendering
     fallback_date_time_block_cpu(
-        dock, pool, phys_width, phys_height, scale, a,
-        font_manager, config,
+        dock,
+        pool,
+        phys_width,
+        phys_height,
+        scale,
+        a,
+        font_manager,
+        config,
     );
 }
 

@@ -124,7 +124,9 @@ pub fn draw_audio_popup(
     if !super::copy_popup_content(canvas, &popup.cached_content) {
         return;
     }
-    popup.surface.set_buffer_scale(scale.round().max(1.0) as i32);
+    popup
+        .surface
+        .set_buffer_scale(scale.round().max(1.0) as i32);
     if let Err(e) = buffer.attach_to(&popup.surface) {
         tracing::warn!("Failed to attach audio popup buffer: {}", e);
         return;

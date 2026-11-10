@@ -141,7 +141,6 @@ mod tests {
     use super::*;
     use crate::geometry::{Point, Size};
     use crate::layout::DockLayoutConfig;
-    use crate::physics::BodyId;
 
     #[test]
     fn test_insert_append() {

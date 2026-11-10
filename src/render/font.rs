@@ -9,15 +9,31 @@ use std::io::{Read, Write};
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
+/// A cached rasterized glyph bitmap with its rendering metrics.
+///
+/// Stored in both the in-memory LRU cache and on-disk binary cache
+/// to avoid re-rasterizing frequently used glyphs.
 pub struct CachedGlyph {
+    /// Raw bitmap pixels (grayscale alpha, one byte per pixel).
     pub bitmap: Vec<u8>,
+    /// Glyph metrics: dimensions, bearing, and advance.
     pub metrics: fontdue::Metrics,
 }
 
+/// Font manager that memory-maps a TTF file and caches rasterized glyphs.
+///
+/// Uses an LRU cache (1024 entries) for in-memory glyph caching and a
+/// disk cache (`~/.cache/dock/glyphs/`) for persistence across restarts.
+/// Fallback fonts are rasterized on-demand without retaining the full
+/// font collection in memory.
 pub struct FontManager {
+    /// Primary font used for most text rendering.
     primary_font: Font,
+    /// Owned font data to keep the font valid (avoids mmap SIGBUS on truncation).
     _primary_font_data: Option<Vec<u8>>,
+    /// Directory for on-disk glyph cache binaries.
     cache_dir: PathBuf,
+    /// In-memory LRU cache: (character, font_size) → rasterized glyph.
     cache: LruCache<(char, u32), CachedGlyph>,
 }
 
@@ -44,7 +60,8 @@ impl FontManager {
 
     pub fn new(font_data: &[u8]) -> Self {
         let data = font_data.to_vec();
-        let font = Font::from_bytes(data.as_slice(), FontSettings::default()).expect("Invalid font data");
+        let font =
+            Font::from_bytes(data.as_slice(), FontSettings::default()).expect("Invalid font data");
         let cache_dir = dirs::cache_dir()
             .unwrap_or_else(|| PathBuf::from("/tmp"))
             .join("dock/glyphs");
@@ -111,15 +128,6 @@ impl FontManager {
         // Avoid spawning subprocesses (fc-match) on the render thread.
         // Fallback glyph discovery relies on static candidate paths below.
         None
-    }
-
-    fn char_to_lang(c: char) -> &'static str {
-        match c as u32 {
-            0x4E00..=0x9FFF | 0x3400..=0x4DBF => "zh",
-            0x3040..=0x30FF => "ja",
-            0xAC00..=0xD7AF | 0x1100..=0x11FF => "ko",
-            _ => "en",
-        }
     }
 
     /// Rasterize one fallback glyph without retaining entire fallback font

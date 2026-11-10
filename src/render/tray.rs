@@ -1157,7 +1157,7 @@ mod tests {
     fn tray_box_is_right_of_and_centered_on_the_app_row() {
         let app_width = preferred_surface_width(4) as i32;
         let (x, y) = tray_bar_position(app_width, 2);
-        let (width, height) = tray_logical_size(2);
+        let (_width, height) = tray_logical_size(2);
         assert_eq!(x, app_width + SIDE_BOX_GAP);
         assert_eq!(
             y,

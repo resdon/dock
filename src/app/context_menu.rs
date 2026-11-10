@@ -225,7 +225,7 @@ pub fn draw_context_menu_popup(
                 // Text position (centered vertically in the item)
                 let text_y =
                     item_top + item_h / 2.0 + config.context_menu_text_offset_y as f32 * scale;
-                let text_x = (config.popup_text_padding as f32 * scale);
+                let text_x = config.popup_text_padding as f32 * scale;
 
                 // Add text draw command
                 draw_commands.push(wgpu_api::DrawCommand::Text {
@@ -271,7 +271,12 @@ pub fn draw_context_menu_popup(
                                 );
                                 popup.surface.set_buffer_scale(scale_i32);
                                 popup.surface.attach(Some(&wl_buffer), 0, 0);
-                                popup.surface.damage_buffer(0, 0, geom.phys_width, geom.phys_height);
+                                popup.surface.damage_buffer(
+                                    0,
+                                    0,
+                                    geom.phys_width,
+                                    geom.phys_height,
+                                );
 
                                 let region = compositor_state.wl_compositor().create_region(qh, ());
                                 region.add(0, 0, geom.logical_width, geom.logical_height);

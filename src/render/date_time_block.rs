@@ -56,9 +56,7 @@ static DATE_TIME_CACHE: Mutex<CachedDateTime> = Mutex::new(CachedDateTime {
 /// Calls libc::strftime which requires a valid tm struct and format string.
 fn format_from_tm(local: &libc::tm, fmt: &[u8], buf_len: usize) -> String {
     let mut buf = vec![0i8; buf_len];
-    let n = unsafe {
-        libc::strftime(buf.as_mut_ptr(), buf.len(), fmt.as_ptr() as *const _, local)
-    };
+    let n = unsafe { libc::strftime(buf.as_mut_ptr(), buf.len(), fmt.as_ptr() as *const _, local) };
     if n == 0 {
         return String::new();
     }
@@ -66,7 +64,8 @@ fn format_from_tm(local: &libc::tm, fmt: &[u8], buf_len: usize) -> String {
     // buf[..n] is already a valid &[i8] slice — no unsafe cast needed.
     let bytes = &buf[..n as usize];
     // SAFETY: i8 and u8 have identical memory layouts; this is a safe reinterpretation.
-    let bytes_u8: &[u8] = unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const u8, bytes.len()) };
+    let bytes_u8: &[u8] =
+        unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const u8, bytes.len()) };
     String::from_utf8_lossy(bytes_u8).trim().to_owned()
 }
 

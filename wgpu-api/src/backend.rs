@@ -215,20 +215,6 @@ pub struct GpuBackend {
     initialized: bool,
 }
 
-/// Information about a GPU texture.
-#[derive(Debug, Clone)]
-struct GpuTextureInfo {
-    /// Whether the texture has been uploaded to GPU.
-    uploaded: bool,
-}
-
-/// Information about a GPU surface.
-#[derive(Debug, Clone)]
-struct GpuSurfaceInfo {
-    /// Surface configuration.
-    config: SurfaceConfig,
-}
-
 impl GpuBackend {
     /// Initialize the GPU backend.
     ///

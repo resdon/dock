@@ -186,7 +186,10 @@ mod tests {
     fn test_dbus_recovery_returns_retry_after() {
         let recovery = ServiceRecovery::default_config();
         let result = recovery.recover_dbus_connection();
-        assert_eq!(result, RecoveryResult::RetryAfter(Duration::from_millis(100)));
+        assert_eq!(
+            result,
+            RecoveryResult::RetryAfter(Duration::from_millis(100))
+        );
         assert_eq!(recovery.restart_count(), 1);
     }
 
@@ -207,7 +210,10 @@ mod tests {
     fn test_service_crash_recovery_returns_retry_after() {
         let recovery = ServiceRecovery::default_config();
         let result = recovery.recover_service_crash("test_service");
-        assert_eq!(result, RecoveryResult::RetryAfter(Duration::from_millis(100)));
+        assert_eq!(
+            result,
+            RecoveryResult::RetryAfter(Duration::from_millis(100))
+        );
     }
 
     #[test]

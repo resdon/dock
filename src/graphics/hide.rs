@@ -11,21 +11,44 @@ use std::time::{Duration, Instant};
 pub const HIDE_FRAME_INTERVAL: Duration = Duration::from_nanos(41_666_667);
 const ALPHA_EPSILON: f32 = 1e-3;
 
+/// Dock visibility mode for auto-hide behavior.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
+    /// Dock is fully visible and interactive.
     Visible,
+    /// Dock is currently fading out.
     Hiding,
+    /// Dock has finished fading and is hidden (reduced alpha).
     Hidden,
 }
 
+/// Manages the dock's auto-hide/show animation state.
+///
+/// When the pointer leaves the dock area, a timer starts. If the pointer
+/// doesn't return before the timer expires, the dock fades to a reduced
+/// alpha (`HIDDEN_ALPHA`). Moving the pointer back to the dock area
+/// immediately restores full visibility.
+///
+/// # Invariants
+/// - `current_alpha` is clamped between `HIDDEN_ALPHA` and `1.0`
+/// - `mode` reflects the current animation state, not just the target
+/// - `hide_timer` is `Some` only when waiting to start hiding
 pub struct AutoHideState {
+    /// Current visibility mode (Visible, Hiding, or Hidden).
     pub mode: Mode,
+    /// Current interpolated alpha value.
     pub current_alpha: f32,
+    /// Target alpha value the animation is moving toward.
     pub target_alpha: f32,
+    /// Last time the animation was updated.
     pub last_update: Instant,
+    /// Duration of the hide/show animation in seconds.
     pub duration_secs: f32,
+    /// Set to `true` for one frame when animation reaches hidden state.
     pub just_became_hidden: bool,
+    /// Set to `true` for one frame when animation reaches visible state.
     pub just_became_visible: bool,
+    /// Timer that starts when pointer leaves dock; triggers hide on expiry.
     pub hide_timer: Option<Instant>,
 }
 
@@ -51,7 +74,10 @@ impl AutoHideState {
 
     pub fn show(&mut self) {
         self.hide_timer = None;
-        if self.mode == Mode::Hidden || self.mode == Mode::Hiding || (self.target_alpha - 1.0).abs() > ALPHA_EPSILON {
+        if self.mode == Mode::Hidden
+            || self.mode == Mode::Hiding
+            || (self.target_alpha - 1.0).abs() > ALPHA_EPSILON
+        {
             self.mode = Mode::Visible;
             self.target_alpha = 1.0;
             self.last_update = Instant::now() - HIDE_FRAME_INTERVAL;

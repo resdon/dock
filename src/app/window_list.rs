@@ -449,7 +449,7 @@ pub fn draw_window_list_popup(
                     let config = frame.config;
                     let scale = frame.dock_scale as f32;
                     let width = geom.phys_width as f32;
-                    let height = geom.phys_height as f32;
+                    let _height = geom.phys_height as f32;
                     let item_count = windows.len();
 
                     // Parse colors from config
@@ -758,7 +758,10 @@ pub fn draw_window_list_popup(
                         ) {
                             Ok(bc) => bc,
                             Err(e) => {
-                                tracing::warn!("Failed to allocate window list popup buffer: {}", e);
+                                tracing::warn!(
+                                    "Failed to allocate window list popup buffer: {}",
+                                    e
+                                );
                                 return;
                             }
                         };

@@ -60,10 +60,7 @@ pub fn handle_scroll_events(
                     );
                     let _ = state.send_tray_action(
                         index,
-                        crate::models::TrayActionKind::Scroll {
-                            delta,
-                            orientation,
-                        },
+                        crate::models::TrayActionKind::Scroll { delta, orientation },
                         mapped_x.round() as i32,
                         mapped_y.round() as i32,
                     );

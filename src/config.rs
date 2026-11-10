@@ -57,7 +57,6 @@ pub struct DockConfig {
     // ═══════════════════════════════════════════════════════════
     // DOCK — Main dock layout and appearance
     // ═══════════════════════════════════════════════════════════
-
     /// The anchor point for the dock on the screen
     #[serde(default)]
     pub anchor: DockAnchor,
@@ -248,7 +247,6 @@ pub struct DockConfig {
     // ═══════════════════════════════════════════════════════════
     // CONTEXT MENU — Right-click menu sizes and action colors
     // ═══════════════════════════════════════════════════════════
-
     /// Context menu width in pixels
     #[serde(default = "default_context_menu_width")]
     pub context_menu_width: u32,
@@ -286,7 +284,6 @@ pub struct DockConfig {
     // ═══════════════════════════════════════════════════════════
     // TIMING — Fade-in durations and auto-close timeouts
     // ═══════════════════════════════════════════════════════════
-
     /// Window list popup fade-in duration in seconds
     #[serde(default = "default_popup_fade_in")]
     pub popup_fade_in: f32,
@@ -306,7 +303,6 @@ pub struct DockConfig {
     // ═══════════════════════════════════════════════════════════
     // ICON BADGE — Notification indicators on dock icons
     // ═══════════════════════════════════════════════════════════
-
     /// Badge notification number text color in hex format.
     /// Default: #00FF00 (green) — displayed on the red badge circle (#DC2626).
     #[serde(default = "default_badge_text_color")]
@@ -321,11 +317,13 @@ pub struct DockConfig {
     // ═══════════════════════════════════════════════════════════
     // TIME BOX — Date/time display (right side of dock)
     // ═══════════════════════════════════════════════════════════
-
     /// Enable the date/time block widget floating to the right of the dock.
     /// The block displays time (HH:MM), day+month, and year.
     #[serde(default = "default_date_time_block_enabled")]
     pub date_time_block_enabled: bool,
+    /// Enable the dashed border around the date/time block.
+    #[serde(default = "default_date_time_block_border_enabled")]
+    pub date_time_block_border_enabled: bool,
     /// Date/time block width in pixels (logical)
     #[serde(default = "default_date_time_block_width")]
     pub date_time_block_width: u32,
@@ -374,7 +372,6 @@ pub struct DockConfig {
     // ═══════════════════════════════════════════════════════════
     // TRAY BOX — Status icons and keyboard layout (left side)
     // ═══════════════════════════════════════════════════════════
-
     /// Enable the dashed block widget floating to the left of the dock.
     /// The block displays status icons and keyboard layout indicator.
     #[serde(default = "default_dashed_block_enabled")]
@@ -688,6 +685,10 @@ fn default_app_id_aliases() -> std::collections::HashMap<String, String> {
 fn default_date_time_block_enabled() -> bool {
     true
 }
+/// Default: false — the dashed border is disabled by default.
+fn default_date_time_block_border_enabled() -> bool {
+    false
+}
 /// Default: 104px — wide enough for time and date text.
 fn default_date_time_block_width() -> u32 {
     104
@@ -901,6 +902,7 @@ impl Default for DockConfig {
             badge_font_size: default_badge_font_size(),
             // Date/time block widget (right side of dock)
             date_time_block_enabled: default_date_time_block_enabled(),
+            date_time_block_border_enabled: default_date_time_block_border_enabled(),
             date_time_block_width: default_date_time_block_width(),
             date_time_block_height: default_date_time_block_height(),
             date_time_block_border_color: default_date_time_block_border_color(),
@@ -967,7 +969,7 @@ impl DockConfig {
     }
 
     /// Validate a color field, returning the default value if invalid
-    fn validate_color(value: &str, field: &str, default: &str) -> String {
+    fn validate_color(value: &str, _field: &str, default: &str) -> String {
         if Self::parse_hex_color_opt(value).is_some() {
             value.to_string()
         } else {
@@ -976,7 +978,7 @@ impl DockConfig {
     }
 
     /// Validate a size field, clamping to reasonable bounds
-    fn validate_size(value: u32, field: &str, min: u32, max: u32, default: u32) -> u32 {
+    fn validate_size(value: u32, _field: &str, min: u32, max: u32, default: u32) -> u32 {
         if value == 0 && min > 0 {
             return default;
         }
@@ -988,7 +990,7 @@ impl DockConfig {
     }
 
     /// Validate an alpha value, clamping to [0.0, 1.0]
-    fn validate_alpha(value: f32, field: &str, default: f32) -> f32 {
+    fn validate_alpha(value: f32, _field: &str, default: f32) -> f32 {
         if value.is_nan() || value.is_infinite() {
             default
         } else if value < 0.0 {
@@ -1001,7 +1003,7 @@ impl DockConfig {
     }
 
     /// Validate a float duration/scale value
-    fn validate_positive_float(value: f32, field: &str, default: f32) -> f32 {
+    fn validate_positive_float(value: f32, _field: &str, default: f32) -> f32 {
         if value.is_nan() || value.is_infinite() || value <= 0.0 {
             default
         } else {
@@ -1341,6 +1343,7 @@ impl DockConfig {
 
             // Date/time block widget (right side of dock)
             date_time_block_enabled: self.date_time_block_enabled,
+            date_time_block_border_enabled: self.date_time_block_border_enabled,
             date_time_block_width: Self::validate_size(
                 self.date_time_block_width,
                 "date_time_block_width",
@@ -1483,9 +1486,7 @@ impl DockConfig {
         if let Ok(data) = fs::read_to_string(&path) {
             match serde_json::from_str::<DockConfig>(&data) {
                 Ok(config) => config.validate(),
-                Err(_e) => {
-                    Self::default()
-                }
+                Err(_e) => Self::default(),
             }
         } else {
             Self::default()

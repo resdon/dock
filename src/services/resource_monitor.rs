@@ -146,7 +146,10 @@ pub fn start_resource_monitor() {
 
                 eprintln!(
                     "[RESOURCE] CPU: {:.1}% | RAM: {} MB | VRAM: {} | FPS: {:.1}",
-                    cpu_usage, memory_mb, vram_str, get_fps()
+                    cpu_usage,
+                    memory_mb,
+                    vram_str,
+                    get_fps()
                 );
             } else {
                 break;

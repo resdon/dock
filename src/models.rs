@@ -82,7 +82,10 @@ pub enum TrayActionKind {
     Activate,
     SecondaryActivate,
     ContextMenu,
-    Scroll { delta: i32, orientation: &'static str },
+    Scroll {
+        delta: i32,
+        orientation: &'static str,
+    },
 }
 
 #[derive(Debug, Clone)]

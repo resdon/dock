@@ -351,41 +351,6 @@ impl AppState {
         )
     }
 
-    fn dock_has_surface<F>(&self, surface: &WlSurface, f: F) -> bool
-    where
-        F: Fn(&DockInstance) -> bool,
-    {
-        self.docks
-            .iter()
-            .find(|dock| {
-                dock.tray_bar
-                    .as_ref()
-                    .is_some_and(|bar| bar.surface.id() == surface.id())
-                    || dock
-                        .system_status_bar
-                        .as_ref()
-                        .is_some_and(|bar| bar.surface.id() == surface.id())
-                    || dock
-                        .status_widget_bar
-                        .as_ref()
-                        .is_some_and(|bar| bar.surface.id() == surface.id())
-                    || dock
-                        .audio_player_bar
-                        .as_ref()
-                        .is_some_and(|bar| bar.surface.id() == surface.id())
-                    || dock
-                        .dashed_block_surface
-                        .as_ref()
-                        .is_some_and(|block| block.surface.wl_surface() == surface)
-                    || dock
-                        .date_time_block_surface
-                        .as_ref()
-                        .is_some_and(|block| block.surface.wl_surface() == surface)
-                    || dock.surface.wl_surface().id() == surface.id()
-            })
-            .is_some_and(f)
-    }
-
     /// Returns the parent-dock-local offset for a subsurface/popup surface, if known.
     /// Used to map child-surface pointer coordinates into main dock space.
     pub fn surface_offset_in_dock_space(&self, surface: &WlSurface) -> Option<(f32, f32)> {

@@ -99,14 +99,14 @@ export component DockWidget inherits Window {
                             visible: false;
                         }
 
-                        // Main icon image (hidden when dragging — ghost follows cursor instead)
+                        // Main icon image (stays visible during drag)
                         icon_main := Image {
                             x: item.icon_x * 1px;
                             y: item.icon_y * 1px;
                             width: item.icon_width * 1px;
                             height: item.icon_height * 1px;
                             source: item.icon;
-                            visible: !item.is_dragging;
+                            visible: true;
                         }
                         
                         // Badge (notification count)

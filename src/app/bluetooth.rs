@@ -6,8 +6,8 @@ use std::collections::HashMap;
 use std::thread;
 use std::time::Duration;
 
-use zbus::zvariant::{OwnedObjectPath, OwnedVariant, Variant};
-use zbus::{Connection, Proxy};
+use zbus::zvariant::{OwnedVariant, Variant};
+use zbus::{Connection, OwnedObjectPath, Proxy};
 
 use crate::models::{BluetoothAction, BluetoothDevice, BluetoothSnapshot};
 

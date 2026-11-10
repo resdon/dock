@@ -25,8 +25,10 @@ impl CapabilityResolver {
                 .unwrap_or(false);
 
         application.capabilities.can_launch = has_desktop || has_exec || !actions.is_empty();
-        application.capabilities.can_focus = application.status.running || !application.windows.is_empty();
-        application.capabilities.can_close = application.status.running || !application.windows.is_empty();
+        application.capabilities.can_focus =
+            application.status.running || !application.windows.is_empty();
+        application.capabilities.can_close =
+            application.status.running || !application.windows.is_empty();
         application.capabilities.can_pin = has_desktop || has_exec;
         application.capabilities.can_show_window_list = !application.windows.is_empty();
         application.capabilities.can_show_jump_list = !actions.is_empty();
@@ -35,7 +37,8 @@ impl CapabilityResolver {
             n.contains("settings") || n.contains("preferences")
         });
         application.capabilities.can_open_location = has_desktop;
-        application.capabilities.can_show_telemetry = application.status.running || !application.processes.is_empty();
+        application.capabilities.can_show_telemetry =
+            application.status.running || !application.processes.is_empty();
         application.capabilities.can_uninstall = false;
     }
 

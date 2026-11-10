@@ -598,7 +598,7 @@ mod tests {
     fn test_group_manager() {
         let mut manager = GroupManager::new();
         let id1 = manager.create_group("dock1");
-        let id2 = manager.create_group("dock2");
+        let _id2 = manager.create_group("dock2");
         assert_eq!(manager.group_count(), 2);
         assert!(manager.get_group(id1).is_some());
         manager.remove_group(id1);
@@ -623,7 +623,7 @@ mod tests {
         group.add_member(BodyId::new(1), Point::new(50.0, 50.0));
 
         let mut bodies = HashMap::new();
-        let mut body = PhysicsBody::dynamic_body(
+        let body = PhysicsBody::dynamic_body(
             BodyId::new(1),
             Point::new(250.0, 50.0),
             super::super::body::CollisionShape::circle(10.0),

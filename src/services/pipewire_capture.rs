@@ -83,8 +83,8 @@ use std::time::Instant;
 use parking_lot::Mutex;
 
 use futures_util::StreamExt;
-use zbus::zvariant::{OwnedObjectPath, OwnedVariant, Variant};
-use zbus::Proxy;
+use zbus::zvariant::{OwnedVariant, Variant};
+use zbus::{Fd, OwnedObjectPath, Proxy};
 
 use pipewire as pw;
 use pw::properties::properties;
@@ -1050,40 +1050,42 @@ async fn create_session(
         .map_err(|_| "CreateSession timed out waiting for Response signal")?;
     let sig = sig_opt.ok_or("Signal stream ended")?;
 
-    let (response, session_path): (u32, OwnedObjectPath) =
-        match sig.body().deserialize() {
-            Ok(result) => result,
-            Err(_) => {
-                let (resp, props) = match sig.body().deserialize::<(u32, HashMap<String, OwnedVariant>)>() {
-                    Ok(result) => result,
-                    Err(e) => {
-                        tracing::warn!("Failed to deserialize portal response: {}", e);
-                        return Err("Failed to parse portal CreateSession response".into());
-                    }
-                };
-                if let Some(val) = props.get("session_handle") {
-                    if let Variant::Str(s) = &**val {
-                        if let Ok(path) = OwnedObjectPath::try_from(s.as_str()) {
-                            if resp != 0 {
-                                return Err(format!("Session creation failed: {}", resp).into());
-                            }
-                            return Ok(path);
-                        } else {
-                            tracing::warn!("Invalid session path in portal response");
-                        }
-                    }
+    let (response, session_path): (u32, OwnedObjectPath) = match sig.body().deserialize() {
+        Ok(result) => result,
+        Err(_) => {
+            let (resp, props) = match sig
+                .body()
+                .deserialize::<(u32, HashMap<String, OwnedVariant>)>()
+            {
+                Ok(result) => result,
+                Err(e) => {
+                    tracing::warn!("Failed to deserialize portal response: {}", e);
+                    return Err("Failed to parse portal CreateSession response".into());
                 }
-                if let Some(val) = props.get("session") {
-                    if let Variant::ObjectPath(path) = &**val {
+            };
+            if let Some(val) = props.get("session_handle") {
+                if let Variant::Str(s) = &**val {
+                    if let Ok(path) = OwnedObjectPath::try_from(s.as_str()) {
                         if resp != 0 {
                             return Err(format!("Session creation failed: {}", resp).into());
                         }
-                        return Ok(OwnedObjectPath::from(path.clone()));
+                        return Ok(path);
+                    } else {
+                        tracing::warn!("Invalid session path in portal response");
                     }
                 }
-                return Err("No session path in portal response dict".into());
             }
-        };
+            if let Some(val) = props.get("session") {
+                if let Variant::ObjectPath(path) = &**val {
+                    if resp != 0 {
+                        return Err(format!("Session creation failed: {}", resp).into());
+                    }
+                    return Ok(OwnedObjectPath::from(path.clone()));
+                }
+            }
+            return Err("No session path in portal response dict".into());
+        }
+    };
     if response != 0 {
         return Err(format!("Session creation failed: {}", response).into());
     }
@@ -1160,7 +1162,10 @@ async fn select_sources(
     let sig = sig_opt.ok_or("SelectSources signal stream ended")?;
     let response: u32 = if let Ok((r,)) = sig.body().deserialize::<(u32,)>() {
         r
-    } else if let Ok((r, _props)) = sig.body().deserialize::<(u32, HashMap<String, OwnedVariant>)>() {
+    } else if let Ok((r, _props)) = sig
+        .body()
+        .deserialize::<(u32, HashMap<String, OwnedVariant>)>()
+    {
         r
     } else {
         tracing::warn!("Failed to deserialize SelectSources response");
@@ -1315,15 +1320,15 @@ async fn open_pipewire_remote(
         .await?;
 
     let body = msg.body();
-    let fd_val: zbus::zvariant::Fd<'_> = body
+    let fd_val: Fd<'_> = body
         .deserialize()
         .map_err(|_e| "Failed to deserialize PipeWire FD")?;
 
     let owned_fd = match fd_val {
-        zbus::zvariant::Fd::Borrowed(borrowed) => borrowed
+        Fd::Borrowed(borrowed) => borrowed
             .try_clone_to_owned()
             .map_err(|_e| "Failed to clone file descriptor")?,
-        zbus::zvariant::Fd::Owned(owned) => owned,
+        Fd::Owned(owned) => owned,
     };
 
     Ok(owned_fd)
@@ -1607,7 +1612,8 @@ fn spawn_stream_thread(fd: OwnedFd, node_id: u32, idx: usize, stream_data: Arc<S
                                     frames_in_fps_window += 1;
                                     let elapsed = fps_window_start.elapsed();
                                     if elapsed >= std::time::Duration::from_secs(2) {
-                                        let fps = frames_in_fps_window as f64 / elapsed.as_secs_f64();
+                                        let fps =
+                                            frames_in_fps_window as f64 / elapsed.as_secs_f64();
                                         eprintln!(
                                             "[PIPEWIRE] Stream {} (title={}) fps: {:.1}",
                                             stream_idx_for_log, title_for_log, fps

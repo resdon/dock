@@ -290,10 +290,57 @@ pub fn draw_main_dock(
             },
         });
 
+        // Calculate drag target slot index for sliding animation (matches slint_dock.rs)
+        let item_slot_width = (frame.box_size as f32 + frame.spacing as f32) * scale;
+        let padding_logical = frame.spacing as f32 * 1.5; // 12px logical padding
+        let (gpu_drag_source_idx, gpu_drag_target_slot) = if is_dragging {
+            if let Some(app_id) = dragged_app_id {
+                let source_idx = dock_state.pins.iter().position(|p| p.app_id == *app_id);
+                if let Some(si) = source_idx {
+                    let cursor_x = interaction.pointer_position.x as f32 / scale; // convert to logical
+                    let slot_x = cursor_x - padding_logical;
+                    let target_slot =
+                        (slot_x / (frame.box_size as f32 + frame.spacing as f32)).round() as i32;
+                    let clamped = target_slot.max(0).min(dock_state.pins.len() as i32);
+                    (si as i32, clamped)
+                } else {
+                    (-1, -1)
+                }
+            } else {
+                (-1, -1)
+            }
+        } else {
+            (-1, -1)
+        };
+
         // Draw icons and running indicators — layout matches ui.slint exactly
         for (i, pin) in dock_state.pins.iter().enumerate() {
+            // Calculate horizontal offset for sliding animation during drag
+            let offset_x = if is_dragging && gpu_drag_source_idx >= 0 {
+                let idx = i as i32;
+                if gpu_drag_target_slot > gpu_drag_source_idx {
+                    // Target is to the right of source: shift icons between source+1 and target left
+                    if idx > gpu_drag_source_idx && idx <= gpu_drag_target_slot {
+                        -item_slot_width
+                    } else {
+                        0.0
+                    }
+                } else if gpu_drag_target_slot < gpu_drag_source_idx {
+                    // Target is to the left of source: shift icons between target and source-1 right
+                    if idx >= gpu_drag_target_slot && idx < gpu_drag_source_idx {
+                        item_slot_width
+                    } else {
+                        0.0
+                    }
+                } else {
+                    0.0
+                }
+            } else {
+                0.0
+            };
+
             // Icon position: 12px padding + index * (48 + 8), scaled to physical pixels
-            let px = padding_x + i as f32 * (icon_size_px + item_spacing);
+            let px = padding_x + i as f32 * (icon_size_px + item_spacing) + offset_x;
             let py = icon_y;
             let ps = icon_size_px;
 

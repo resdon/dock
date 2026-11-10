@@ -429,7 +429,7 @@ pub fn apply_mutual_repulsion(
 mod tests {
     use super::*;
     use crate::geometry::{Point, Vector2D};
-    use crate::physics::body::{BodyId, BodyType, CollisionShape};
+    use crate::physics::body::{BodyId, CollisionShape};
 
     #[test]
     fn test_spring_force_pulls_toward_target() {

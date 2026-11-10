@@ -128,7 +128,7 @@ impl DockLayout {
     /// Compute horizontal rest positions.
     fn compute_horizontal_positions(&self, count: usize) -> Vec<Point> {
         let icon_w = self.config.icon_size.width;
-        let icon_h = self.config.icon_size.height;
+        let _icon_h = self.config.icon_size.height;
         let spacing = self.config.spacing;
         let padding = self.config.padding;
         let container_w = self.config.container_size.width;
@@ -146,7 +146,7 @@ impl DockLayout {
                 let available = container_w - 2.0 * padding;
                 let total_with_spacing = count as f32 * icon_w + (count as f32 - 1.0) * spacing;
                 if count > 1 && total_with_spacing < available {
-                    let extra_spacing = (available - total_with_spacing) / (count as f32 - 1.0);
+                    let _extra_spacing = (available - total_with_spacing) / (count as f32 - 1.0);
                     padding
                 } else {
                     padding
@@ -177,7 +177,7 @@ impl DockLayout {
 
     /// Compute vertical rest positions.
     fn compute_vertical_positions(&self, count: usize) -> Vec<Point> {
-        let icon_w = self.config.icon_size.width;
+        let _icon_w = self.config.icon_size.width;
         let icon_h = self.config.icon_size.height;
         let spacing = self.config.spacing;
         let padding = self.config.padding;
@@ -325,7 +325,6 @@ mod tests {
     use super::DockLayoutConfig;
     use super::*;
     use crate::geometry::{Point, Size};
-    use crate::physics::{BodyId, CollisionShape, PhysicsBody};
 
     #[test]
     fn test_horizontal_layout() {

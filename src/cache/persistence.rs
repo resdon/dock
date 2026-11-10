@@ -15,6 +15,10 @@ fn get_config_path() -> String {
     format!("{}/pins.json", get_config_dir())
 }
 
+/// Load the ordered list of pinned applications from `~/.config/dock/pins.json`.
+///
+/// Returns an empty vector if the file doesn't exist or contains invalid JSON.
+/// For backward compatibility, also accepts a JSON set (order is lost).
 pub fn load_pinned_apps() -> Vec<String> {
     let path = get_config_path();
     let Ok(data) = fs::read_to_string(&path) else {
@@ -30,6 +34,10 @@ pub fn load_pinned_apps() -> Vec<String> {
     pins
 }
 
+/// Save the ordered list of pinned applications to `~/.config/dock/pins.json`.
+///
+/// Creates the config directory if it doesn't exist. Overwrites any existing
+/// file atomically (write then sync).
 pub fn save_pinned_apps(pinned: &Vec<String>) -> io::Result<()> {
     let dir = get_config_dir();
     let path = get_config_path();

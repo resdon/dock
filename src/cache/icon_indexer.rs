@@ -6,7 +6,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 pub fn get_icon_list_path() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_default();

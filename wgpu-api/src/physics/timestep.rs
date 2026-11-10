@@ -811,7 +811,7 @@ mod tests {
 
     #[test]
     fn test_state_query() {
-        let mut sim = FixedTimestepSimulator::default_config();
+        let sim = FixedTimestepSimulator::default_config();
         let mut world = PhysicsWorld::new();
 
         let body = make_test_body(1, Point::new(100.0, 200.0));
@@ -858,7 +858,7 @@ mod tests {
 
     #[test]
     fn test_all_interpolated_states() {
-        let mut sim = FixedTimestepSimulator::default_config();
+        let sim = FixedTimestepSimulator::default_config();
         let mut world = PhysicsWorld::new();
 
         world.add_body(make_test_body(1, Point::new(0.0, 0.0)));

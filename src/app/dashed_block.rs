@@ -10,12 +10,11 @@
 //! are read from `DockConfig` fields prefixed with `dashed_block_`.
 //! The block is shown only when `dashed_block_enabled` is true.
 
+use crate::state::AppState;
 use smithay_client_toolkit::{dmabuf::DmabufState, shell::WaylandSurface, shm::slot::SlotPool};
 use std::os::fd::AsFd;
 use wayland_client::protocol::wl_shm;
 use wayland_client::QueueHandle;
-use wayland_client::Proxy;
-use crate::state::AppState;
 
 use crate::config::DockConfig;
 use crate::render::dashed_block::render_dashed_block;
@@ -68,70 +67,8 @@ pub fn draw_dashed_block(
     if let Some(ref mut renderer) = gpu_context {
         let mut draw_commands = Vec::new();
 
-        // Build dashed border draw commands
-        let border_color = DockConfig::parse_hex_color(&config.dashed_block_border_color);
-        let br = border_color.0 as f32 / 255.0;
-        let bg = border_color.1 as f32 / 255.0;
-        let bb = border_color.2 as f32 / 255.0;
-        let border_col = wgpu_api::Color::rgba(br, bg, bb, a);
-        let dash_len = config.dashed_block_dash_length as usize;
-        let gap_len = config.dashed_block_gap_length as usize;
-        let cycle = dash_len + gap_len;
-        let thickness = config.dashed_block_border_thickness as usize;
-        let w = block_width as usize;
-        let h = block_height as usize;
-
-        // Draw dashed border segments as rectangles
-        let mut pos = 0;
-        while pos < w {
-            let dash_end = (pos + dash_len).min(w);
-            draw_commands.push(wgpu_api::DrawCommand::Rectangle {
-                rect: wgpu_api::Rect::new(pos as f32, 0.0, (dash_end - pos) as f32, thickness as f32),
-                color: border_col,
-                radius: 0.0,
-                stroke: None,
-                stroke_width: 0.0,
-            });
-            pos += cycle;
-        }
-        pos = 0;
-        while pos < w {
-            let dash_end = (pos + dash_len).min(w);
-            draw_commands.push(wgpu_api::DrawCommand::Rectangle {
-                rect: wgpu_api::Rect::new(pos as f32, (h - thickness) as f32, (dash_end - pos) as f32, thickness as f32),
-                color: border_col,
-                radius: 0.0,
-                stroke: None,
-                stroke_width: 0.0,
-            });
-            pos += cycle;
-        }
-        pos = 0;
-        while pos < h {
-            let dash_end = (pos + dash_len).min(h);
-            draw_commands.push(wgpu_api::DrawCommand::Rectangle {
-                rect: wgpu_api::Rect::new(0.0, pos as f32, thickness as f32, (dash_end - pos) as f32),
-                color: border_col,
-                radius: 0.0,
-                stroke: None,
-                stroke_width: 0.0,
-            });
-            pos += cycle;
-        }
-        pos = 0;
-        while pos < h {
-            let dash_end = (pos + dash_len).min(h);
-            draw_commands.push(wgpu_api::DrawCommand::Rectangle {
-                rect: wgpu_api::Rect::new((w - thickness) as f32, pos as f32, thickness as f32, (dash_end - pos) as f32),
-                color: border_col,
-                radius: 0.0,
-                stroke: None,
-                stroke_width: 0.0,
-            });
-            pos += cycle;
-        }
-
         // Render SVG icons as textures and add them as DrawCommand::Image
+        let w = block_width as usize;
         let icon_size = config.dashed_block_icon_size as usize;
         let icon_gap = config.dashed_block_icon_gap as usize;
         let row_gap = config.dashed_block_row_gap as usize;
@@ -180,37 +117,78 @@ pub fn draw_dashed_block(
             render_svg_to_texture("dashed-block:rclone", rclone_svg, raster_icon_size)
         {
             draw_commands.push(wgpu_api::DrawCommand::Image {
-                dest_rect: wgpu_api::Rect::new(row_start_x as f32, top_row_y as f32, icon_size as f32, icon_size as f32),
+                dest_rect: wgpu_api::Rect::new(
+                    row_start_x as f32,
+                    top_row_y as f32,
+                    icon_size as f32,
+                    icon_size as f32,
+                ),
                 texture: tex,
-                source_uv: wgpu_api::Rect { x: 0.0, y: 0.0, width: 1.0, height: 1.0 },
+                source_uv: wgpu_api::Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1.0,
+                    height: 1.0,
+                },
                 tint: wgpu_api::Color::rgba(1.0, 1.0, 1.0, a),
             });
         }
         if let Some(tex) = render_svg_to_texture("dashed-block:bluetooth", bt_svg, raster_icon_size)
         {
             draw_commands.push(wgpu_api::DrawCommand::Image {
-                dest_rect: wgpu_api::Rect::new((row_start_x + icon_size + icon_gap) as f32, top_row_y as f32, icon_size as f32, icon_size as f32),
+                dest_rect: wgpu_api::Rect::new(
+                    (row_start_x + icon_size + icon_gap) as f32,
+                    top_row_y as f32,
+                    icon_size as f32,
+                    icon_size as f32,
+                ),
                 texture: tex,
-                source_uv: wgpu_api::Rect { x: 0.0, y: 0.0, width: 1.0, height: 1.0 },
+                source_uv: wgpu_api::Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1.0,
+                    height: 1.0,
+                },
                 tint: wgpu_api::Color::rgba(1.0, 1.0, 1.0, a),
             });
         }
 
         // Bottom row: speaker | pac
-        if let Some(tex) = render_svg_to_texture("dashed-block:speaker", speaker_svg, raster_icon_size)
+        if let Some(tex) =
+            render_svg_to_texture("dashed-block:speaker", speaker_svg, raster_icon_size)
         {
             draw_commands.push(wgpu_api::DrawCommand::Image {
-                dest_rect: wgpu_api::Rect::new(row_start_x as f32, bottom_row_y as f32, icon_size as f32, icon_size as f32),
+                dest_rect: wgpu_api::Rect::new(
+                    row_start_x as f32,
+                    bottom_row_y as f32,
+                    icon_size as f32,
+                    icon_size as f32,
+                ),
                 texture: tex,
-                source_uv: wgpu_api::Rect { x: 0.0, y: 0.0, width: 1.0, height: 1.0 },
+                source_uv: wgpu_api::Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1.0,
+                    height: 1.0,
+                },
                 tint: wgpu_api::Color::rgba(1.0, 1.0, 1.0, a),
             });
         }
         if let Some(tex) = render_svg_to_texture("dashed-block:pac", pac_svg, raster_icon_size) {
             draw_commands.push(wgpu_api::DrawCommand::Image {
-                dest_rect: wgpu_api::Rect::new((row_start_x + icon_size + icon_gap) as f32, bottom_row_y as f32, icon_size as f32, icon_size as f32),
+                dest_rect: wgpu_api::Rect::new(
+                    (row_start_x + icon_size + icon_gap) as f32,
+                    bottom_row_y as f32,
+                    icon_size as f32,
+                    icon_size as f32,
+                ),
                 texture: tex,
-                source_uv: wgpu_api::Rect { x: 0.0, y: 0.0, width: 1.0, height: 1.0 },
+                source_uv: wgpu_api::Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1.0,
+                    height: 1.0,
+                },
                 tint: wgpu_api::Color::rgba(1.0, 1.0, 1.0, a),
             });
         }
@@ -242,42 +220,52 @@ pub fn draw_dashed_block(
             scale as f32,
             &draw_commands,
         ) {
-            Ok(export_info) => {
-                match dmabuf_state.create_params(qh) {
-                    Ok(params) => {
-                        for (i, plane) in export_info.planes.iter().enumerate() {
-                            params.add(
-                                plane.fd.as_fd(),
-                                i as u32,
-                                plane.offset,
-                                plane.stride,
-                                export_info.modifier,
-                            );
-                        }
-                        let (wl_buffer, _params) = params.create_immed(
+            Ok(export_info) => match dmabuf_state.create_params(qh) {
+                Ok(params) => {
+                    for (i, plane) in export_info.planes.iter().enumerate() {
+                        params.add(
+                            plane.fd.as_fd(),
+                            i as u32,
+                            plane.offset,
+                            plane.stride,
+                            export_info.modifier,
+                        );
+                    }
+                    let (wl_buffer, _params) = params.create_immed(
                             phys_width as i32,
                             phys_height as i32,
                             export_info.fourcc as u32,
                             wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_buffer_params_v1::Flags::empty(),
                             qh,
                         );
-                        block.surface.wl_surface().set_buffer_scale(scale.round().max(1.0) as i32);
-                        block.surface.wl_surface().attach(Some(&wl_buffer), 0, 0);
-                        block.surface.wl_surface().damage_buffer(0, 0, phys_width, phys_height);
-                        block.surface.wl_surface().commit();
-                        return;
-                    }
-                    Err(_) => {}
+                    block
+                        .surface
+                        .wl_surface()
+                        .set_buffer_scale(scale.round().max(1.0) as i32);
+                    block.surface.wl_surface().attach(Some(&wl_buffer), 0, 0);
+                    block
+                        .surface
+                        .wl_surface()
+                        .damage_buffer(0, 0, phys_width, phys_height);
+                    block.surface.wl_surface().commit();
+                    return;
                 }
-            }
+                Err(_) => {}
+            },
             Err(_) => {}
         }
     }
 
     // CPU fallback rendering
     fallback_dashed_block_cpu(
-        dock, pool, phys_width, phys_height, scale, a,
-        font_manager, config,
+        dock,
+        pool,
+        phys_width,
+        phys_height,
+        scale,
+        a,
+        font_manager,
+        config,
     );
 }
 

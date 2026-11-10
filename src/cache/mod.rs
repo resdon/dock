@@ -79,7 +79,8 @@ pub fn save_cached_icon(app_id: &str, width: u32, height: u32, rgba: &[u8]) {
     // Versioned metadata headers. Version 5 stores canonical RGBA sources
     // generated at 48px (matching dock icon size) for Slint rendering;
     // entries from older cache layouts are rejected.
-    if let Err(e) = file.write_all(&ICON_CACHE_MAGIC.to_ne_bytes())
+    if let Err(e) = file
+        .write_all(&ICON_CACHE_MAGIC.to_ne_bytes())
         .and_then(|_| file.write_all(&ICON_CACHE_VERSION.to_ne_bytes()))
         .and_then(|_| file.write_all(&width.to_ne_bytes()))
         .and_then(|_| file.write_all(&height.to_ne_bytes()))

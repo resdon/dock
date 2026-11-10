@@ -284,7 +284,8 @@ impl SlintDockRenderer {
         // bound memory growth when apps are unpinned/removed.
         let active_ids: std::collections::HashSet<&str> =
             dock_state.pins.iter().map(|p| p.app_id.as_str()).collect();
-        self.icon_cache.retain(|app_id, _| active_ids.contains(app_id.as_str()));
+        self.icon_cache
+            .retain(|app_id, _| active_ids.contains(app_id.as_str()));
 
         // Track which app_ids have icons in the cache so the state hash detects
         // when a newly loaded icon should update the Slint model.
@@ -415,24 +416,22 @@ impl SlintDockRenderer {
                 let is_dragging_item =
                     is_dragging && dragged_app_id.is_some_and(|id| *id == pin.app_id);
 
-                // Calculate horizontal offset for sliding animation
+                // Calculate horizontal offset for sliding animation during drag
                 let offset_x = if is_dragging && drag_source_idx >= 0 {
                     let idx = i as i32;
                     if is_dragging_item {
                         0.0 // Dragged icon is hidden, offset doesn't matter
                     } else if drag_target_slot > drag_source_idx {
-                        // Target is to the right of source
+                        // Target is to the right of source: shift icons between source+1 and target left
                         if idx > drag_source_idx && idx <= drag_target_slot {
-                            -item_slot_width // Shift left to fill gap
-                        } else if idx >= drag_source_idx && idx < drag_target_slot {
                             -item_slot_width
                         } else {
                             0.0
                         }
                     } else if drag_target_slot < drag_source_idx {
-                        // Target is to the left of source
+                        // Target is to the left of source: shift icons between target and source-1 right
                         if idx >= drag_target_slot && idx < drag_source_idx {
-                            item_slot_width // Shift right to make space
+                            item_slot_width
                         } else {
                             0.0
                         }

@@ -45,7 +45,7 @@
 //! collision detection.
 
 use crate::geometry::{NodeId, Point, Vector2D};
-use crate::physics::{BodyId, BodyType, CollisionShape, PhysicsBody};
+use crate::physics::{BodyId, CollisionShape, PhysicsBody};
 
 // ---------------------------------------------------------------------------
 // Dock axis
@@ -852,9 +852,9 @@ mod tests {
     #[test]
     fn test_remove_item() {
         let mut dock = Dock::new();
-        let a = dock.add_item(NodeId::new(1), 48.0);
+        let _a = dock.add_item(NodeId::new(1), 48.0);
         let b = dock.add_item(NodeId::new(2), 48.0);
-        let c = dock.add_item(NodeId::new(3), 48.0);
+        let _c = dock.add_item(NodeId::new(3), 48.0);
 
         assert!(dock.remove_item(b));
         assert_eq!(dock.len(), 2);
@@ -1296,9 +1296,9 @@ mod tests {
     #[test]
     fn test_continue_drag_returns_new_slot() {
         let mut dock = Dock::new();
-        let a = dock.add_item(NodeId::new(1), 48.0);
+        let _a = dock.add_item(NodeId::new(1), 48.0);
         let b = dock.add_item(NodeId::new(2), 48.0);
-        let c = dock.add_item(NodeId::new(3), 48.0);
+        let _c = dock.add_item(NodeId::new(3), 48.0);
 
         // Start dragging item B
         dock.start_drag(b, Point::new(100.0, 50.0));

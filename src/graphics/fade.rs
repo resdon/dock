@@ -11,15 +11,34 @@ use std::time::{Duration, Instant};
 pub const FADE_FRAME_INTERVAL: Duration = Duration::from_nanos(41_666_667);
 const ALPHA_EPSILON: f32 = 1e-3;
 
+/// Smooth alpha interpolation animation for show/hide transitions.
+///
+/// Interpolates `current_alpha` toward `target_alpha` over `duration_secs`
+/// using time-based stepping (not frame-dependent). Fires edge-state flags
+/// (`just_became_hidden`, `just_became_visible`) when the animation reaches
+/// its bounds so the main loop can trigger cleanup or redraw.
+///
+/// # Invariants
+/// - `min_alpha <= current_alpha <= max_alpha`
+/// - `min_alpha <= target_alpha <= max_alpha`
+/// - Fade frames are throttled to ~24 FPS regardless of display refresh rate
 #[derive(Debug, Clone)]
 pub struct FadeAnimation {
+    /// Current interpolated alpha value (0.0 = fully transparent).
     pub current_alpha: f32,
+    /// Target alpha value the animation is moving toward.
     pub target_alpha: f32,
+    /// Last time the animation was updated.
     pub last_update: Instant,
+    /// Total duration of the fade animation in seconds.
     pub duration_secs: f32,
+    /// Minimum alpha bound (usually 0.0 for fully hidden).
     pub min_alpha: f32,
+    /// Maximum alpha bound (usually 1.0 for fully visible).
     pub max_alpha: f32,
+    /// Set to `true` for one frame when animation reaches `min_alpha`.
     pub just_became_hidden: bool,
+    /// Set to `true` for one frame when animation reaches `max_alpha`.
     pub just_became_visible: bool,
 }
 

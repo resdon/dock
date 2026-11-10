@@ -25,7 +25,10 @@ pub fn spawn_process_monitor(snapshot_tx: Sender<ProcessSnapshot>, enabled_rx: R
             ) {
                 Ok(s) => s,
                 Err(e) => {
-                    tracing::warn!("Failed to create sysinfo System with specifics: {}, falling back", e);
+                    tracing::warn!(
+                        "Failed to create sysinfo System with specifics: {}, falling back",
+                        e
+                    );
                     match System::new_all() {
                         Ok(s) => s,
                         Err(e2) => {

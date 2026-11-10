@@ -145,7 +145,10 @@ mod tests {
     fn test_stream_disconnected_recovery_returns_retry_after() {
         let recovery = CaptureRecovery::default_config();
         let result = recovery.recover_stream_disconnected();
-        assert_eq!(result, RecoveryResult::RetryAfter(Duration::from_millis(500)));
+        assert_eq!(
+            result,
+            RecoveryResult::RetryAfter(Duration::from_millis(500))
+        );
         assert_eq!(recovery.reconnect_count(), 1);
     }
 

@@ -404,7 +404,7 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
         let dock_height = state.config.dock_height;
         // Side bars are disabled; surface height equals dock height only.
         let surface_height = dock_height;
-        let scale_factor = 1.0;
+        let _scale_factor = 1.0;
 
         layer_surface.set_keyboard_interactivity(
             smithay_client_toolkit::shell::wlr_layer::KeyboardInteractivity::None,

@@ -6,8 +6,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use zbus::message::Header;
-use zbus::zvariant::{OwnedObjectPath, OwnedVariant};
-use zbus::{fdo, interface, Connection, Proxy};
+use zbus::zvariant::OwnedVariant;
+use zbus::{fdo, interface, Connection, OwnedObjectPath, Proxy};
 
 use crate::models::{TrayAction, TrayActionKind, TrayIcon, TrayItem, TraySnapshot, TrayStatus};
 
@@ -690,9 +690,7 @@ async fn perform_action(connection: &Connection, action: &TrayAction) {
                     .await
             }
             TrayActionKind::Scroll { delta, orientation } => {
-                proxy
-                    .call_noreply("Scroll", &(*delta, orientation))
-                    .await
+                proxy.call_noreply("Scroll", &(*delta, orientation)).await
             }
         };
 

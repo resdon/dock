@@ -189,29 +189,6 @@ impl TextManager {
         }
     }
 
-    /// Legacy single-text render (kept for backward compatibility, but batched via flush is preferred)
-    pub fn render_text(
-        &mut self,
-        text: &str,
-        position: (f32, f32),
-        font_size: f32,
-        color: [f32; 4],
-        width: f32,
-        scale: f32,
-        viewport_width: u32,
-        viewport_height: u32,
-        render_pass: &mut wgpu::RenderPass<'_>,
-    ) {
-        self.add_text(TextItem {
-            text: text.to_string(),
-            position,
-            font_size,
-            color,
-            max_width: width,
-            align: 0.0,
-        });
-        self.flush(viewport_width, viewport_height, render_pass);
-    }
 }
 
 #[cfg(test)]
@@ -220,7 +197,7 @@ mod tests {
 
     #[test]
     fn test_font_system_loads_fonts() {
-        let font_system = FontSystem::new();
+        let _font_system = FontSystem::new();
         assert!(true);
     }
 }

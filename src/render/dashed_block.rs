@@ -25,8 +25,6 @@ use crate::config::DockConfig;
 use crate::render::color_check::{draw_dashed_border, write_bgra_pixel};
 use crate::render::font::FontManager;
 use crate::render::text::draw_text;
-use std::collections::HashMap;
-use std::sync::Mutex;
 
 /// Hit-test the Bluetooth icon inside the dashed block widget.
 ///
@@ -52,16 +50,6 @@ pub fn bluetooth_icon_at(x: f64, y: f64, config: &DockConfig) -> bool {
 
 use resvg::tiny_skia::{Pixmap, Transform};
 use resvg::usvg::{Options, Tree};
-
-#[derive(Clone)]
-struct CachedDashedIcons {
-    rclone: Vec<u8>,
-    bluetooth: Vec<u8>,
-    speaker: Vec<u8>,
-    pac: Vec<u8>,
-}
-
-static DASHED_ICON_CACHE: Mutex<Option<HashMap<u32, CachedDashedIcons>>> = Mutex::new(None);
 
 /// Logical width of the dashed block widget (from config, fallback default).
 pub const DASHED_BLOCK_WIDTH: i32 = 64;
@@ -235,8 +223,40 @@ pub fn render_dashed_block(
     );
 
     // Render all 4 SVG icons onto the canvas
-    render_svg_icon(rclone_svg, rclone_icon_x, top_row_y, icon_size, w, h, canvas, a, &options);
-    render_svg_icon(bt_svg, bt_icon_x, top_row_y, icon_size, w, h, canvas, a, &options);
-    render_svg_icon(speaker_svg, speaker_icon_x, bottom_row_y, icon_size, w, h, canvas, a, &options);
-    render_svg_icon(pac_svg, pac_icon_x, bottom_row_y, icon_size, w, h, canvas, a, &options);
+    render_svg_icon(
+        rclone_svg,
+        rclone_icon_x,
+        top_row_y,
+        icon_size,
+        w,
+        h,
+        canvas,
+        a,
+        &options,
+    );
+    render_svg_icon(
+        bt_svg, bt_icon_x, top_row_y, icon_size, w, h, canvas, a, &options,
+    );
+    render_svg_icon(
+        speaker_svg,
+        speaker_icon_x,
+        bottom_row_y,
+        icon_size,
+        w,
+        h,
+        canvas,
+        a,
+        &options,
+    );
+    render_svg_icon(
+        pac_svg,
+        pac_icon_x,
+        bottom_row_y,
+        icon_size,
+        w,
+        h,
+        canvas,
+        a,
+        &options,
+    );
 }

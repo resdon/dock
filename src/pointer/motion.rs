@@ -243,7 +243,8 @@ pub fn handle_motion_events(
                         let has_windows = state.window_count_for_app(&app_id) > 0;
 
                         if has_windows {
-                            let target_changed = state.window_list_state.target_app_id.as_deref() != Some(&app_id);
+                            let target_changed =
+                                state.window_list_state.target_app_id.as_deref() != Some(&app_id);
                             let was_open = state.window_list_state.is_open;
                             if target_changed || !was_open {
                                 // Only reset global interaction timers when opening a new popup session.

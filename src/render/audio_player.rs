@@ -16,10 +16,7 @@ const RGB_PANEL: [u8; 3] = [
     theme::PANEL_ARGB[0],
 ];
 const RGB_MUTED: [u8; 3] = [theme::MUTED.0, theme::MUTED.1, theme::MUTED.2];
-const RGB_MUTE: [u8; 3] = RGB_MUTED;
-const RGB_INK: [u8; 3] = [theme::INK.0, theme::INK.1, theme::INK.2];
 const RGB_TEXT: [u8; 3] = [theme::TEXT.0, theme::TEXT.1, theme::TEXT.2];
-const RGB_TEXT_MUTED: [u8; 3] = RGB_MUTED;
 const RGB_YELLOW_SOFT: [u8; 3] = [
     theme::YELLOW_SOFT_ARGB[2],
     theme::YELLOW_SOFT_ARGB[1],
@@ -248,16 +245,7 @@ pub fn render(
             play_color,
             alpha,
         );
-        draw_play_pause(
-            canvas,
-            w,
-            h,
-            s(160),
-            s(138),
-            playing,
-            RGB_TEXT,
-            alpha,
-        );
+        draw_play_pause(canvas, w, h, s(160), s(138), playing, RGB_TEXT, alpha);
         chevron(canvas, w, h, s(212), s(139), true, control_ink, alpha);
         draw_repeat(canvas, w, h, s(269), s(139), control_ink, alpha);
 
@@ -424,17 +412,17 @@ fn draw_disc(canvas: &mut [u8], w: i32, h: i32, cx: i32, cy: i32, r: i32, alpha:
     }
     let hub_r = (r / 2).max(1);
     circle(canvas, w, h, cx, cy, hub_r, HUB, alpha);
-    circle(canvas, w, h, cx, cy, hub_r.saturating_sub(3), HUB_INNER, alpha);
     circle(
         canvas,
         w,
         h,
         cx,
         cy,
-        (hub_r / 2).max(1),
+        hub_r.saturating_sub(3),
         HUB_INNER,
         alpha,
     );
+    circle(canvas, w, h, cx, cy, (hub_r / 2).max(1), HUB_INNER, alpha);
     circle_ring(canvas, w, h, cx, cy, hub_r, HUB_RING, alpha);
 }
 

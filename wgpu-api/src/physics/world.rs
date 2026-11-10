@@ -665,7 +665,7 @@ impl Default for PhysicsWorld {
 mod tests {
     use super::*;
     use crate::geometry::{Point, Vector2D};
-    use crate::physics::body::{BodyId, BodyType, CollisionShape, PhysicsBody};
+    use crate::physics::body::{BodyId, CollisionShape, PhysicsBody};
 
     #[test]
     fn test_create_world() {

@@ -64,11 +64,17 @@ mod tests {
     #[test]
     fn test_recovery_result_display() {
         assert_eq!(format!("{}", RecoveryResult::Recovered), "recovered");
-        assert_eq!(format!("{}", RecoveryResult::RetryAfter(Duration::from_millis(250))), "retry after 250ms");
+        assert_eq!(
+            format!("{}", RecoveryResult::RetryAfter(Duration::from_millis(250))),
+            "retry after 250ms"
+        );
         assert_eq!(format!("{}", RecoveryResult::Retryable), "retryable");
         assert_eq!(format!("{}", RecoveryResult::Failed), "failed");
         assert_eq!(format!("{}", RecoveryResult::NotAttempted), "not attempted");
-        assert_eq!(format!("{}", RecoveryResult::NotImplemented), "not implemented");
+        assert_eq!(
+            format!("{}", RecoveryResult::NotImplemented),
+            "not implemented"
+        );
     }
 
     #[test]

@@ -460,7 +460,7 @@ impl VisualEffects {
     }
 
     /// Compute the collision squash transform for a body.
-    pub fn compute_collision_squash(&self, body: BodyId, dt: f32) -> VisualTransform {
+    pub fn compute_collision_squash(&self, body: BodyId, _dt: f32) -> VisualTransform {
         let Some(effect) = self.collision_effects.get(&body) else {
             return VisualTransform::identity();
         };

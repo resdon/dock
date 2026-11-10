@@ -16,6 +16,18 @@ use wayland_client::backend::ObjectId;
 use crate::AppState;
 
 /// Top-level coordinator for interaction state updates.
+///
+/// Called every frame from the main event loop. Updates timer state, evaluates
+/// popup auto-close conditions, and adjusts fade targets for context menus and
+/// window lists. Returns `true` if any UI layer changed and a redraw is needed.
+///
+/// # Interaction flow
+/// 1. Read config parameters (timeouts, fade durations)
+/// 2. Track pointer position relative to dock, popups, and menus
+/// 3. Update timers based on motion and surface occupancy
+/// 4. Evaluate hard close timeouts for context menu and window list
+/// 5. Update fade animation targets
+/// 6. Handle dock auto-hide/show transitions
 pub fn update(
     state: &mut AppState,
     _apps_in_dock: &[String],

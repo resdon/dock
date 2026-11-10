@@ -9,12 +9,11 @@ use smithay_client_toolkit::{
 };
 use wayland_client::{protocol::wl_shm, QueueHandle};
 
-use crate::config::DockConfig;
 use crate::models::SystemBarSnapshot;
 use crate::render::tray::{
     render_system_status_into_canvas, render_tray_icons_into_canvas, system_bar_logical_width,
     system_bar_position, tray_bar_position, tray_icon_position, tray_logical_size,
-    TRAY_ICON_SIZE, SYSTEM_BAR_HEIGHT,
+    SYSTEM_BAR_HEIGHT, TRAY_ICON_SIZE,
 };
 use crate::state::AppState;
 use crate::types::{DockInstance, PopupSurface};
@@ -194,42 +193,36 @@ pub fn draw_left_tray_bar(
 
         // Render via DMA-BUF
         if let Some(ref mut renderer) = gpu_context {
-            match renderer.render_to_dmabuf(
-                phys_width as u32,
-                phys_height as u32,
-                &draw_commands,
-            ) {
-                Ok(export_info) => {
-                    match dmabuf_state.create_params(qh) {
-                        Ok(params) => {
-                            for (i, plane) in export_info.planes.iter().enumerate() {
-                                params.add(
-                                    plane.fd.as_fd(),
-                                    i as u32,
-                                    plane.offset,
-                                    plane.stride,
-                                    export_info.modifier,
-                                );
-                            }
-                            let (wl_buffer, _params) = params.create_immed(
+            match renderer.render_to_dmabuf(phys_width as u32, phys_height as u32, &draw_commands) {
+                Ok(export_info) => match dmabuf_state.create_params(qh) {
+                    Ok(params) => {
+                        for (i, plane) in export_info.planes.iter().enumerate() {
+                            params.add(
+                                plane.fd.as_fd(),
+                                i as u32,
+                                plane.offset,
+                                plane.stride,
+                                export_info.modifier,
+                            );
+                        }
+                        let (wl_buffer, _params) = params.create_immed(
                                 phys_width,
                                 phys_height,
                                 export_info.fourcc as u32,
                                 wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_buffer_params_v1::Flags::empty(),
                                 qh,
                             );
-                            let scale_i32 = scale.round().max(1.0) as i32;
-                            bar.surface.set_buffer_scale(scale_i32);
-                            bar.surface.attach(Some(&wl_buffer), 0, 0);
-                            bar.surface.damage_buffer(0, 0, phys_width, phys_height);
-                            set_interactive_region(bar, visible && !items.is_empty(), compositor, qh);
-                            bar.surface.commit();
-                            bar.current_buffer = None;
-                            true
-                        }
-                        Err(_) => false,
+                        let scale_i32 = scale.round().max(1.0) as i32;
+                        bar.surface.set_buffer_scale(scale_i32);
+                        bar.surface.attach(Some(&wl_buffer), 0, 0);
+                        bar.surface.damage_buffer(0, 0, phys_width, phys_height);
+                        set_interactive_region(bar, visible && !items.is_empty(), compositor, qh);
+                        bar.surface.commit();
+                        bar.current_buffer = None;
+                        true
                     }
-                }
+                    Err(_) => false,
+                },
                 Err(_) => false,
             }
         } else {
@@ -366,8 +359,8 @@ pub fn draw_bottom_system_bar(
         } else {
             &snapshot.keyboard_layout
         };
-        let badge_x = (8.0 * scale_f32);
-        let badge_y = ((SYSTEM_BAR_HEIGHT as f32 - 20.0) / 2.0 * scale_f32);
+        let badge_x = 8.0 * scale_f32;
+        let badge_y = (SYSTEM_BAR_HEIGHT as f32 - 20.0) / 2.0 * scale_f32;
         let badge_w = 34.0 * scale_f32;
         let badge_h = 20.0 * scale_f32;
         draw_commands.push(wgpu_api::DrawCommand::Rectangle {
@@ -444,7 +437,11 @@ pub fn draw_bottom_system_bar(
         });
 
         // Date and time text (right-aligned)
-        let date = if snapshot.date.is_empty() { "--" } else { &snapshot.date };
+        let date = if snapshot.date.is_empty() {
+            "--"
+        } else {
+            &snapshot.date
+        };
         let time = if snapshot.time.is_empty() {
             "--:--"
         } else {
@@ -510,42 +507,36 @@ pub fn draw_bottom_system_bar(
 
         // GPU rendering via DMA-BUF with glyphon text rendering
         if let Some(ref mut renderer) = gpu_context {
-            match renderer.render_to_dmabuf(
-                phys_width as u32,
-                phys_height as u32,
-                &draw_commands,
-            ) {
-                Ok(export_info) => {
-                    match dmabuf_state.create_params(qh) {
-                        Ok(params) => {
-                            for (i, plane) in export_info.planes.iter().enumerate() {
-                                params.add(
-                                    plane.fd.as_fd(),
-                                    i as u32,
-                                    plane.offset,
-                                    plane.stride,
-                                    export_info.modifier,
-                                );
-                            }
-                            let (wl_buffer, _params) = params.create_immed(
+            match renderer.render_to_dmabuf(phys_width as u32, phys_height as u32, &draw_commands) {
+                Ok(export_info) => match dmabuf_state.create_params(qh) {
+                    Ok(params) => {
+                        for (i, plane) in export_info.planes.iter().enumerate() {
+                            params.add(
+                                plane.fd.as_fd(),
+                                i as u32,
+                                plane.offset,
+                                plane.stride,
+                                export_info.modifier,
+                            );
+                        }
+                        let (wl_buffer, _params) = params.create_immed(
                                 phys_width,
                                 phys_height,
                                 export_info.fourcc as u32,
                                 wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_buffer_params_v1::Flags::empty(),
                                 qh,
                             );
-                            let scale_i32 = scale.round().max(1.0) as i32;
-                            bar.surface.set_buffer_scale(scale_i32);
-                            bar.surface.attach(Some(&wl_buffer), 0, 0);
-                            bar.surface.damage_buffer(0, 0, phys_width, phys_height);
-                            set_interactive_region(bar, false, compositor, qh);
-                            bar.surface.commit();
-                            bar.current_buffer = None;
-                            true
-                        }
-                        Err(_) => false,
+                        let scale_i32 = scale.round().max(1.0) as i32;
+                        bar.surface.set_buffer_scale(scale_i32);
+                        bar.surface.attach(Some(&wl_buffer), 0, 0);
+                        bar.surface.damage_buffer(0, 0, phys_width, phys_height);
+                        set_interactive_region(bar, false, compositor, qh);
+                        bar.surface.commit();
+                        bar.current_buffer = None;
+                        true
                     }
-                }
+                    Err(_) => false,
+                },
                 Err(_) => false,
             }
         } else {
