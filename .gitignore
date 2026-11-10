@@ -46,3 +46,6 @@ slint-generated/
 
 # Font cache
 .cache/dock/
+
+# Junie session artifacts
+.junie/plans/
