@@ -35,7 +35,7 @@
 //! - **video.rs**: VideoManager reports frame acquisition timing
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
 // ---------------------------------------------------------------------------
@@ -275,8 +275,8 @@ impl PhaseTiming {
 /// Analyzes frame rate over time, providing statistics and stability metrics.
 #[derive(Debug, Clone)]
 pub struct FrameRateAnalyzer {
-    /// Frame times in milliseconds (circular buffer).
-    frame_times: RefCell<Vec<f64>>,
+    /// Frame times in milliseconds (ring buffer with O(1) eviction).
+    frame_times: RefCell<VecDeque<f64>>,
     /// Maximum number of frame times to retain.
     max_samples: usize,
     /// Total frames recorded.
@@ -289,7 +289,7 @@ impl FrameRateAnalyzer {
     /// Create a new analyzer targeting the given FPS.
     pub fn new(target_fps: f64) -> Self {
         Self {
-            frame_times: RefCell::new(Vec::with_capacity(360)),
+            frame_times: RefCell::new(VecDeque::with_capacity(360)),
             max_samples: 360, // ~6 seconds at 60fps
             total_frames: RefCell::new(0),
             target_fps,
@@ -304,9 +304,9 @@ impl FrameRateAnalyzer {
     /// Record a new frame time.
     pub fn record_frame(&self, frame_time_ms: f64) {
         let mut times = self.frame_times.borrow_mut();
-        times.push(frame_time_ms);
+        times.push_back(frame_time_ms);
         if times.len() > self.max_samples {
-            times.remove(0);
+            times.pop_front();
         }
         *self.total_frames.borrow_mut() += 1;
     }
@@ -979,8 +979,8 @@ impl StressTestResult {
 /// Analyzes frame time jitter (variability).
 #[derive(Debug, Clone)]
 pub struct JitterAnalyzer {
-    /// Recent frame times.
-    frame_times: RefCell<Vec<f64>>,
+    /// Recent frame times (ring buffer with O(1) eviction).
+    frame_times: RefCell<VecDeque<f64>>,
     /// Maximum samples.
     max_samples: usize,
 }
@@ -989,7 +989,7 @@ impl JitterAnalyzer {
     /// Create a new jitter analyzer.
     pub fn new() -> Self {
         Self {
-            frame_times: RefCell::new(Vec::with_capacity(60)),
+            frame_times: RefCell::new(VecDeque::with_capacity(60)),
             max_samples: 60,
         }
     }
@@ -997,9 +997,9 @@ impl JitterAnalyzer {
     /// Record a new frame time.
     pub fn record(&self, frame_time_ms: f64) {
         let mut times = self.frame_times.borrow_mut();
-        times.push(frame_time_ms);
+        times.push_back(frame_time_ms);
         if times.len() > self.max_samples {
-            times.remove(0);
+            times.pop_front();
         }
     }
 
@@ -1022,11 +1022,15 @@ impl JitterAnalyzer {
             return 0.0;
         }
         let mut max_delta = 0.0;
-        for window in times.windows(2) {
-            let delta = (window[0] - window[1]).abs();
-            if delta > max_delta {
-                max_delta = delta;
+        let mut prev: Option<f64> = None;
+        for &t in times.iter() {
+            if let Some(p) = prev {
+                let delta = (t - p).abs();
+                if delta > max_delta {
+                    max_delta = delta;
+                }
             }
+            prev = Some(t);
         }
         max_delta
     }

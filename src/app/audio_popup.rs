@@ -63,9 +63,11 @@ pub fn draw_audio_popup(
 
     if dock.audio_popup.is_none() {
         let surface = compositor_state.create_surface(qh);
-        let subsurface = subcompositor
-            .expect("Subcompositor global not bound")
-            .get_subsurface(&surface, dock.surface.wl_surface(), qh, ());
+        let Some(sc) = subcompositor else {
+            tracing::warn!("Subcompositor not available; audio popup rendering degraded");
+            return;
+        };
+        let subsurface = sc.get_subsurface(&surface, dock.surface.wl_surface(), qh, ());
         subsurface.set_desync();
         dock.audio_popup = Some(PopupSurface {
             subsurface,
@@ -81,10 +83,10 @@ pub fn draw_audio_popup(
             input_region_key: 0,
         });
     }
-    let popup = dock
-        .audio_popup
-        .as_mut()
-        .expect("audio popup was just created");
+    let Some(popup) = dock.audio_popup.as_mut() else {
+        tracing::warn!("Audio popup not initialized");
+        return;
+    };
 
     popup.position = (logical_x, logical_y);
     popup.subsurface.set_position(logical_x, logical_y);
@@ -107,23 +109,26 @@ pub fn draw_audio_popup(
     popup.cached_phys_width = phys_width;
     popup.cached_phys_height = phys_height;
 
-    let (buffer, canvas) = pool
-        .create_buffer(
-            phys_width,
-            phys_height,
-            phys_width * 4,
-            wl_shm::Format::Argb8888,
-        )
-        .expect("Failed to allocate audio popup buffer");
+    let (buffer, canvas) = match pool.create_buffer(
+        phys_width,
+        phys_height,
+        phys_width * 4,
+        wl_shm::Format::Argb8888,
+    ) {
+        Ok(bc) => bc,
+        Err(e) => {
+            tracing::warn!("Failed to allocate audio popup buffer: {}", e);
+            return;
+        }
+    };
     if !super::copy_popup_content(canvas, &popup.cached_content) {
         return;
     }
-    popup
-        .surface
-        .set_buffer_scale(scale.round().max(1.0) as i32);
-    buffer
-        .attach_to(&popup.surface)
-        .expect("Failed to attach audio popup buffer");
+    popup.surface.set_buffer_scale(scale.round().max(1.0) as i32);
+    if let Err(e) = buffer.attach_to(&popup.surface) {
+        tracing::warn!("Failed to attach audio popup buffer: {}", e);
+        return;
+    }
     popup.surface.damage_buffer(0, 0, phys_width, phys_height);
 
     let region = compositor_state.wl_compositor().create_region(qh, ());

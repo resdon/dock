@@ -147,7 +147,7 @@ impl AppState {
         self.needs_redraw = true;
 
         // Push into the channel queue instantly with zero thread-spawn overhead
-        self.icon_load.request(app_id);
+        self.icon_load.request(app_id, self.config.icon_size);
     }
 
     /// Polls background load queue and returns true if any new icons were inserted

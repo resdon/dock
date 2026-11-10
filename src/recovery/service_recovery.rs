@@ -75,89 +75,70 @@ impl ServiceRecovery {
 
     /// Attempt to recover from a D-Bus connection failure.
     ///
-    /// # Returns
-    /// - `Recovered` if the connection was re-established.
-    /// - `Retryable` if reconnection should be retried.
-    /// - `Failed` if max attempts exceeded.
+    /// Returns `RetryAfter(delay)` with bounded backoff timing, but no actual
+    /// reconnect/re-register action is performed by this module yet.
     pub fn recover_dbus_connection(&self) -> RecoveryResult {
         let attempts = self.restart_count.fetch_add(1, Ordering::SeqCst) + 1;
+        let delay = self.backoff_delay(attempts.saturating_sub(1));
 
         if attempts > self.config.max_restart_attempts {
             tracing::error!(
                 subsystem = "dbus",
                 attempts = attempts,
                 max_attempts = self.config.max_restart_attempts,
-                "D-Bus reconnection attempts exhausted"
+                "D-Bus reconnection attempts exhausted (no integrated recovery action)"
             );
             return RecoveryResult::Failed;
         }
 
-        let delay = self.backoff_delay(attempts - 1);
         tracing::warn!(
             subsystem = "dbus",
             attempt = attempts,
             delay_ms = ?delay,
-            "Attempting D-Bus reconnection with backoff"
+            "D-Bus recovery requested but not implemented/integrated"
         );
-
-        // In a real implementation, this would:
-        // 1. Wait for the backoff delay
-        // 2. Reconnect to D-Bus
-        // 3. Re-register all listeners
-        RecoveryResult::Retryable
+        RecoveryResult::RetryAfter(delay)
     }
 
     /// Attempt to recover from a service crash.
     ///
-    /// # Returns
-    /// - `Recovered` if the service was restarted.
-    /// - `Retryable` if restart should be retried.
-    /// - `Failed` if max attempts exceeded.
+    /// Returns `RetryAfter(delay)` with bounded backoff timing, but no actual
+    /// service restart action is performed by this module yet.
     pub fn recover_service_crash(&self, service_name: &str) -> RecoveryResult {
         let attempts = self.restart_count.fetch_add(1, Ordering::SeqCst) + 1;
+        let delay = self.backoff_delay(attempts.saturating_sub(1));
 
         if attempts > self.config.max_restart_attempts {
             tracing::error!(
                 subsystem = "service",
                 service = service_name,
                 attempts = attempts,
-                "Service restart attempts exhausted"
+                "Service restart attempts exhausted (no integrated recovery action)"
             );
             return RecoveryResult::Failed;
         }
 
-        let delay = self.backoff_delay(attempts - 1);
         tracing::warn!(
             subsystem = "service",
             service = service_name,
             attempt = attempts,
             delay_ms = ?delay,
-            "Attempting service restart"
+            "Service recovery requested but not implemented/integrated"
         );
-
-        // In a real implementation, this would:
-        // 1. Wait for the backoff delay
-        // 2. Restart the service
-        // 3. Verify the service is running
-        RecoveryResult::Retryable
+        RecoveryResult::RetryAfter(delay)
     }
 
     /// Attempt to recover from a listener error.
     ///
-    /// # Returns
-    /// - `Recovered` if the listener was reconnected.
-    /// - `Retryable` if reconnection should be retried.
+    /// Returns `NotImplemented` because listener reconnect/restart is not
+    /// integrated with concrete listener instances here.
     pub fn recover_listener(&self, listener_name: &str) -> RecoveryResult {
         tracing::warn!(
             subsystem = "listener",
             listener = listener_name,
-            "Attempting listener reconnection"
+            "Listener recovery requested but not implemented/integrated"
         );
-
-        // In a real implementation, this would:
-        // 1. Disconnect the failed listener
-        // 2. Reconnect with the same configuration
-        RecoveryResult::Recovered
+        RecoveryResult::NotImplemented
     }
 
     /// Reset the restart attempt counter.
@@ -174,6 +155,7 @@ impl ServiceRecovery {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn test_default_config() {
@@ -201,10 +183,10 @@ mod tests {
     }
 
     #[test]
-    fn test_dbus_recovery() {
+    fn test_dbus_recovery_returns_retry_after() {
         let recovery = ServiceRecovery::default_config();
         let result = recovery.recover_dbus_connection();
-        assert_eq!(result, RecoveryResult::Retryable);
+        assert_eq!(result, RecoveryResult::RetryAfter(Duration::from_millis(100)));
         assert_eq!(recovery.restart_count(), 1);
     }
 
@@ -222,17 +204,17 @@ mod tests {
     }
 
     #[test]
-    fn test_service_crash_recovery() {
+    fn test_service_crash_recovery_returns_retry_after() {
         let recovery = ServiceRecovery::default_config();
         let result = recovery.recover_service_crash("test_service");
-        assert_eq!(result, RecoveryResult::Retryable);
+        assert_eq!(result, RecoveryResult::RetryAfter(Duration::from_millis(100)));
     }
 
     #[test]
-    fn test_listener_recovery() {
+    fn test_listener_recovery_not_implemented() {
         let recovery = ServiceRecovery::default_config();
         let result = recovery.recover_listener("test_listener");
-        assert_eq!(result, RecoveryResult::Recovered);
+        assert_eq!(result, RecoveryResult::NotImplemented);
     }
 
     #[test]

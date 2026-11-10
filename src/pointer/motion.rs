@@ -17,45 +17,99 @@ pub fn handle_motion_events(
     let mut layer_changed = false;
 
     for event in events {
-        let is_context_menu_surface = state.docks.iter().any(|dock| {
-            dock.context_menu_popup
+        let mut is_context_menu_surface = false;
+        let mut is_window_list_surface = false;
+        let mut is_hover_popup_surface = false;
+        let mut is_audio_popup_surface = false;
+        let mut is_bluetooth_popup_surface = false;
+        let mut is_rclone_popup_surface = false;
+        let mut is_process_popup_surface = false;
+        let mut is_widget_bar_surface = false;
+        let mut is_audio_player_surface = false;
+        let mut is_tray_bar_surface = false;
+        let mut is_bottom_status_surface = false;
+
+        // Single pass over docks to classify the event surface (#379).
+        for dock in &state.docks {
+            if dock
+                .context_menu_popup
                 .as_ref()
                 .is_some_and(|popup| popup.surface == event.surface)
-        });
-        let is_window_list_surface = state.docks.iter().any(|dock| {
-            dock.window_list_popup
+            {
+                is_context_menu_surface = true;
+            }
+            if dock
+                .window_list_popup
                 .as_ref()
                 .is_some_and(|popup| popup.surface == event.surface)
-        });
-        let is_hover_popup_surface = state.docks.iter().any(|dock| {
-            dock.hover_popup
+            {
+                is_window_list_surface = true;
+            }
+            if dock
+                .hover_popup
                 .as_ref()
                 .is_some_and(|popup| popup.surface == event.surface)
-        });
-        let is_audio_popup_surface = state.docks.iter().any(|dock| {
-            dock.audio_popup
+            {
+                is_hover_popup_surface = true;
+            }
+            if dock
+                .audio_popup
                 .as_ref()
                 .is_some_and(|popup| popup.surface == event.surface)
-        });
-        let is_bluetooth_popup_surface = state.docks.iter().any(|dock| {
-            dock.bluetooth_popup
+            {
+                is_audio_popup_surface = true;
+            }
+            if dock
+                .bluetooth_popup
                 .as_ref()
                 .is_some_and(|popup| popup.surface == event.surface)
-        });
-        let is_rclone_popup_surface = state.docks.iter().any(|dock| {
-            dock.rclone_popup
+            {
+                is_bluetooth_popup_surface = true;
+            }
+            if dock
+                .rclone_popup
                 .as_ref()
                 .is_some_and(|popup| popup.surface == event.surface)
-        });
-        let is_process_popup_surface = state.docks.iter().any(|dock| {
-            dock.process_popup
+            {
+                is_rclone_popup_surface = true;
+            }
+            if dock
+                .process_popup
                 .as_ref()
                 .is_some_and(|popup| popup.surface == event.surface)
-        });
-        let is_widget_bar_surface = state.is_status_widget_bar_surface(&event.surface);
-        let is_audio_player_surface = state.is_audio_player_surface(&event.surface);
-        let is_tray_bar_surface = state.is_status_tray_bar_surface(&event.surface);
-        let is_bottom_status_surface = state.is_bottom_system_status_surface(&event.surface);
+            {
+                is_process_popup_surface = true;
+            }
+            if dock
+                .status_widget_bar
+                .as_ref()
+                .is_some_and(|bar| bar.surface == event.surface)
+            {
+                is_widget_bar_surface = true;
+            }
+            if dock
+                .audio_player_bar
+                .as_ref()
+                .is_some_and(|bar| bar.surface == event.surface)
+            {
+                is_audio_player_surface = true;
+            }
+            if dock
+                .tray_bar
+                .as_ref()
+                .is_some_and(|bar| bar.surface == event.surface)
+            {
+                is_tray_bar_surface = true;
+            }
+            if dock
+                .system_status_bar
+                .as_ref()
+                .is_some_and(|bar| bar.surface == event.surface)
+            {
+                is_bottom_status_surface = true;
+            }
+        }
+
         let is_popup_surface = is_context_menu_surface
             || is_window_list_surface
             || is_hover_popup_surface
@@ -189,13 +243,14 @@ pub fn handle_motion_events(
                         let has_windows = state.window_count_for_app(&app_id) > 0;
 
                         if has_windows {
-                            if state.window_list_state.target_app_id.as_deref() != Some(&app_id)
-                                || !state.window_list_state.is_open
-                            {
-                                // Opening window list popup
-                                crate::interaction::timers::reset_all(state);
-                                // Reset active_row so the popup defaults to the first stream
-                                // instead of keeping the stale value from the previous session
+                            let target_changed = state.window_list_state.target_app_id.as_deref() != Some(&app_id);
+                            let was_open = state.window_list_state.is_open;
+                            if target_changed || !was_open {
+                                // Only reset global interaction timers when opening a new popup session.
+                                // Avoid aggressive resets when switching targets within an active window list.
+                                if !was_open {
+                                    crate::interaction::timers::reset_all(state);
+                                }
                                 if let Some(ref pw) = state.pipewire_capture {
                                     pw.set_active_row(0);
                                 }
@@ -210,19 +265,13 @@ pub fn handle_motion_events(
                         }
                     }
                 } else if is_special_surface {
-                    // Clear hover when pointer is on a popup surface, but not
-                    // when the context menu is open for the hovered icon — the
-                    // hover highlight should remain visible while the menu is shown
-                    if is_context_menu_surface
+                    // Keep hover highlight when context menu is open for the hovered icon.
+                    let keep_hover_for_menu = is_context_menu_surface
                         && state.menu_state.is_open
-                        && state.interaction.hovered_icon.is_some()
-                    {
-                        // Keep hover highlight when context menu is open
-                    } else if is_special_surface {
-                        if state.interaction.hovered_icon.is_some() {
-                            state.interaction.hovered_icon = None;
-                            layer_changed = true;
-                        }
+                        && state.interaction.hovered_icon.is_some();
+                    if !keep_hover_for_menu && state.interaction.hovered_icon.is_some() {
+                        state.interaction.hovered_icon = None;
+                        layer_changed = true;
                     }
                 }
             }

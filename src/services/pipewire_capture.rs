@@ -1051,22 +1051,35 @@ async fn create_session(
     let sig = sig_opt.ok_or("Signal stream ended")?;
 
     let (response, session_path): (u32, OwnedObjectPath) =
-        sig.body().deserialize().unwrap_or_else(|_| {
-            let (resp, props): (u32, HashMap<String, OwnedVariant>) =
-                sig.body().deserialize().expect("fallback failed");
-            if let Some(val) = props.get("session_handle") {
-                if let Variant::Str(s) = &**val {
-                    let path = OwnedObjectPath::try_from(s.as_str()).expect("invalid session path");
-                    return (resp, path);
-                }
+        match sig.body().deserialize() {
+            Ok(result) => result,
+            Err(_) => {
+                let result = match sig.body().deserialize::<(u32, HashMap<String, OwnedVariant>)>() {
+                    Ok((resp, props)) => {
+                        if let Some(val) = props.get("session_handle") {
+                            if let Variant::Str(s) = &**val {
+                                if let Ok(path) = OwnedObjectPath::try_from(s.as_str()) {
+                                    return (resp, path);
+                                } else {
+                                    tracing::warn!("Invalid session path in portal response");
+                                }
+                            }
+                        }
+                        if let Some(val) = props.get("session") {
+                            if let Variant::ObjectPath(path) = &**val {
+                                return (resp, OwnedObjectPath::from(path.clone()));
+                            }
+                        }
+                        return Err("No session path in portal response dict".into());
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to deserialize portal response: {}", e);
+                        return Err("Failed to parse portal CreateSession response".into());
+                    }
+                };
+                return Err("Failed to deserialize portal response".into());
             }
-            if let Some(val) = props.get("session") {
-                if let Variant::ObjectPath(path) = &**val {
-                    return (resp, OwnedObjectPath::from(path.clone()));
-                }
-            }
-            panic!("No session path in response dict");
-        });
+        };
     if response != 0 {
         return Err(format!("Session creation failed: {}", response).into());
     }
@@ -1095,7 +1108,7 @@ async fn select_sources(
 
     let unique = connection
         .unique_name()
-        .unwrap()
+        .ok_or("No unique D-Bus name")?
         .as_str()
         .trim_start_matches(':');
     let bus_name = unique.replace('.', "_");
@@ -1143,10 +1156,11 @@ async fn select_sources(
     let sig = sig_opt.ok_or("SelectSources signal stream ended")?;
     let response: u32 = if let Ok((r,)) = sig.body().deserialize::<(u32,)>() {
         r
-    } else {
-        let (r, _props): (u32, HashMap<String, OwnedVariant>) =
-            sig.body().deserialize().expect("SelectSources response");
+    } else if let Ok((r, _props)) = sig.body().deserialize::<(u32, HashMap<String, OwnedVariant>)>() {
         r
+    } else {
+        tracing::warn!("Failed to deserialize SelectSources response");
+        return Err("Failed to parse SelectSources response".into());
     };
     if response != 0 {
         return Err(format!("SelectSources canceled (response={})", response).into());
@@ -1171,7 +1185,7 @@ async fn start_capture(
 
     let unique = connection
         .unique_name()
-        .unwrap()
+        .ok_or("No unique D-Bus name")?
         .as_str()
         .trim_start_matches(':');
     let bus_name = unique.replace('.', "_");
@@ -1443,7 +1457,12 @@ async fn capture_windows_range(
                     .unwrap_or(&default_title)
                     .clone()
             });
-            results.push((fd.try_clone().unwrap(), *node_id, title));
+            match fd.try_clone() {
+                Ok(cloned_fd) => results.push((cloned_fd, *node_id, title)),
+                Err(e) => {
+                    tracing::warn!("Failed to clone PipeWire FD for node {}: {}", node_id, e);
+                }
+            }
         }
     }
 
@@ -1510,6 +1529,8 @@ fn spawn_stream_thread(fd: OwnedFd, node_id: u32, idx: usize, stream_data: Arc<S
         let ready_flag_for_param = Arc::clone(&stream_data.ready);
         let stream_idx_for_log = idx;
         let title_for_log = stream_data.title.clone();
+        let mut fps_window_start = Instant::now();
+        let mut frames_in_fps_window = 0u64;
 
         let _listener = stream
             .add_local_listener_with_user_data(())
@@ -1579,26 +1600,16 @@ fn spawn_stream_thread(fd: OwnedFd, node_id: u32, idx: usize, stream_data: Arc<S
                                             guard.replace((w, h, fmt, bytes));
                                         });
                                     let _ = result;
-                                    // Log frame receipt periodically (every 60th frame ≈ 1 sec at 60fps)
-                                    static COUNTERS: std::sync::OnceLock<
-                                        Vec<std::sync::atomic::AtomicU64>,
-                                    > = std::sync::OnceLock::new();
-                                    let counters = COUNTERS.get_or_init(|| {
-                                        // Pre-allocate 20 slots for streams
-                                        (0..20)
-                                            .map(|_| std::sync::atomic::AtomicU64::new(0))
-                                            .collect()
-                                    });
-                                    if stream_idx_for_log < counters.len() {
-                                        let count = counters[stream_idx_for_log]
-                                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-                                            + 1;
-                                        if count % 120 == 0 {
-                                            eprintln!(
-                                                "[PIPEWIRE] Stream {} (title={}) frame count: {}",
-                                                stream_idx_for_log, title_for_log, count
-                                            );
-                                        }
+                                    frames_in_fps_window += 1;
+                                    let elapsed = fps_window_start.elapsed();
+                                    if elapsed >= std::time::Duration::from_secs(2) {
+                                        let fps = frames_in_fps_window as f64 / elapsed.as_secs_f64();
+                                        eprintln!(
+                                            "[PIPEWIRE] Stream {} (title={}) fps: {:.1}",
+                                            stream_idx_for_log, title_for_log, fps
+                                        );
+                                        frames_in_fps_window = 0;
+                                        fps_window_start = Instant::now();
                                     }
                                 }
                             }

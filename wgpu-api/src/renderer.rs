@@ -17,6 +17,13 @@ use crate::surface::{Surface, SurfaceConfig, SurfaceId};
 use crate::texture::{Texture, TextureConfig, TextureId};
 use crate::transform::Transform;
 
+fn rgba_to_bgra(pixels: &[u8]) -> Vec<u8> {
+    pixels
+        .chunks_exact(4)
+        .flat_map(|rgba| [rgba[2], rgba[1], rgba[0], rgba[3]])
+        .collect()
+}
+
 /// GPU backend to use.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum RendererBackend {
@@ -143,8 +150,12 @@ pub struct Renderer {
     /// Optional GPU backend (None when running without a GPU).
     #[allow(dead_code)]
     gpu_backend: Option<GpuBackend>,
+    /// GPU text renderer sharing this renderer's device and queue.
+    text_manager: Option<crate::text_render::TextManager>,
     /// Current frame state (set during begin_frame/end_frame).
     frame_state: Option<FrameState>,
+    /// Stable keys for textures that should persist across frames.
+    cached_texture_ids: HashMap<String, TextureId>,
 }
 
 impl Renderer {
@@ -175,6 +186,10 @@ impl Renderer {
             }
         }
 
+        let text_manager = gpu_backend
+            .as_ref()
+            .map(|backend| crate::text_render::TextManager::new(backend.device(), backend.queue()));
+
         let (adapter_name, device_description) = if gpu_backend.is_some() {
             ("GPU Backend".to_string(), "wgpu Device".to_string())
         } else {
@@ -191,7 +206,9 @@ impl Renderer {
             device_description,
             config,
             gpu_backend,
+            text_manager,
             frame_state: None,
+            cached_texture_ids: HashMap::new(),
         })
     }
 
@@ -263,6 +280,103 @@ impl Renderer {
     /// Remove a texture.
     pub fn remove_texture(&mut self, id: TextureId) {
         self.textures.remove(&id);
+        self.cached_texture_ids
+            .retain(|_, cached_id| *cached_id != id);
+        if let Some(backend) = &mut self.gpu_backend {
+            backend.remove_texture(id);
+        }
+    }
+
+    /// Return a previously uploaded texture associated with a stable asset key.
+    pub fn cached_texture(&self, key: &str) -> Option<TextureId> {
+        self.cached_texture_ids.get(key).copied()
+    }
+
+    /// Upload pixels once and reuse the texture for subsequent calls with the same key.
+    ///
+    /// Call [`remove_cached_texture`](Self::remove_cached_texture) if the asset
+    /// associated with `key` changes.
+    pub fn upload_texture_from_pixels_cached(
+        &mut self,
+        key: &str,
+        pixels: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Option<TextureId> {
+        if let Some(id) = self.cached_texture(key) {
+            return Some(id);
+        }
+
+        let id = self.upload_texture_from_pixels(pixels, width, height)?;
+        self.cached_texture_ids.insert(key.to_owned(), id);
+        Some(id)
+    }
+
+    /// Replace the cached texture for a key with newly uploaded pixels.
+    ///
+    /// Use this for changing content such as video frames; static assets should
+    /// use [`upload_texture_from_pixels_cached`](Self::upload_texture_from_pixels_cached).
+    pub fn replace_cached_texture_from_pixels(
+        &mut self,
+        key: &str,
+        pixels: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Option<TextureId> {
+        self.remove_cached_texture(key);
+        self.upload_texture_from_pixels_cached(key, pixels, width, height)
+    }
+
+    /// Remove a cached texture by its stable asset key.
+    pub fn remove_cached_texture(&mut self, key: &str) {
+        if let Some(id) = self.cached_texture_ids.remove(key) {
+            self.remove_texture(id);
+        }
+    }
+
+    /// Upload icon texture from raw RGBA pixel data.
+    ///
+    /// This creates a GPU texture, registers it with the backend, and uploads
+    /// the pixel data. The returned TextureId can be used in DrawCommand::Image.
+    /// The texture format is BGRA to match the DMA-BUF surface format.
+    ///
+    /// # Arguments
+    /// * `pixels` - Raw RGBA pixel data (4 bytes per pixel), converted to BGRA
+    /// * `width` - Texture width in pixels
+    /// * `height` - Texture height in pixels
+    ///
+    /// # Returns
+    /// A TextureId that can be used in draw commands, or None if GPU backend is unavailable.
+    pub fn upload_texture_from_pixels(
+        &mut self,
+        pixels: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Option<TextureId> {
+        let backend = self.gpu_backend.as_mut()?;
+
+        let id = TextureId::new(self.next_texture_id);
+        self.next_texture_id += 1;
+
+        // Convert RGBA to BGRA to match the DMA-BUF surface format (Bgra8UnormSrgb)
+        let bgra_pixels = rgba_to_bgra(pixels);
+
+        // Create texture config with BGRA format to match the surface
+        let config = TextureConfig::new(width, height)
+            .with_format(crate::texture::TextureFormat::Bgra8UnormSrgb)
+            .with_usage(crate::texture::TextureUsage::upload_and_sample());
+
+        // Register with GPU backend
+        backend.register_texture(id, config.clone());
+
+        // Upload BGRA pixel data
+        backend.upload_texture_data(id, &bgra_pixels, width, height);
+
+        // Track in renderer's texture map
+        let texture = Texture::new(id, config);
+        self.textures.insert(id, texture);
+
+        Some(id)
     }
 
     /// Render a frame to the given surface.
@@ -376,7 +490,9 @@ impl Renderer {
         display: *mut std::ffi::c_void,
         surface: *mut std::ffi::c_void,
     ) -> Result<(), String> {
-        let backend = self.gpu_backend.as_mut()
+        let backend = self
+            .gpu_backend
+            .as_mut()
             .ok_or_else(|| "GPU backend not initialized".to_string())?;
 
         // Create wgpu Surface from raw Wayland pointers
@@ -514,7 +630,7 @@ impl Renderer {
             };
 
             // Generate draw command for this node
-            let cmd = Self::node_to_draw_command(node, &mut textures_used);
+            let cmd = self.node_to_draw_command(node, &mut textures_used);
 
             visible_count += 1;
             clip_count += if clip_rect.is_some() { 1 } else { 0 };
@@ -590,6 +706,7 @@ impl Renderer {
 
     /// Convert a node to a draw command (static, no self borrow).
     fn node_to_draw_command(
+        &self,
         node: &Node,
         textures_used: &mut HashSet<TextureId>,
     ) -> Option<DrawCommand> {
@@ -619,11 +736,17 @@ impl Renderer {
             }
             NodeContent::Text(text) => {
                 let position = node.style.position;
+                let align = match text.alignment {
+                    crate::text::TextAlign::Left => 0.0,
+                    crate::text::TextAlign::Center => 0.5,
+                    crate::text::TextAlign::Right | crate::text::TextAlign::Justified => 1.0,
+                };
                 Some(DrawCommand::Text {
                     position,
                     content: text.content.clone(),
                     font_size: text.font_size,
                     color: text.color,
+                    align,
                 })
             }
             NodeContent::Group(group) => {
@@ -652,7 +775,12 @@ impl Renderer {
                 let dest_rect = node.style.bounding_rect();
                 // Use a placeholder texture; the real texture is resolved
                 // when the frame is uploaded via upload_video_frame()
-                let placeholder = TextureId::new(video.stream_id.as_u64());
+                let cache_key = format!("video-stream:{}", video.stream_id.as_u64());
+                let placeholder = self
+                    .cached_texture_ids
+                    .get(&cache_key)
+                    .copied()
+                    .unwrap_or_else(|| TextureId::new(video.stream_id.as_u64()));
                 textures_used.insert(placeholder);
                 Some(DrawCommand::Video {
                     dest_rect,
@@ -688,7 +816,9 @@ impl Renderer {
 
         // Submit GPU commands if we have a backend and draw commands
         if let Some(backend) = &mut self.gpu_backend {
-            if let Err(e) = Self::submit_frame_impl(backend, &frame_state) {
+            if let Err(e) =
+                Self::submit_frame_impl(backend, self.text_manager.as_mut(), &frame_state)
+            {
                 log::warn!("Failed to submit GPU frame: {}", e);
             }
         }
@@ -700,7 +830,11 @@ impl Renderer {
     ///
     /// Converts screen-space draw commands to clip-space vertices,
     /// encodes a render pass, submits to the queue, and presents.
-    fn submit_frame_impl(backend: &mut GpuBackend, frame_state: &FrameState) -> Result<(), String> {
+    fn submit_frame_impl(
+        backend: &mut GpuBackend,
+        text_manager: Option<&mut crate::text_render::TextManager>,
+        frame_state: &FrameState,
+    ) -> Result<(), String> {
         let surface_id = frame_state
             .surface_id()
             .ok_or_else(|| "No surface ID in frame state".to_string())?;
@@ -712,6 +846,7 @@ impl Renderer {
 
         let width = frame_state.surface_size().width as f32;
         let height = frame_state.surface_size().height as f32;
+        Self::prepare_texture_bind_groups(backend, frame_state.draw_commands());
 
         // Create command encoder
         let mut encoder =
@@ -749,6 +884,8 @@ impl Renderer {
                 frame_state.draw_commands(),
                 width,
                 height,
+                1.0,
+                text_manager,
             );
         }
 
@@ -782,22 +919,40 @@ impl Renderer {
         height: u32,
         commands: &[crate::render::DrawCommand],
     ) -> Result<crate::backend::DmabufExportInfo, String> {
-        let backend = self.gpu_backend.as_mut().ok_or_else(|| {
-            "GPU backend not available for DMA-BUF rendering".to_string()
-        })?;
+        self.render_to_dmabuf_scaled(width, height, 1.0, commands)
+    }
+
+    /// Render logical-pixel commands to a physical-pixel DMA-BUF target.
+    ///
+    /// # Coordinate Space
+    /// `commands` use logical pixels; `width` and `height` use physical pixels.
+    /// `scale_factor` converts command geometry and text into physical pixels.
+    pub fn render_to_dmabuf_scaled(
+        &mut self,
+        width: u32,
+        height: u32,
+        scale_factor: f32,
+        commands: &[crate::render::DrawCommand],
+    ) -> Result<crate::backend::DmabufExportInfo, String> {
+        let backend = self
+            .gpu_backend
+            .as_mut()
+            .ok_or_else(|| "GPU backend not available for DMA-BUF rendering".to_string())?;
 
         // Create a DMA-BUF exportable texture
         let (texture, export_info) = backend.create_dmabuf_texture(width, height)?;
 
         let width_f = width as f32;
         let height_f = height as f32;
+        Self::prepare_texture_bind_groups(backend, commands);
 
         // Create command encoder
-        let mut encoder = backend.device().create_command_encoder(
-            &wgpu::CommandEncoderDescriptor {
-                label: Some("DMA-BUF Frame Encoder"),
-            },
-        );
+        let mut encoder =
+            backend
+                .device()
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("DMA-BUF Frame Encoder"),
+                });
 
         // Begin render pass on the DMA-BUF texture
         {
@@ -826,6 +981,8 @@ impl Renderer {
                 commands,
                 width_f,
                 height_f,
+                scale_factor,
+                self.text_manager.as_mut(),
             );
         }
 
@@ -835,6 +992,22 @@ impl Renderer {
         Ok(export_info)
     }
 
+    fn prepare_texture_bind_groups(
+        backend: &mut GpuBackend,
+        commands: &[crate::render::DrawCommand],
+    ) {
+        for command in commands {
+            let texture = match command {
+                crate::render::DrawCommand::Image { texture, .. }
+                | crate::render::DrawCommand::Video { texture, .. } => Some(*texture),
+                _ => None,
+            };
+            if let Some(texture) = texture {
+                let _ = backend.texture_bind_group(texture);
+            }
+        }
+    }
+
     /// Convert draw commands to GPU draw calls.
     fn draw_commands_to_gpu_impl(
         render_pass: &mut wgpu::RenderPass<'_>,
@@ -842,6 +1015,8 @@ impl Renderer {
         commands: &[crate::render::DrawCommand],
         width: f32,
         height: f32,
+        coordinate_scale: f32,
+        mut text_manager: Option<&mut crate::text_render::TextManager>,
     ) {
         // Convert screen coordinates to clip space:
         // x_clip = (x_screen / width) * 2.0 - 1.0
@@ -860,10 +1035,10 @@ impl Renderer {
                     stroke_width: _stroke_width,
                 } => {
                     // Draw solid rectangle
-                    let x0 = to_x(rect.x);
-                    let y0 = to_y(rect.y);
-                    let x1 = to_x(rect.x + rect.width);
-                    let y1 = to_y(rect.y + rect.height);
+                    let x0 = to_x(rect.x * coordinate_scale);
+                    let y0 = to_y(rect.y * coordinate_scale);
+                    let x1 = to_x((rect.x + rect.width) * coordinate_scale);
+                    let y1 = to_y((rect.y + rect.height) * coordinate_scale);
                     let c = [color.r, color.g, color.b, color.a];
 
                     let vertices: [crate::backend::SolidVertex; 6] =
@@ -900,10 +1075,10 @@ impl Renderer {
                     tint,
                 } => {
                     // Draw textured quad
-                    let x0 = to_x(dest_rect.x);
-                    let y0 = to_y(dest_rect.y);
-                    let x1 = to_x(dest_rect.x + dest_rect.width);
-                    let y1 = to_y(dest_rect.y + dest_rect.height);
+                    let x0 = to_x(dest_rect.x * coordinate_scale);
+                    let y0 = to_y(dest_rect.y * coordinate_scale);
+                    let x1 = to_x((dest_rect.x + dest_rect.width) * coordinate_scale);
+                    let y1 = to_y((dest_rect.y + dest_rect.height) * coordinate_scale);
                     let c = [tint.r, tint.g, tint.b, tint.a];
                     let uv = [
                         source_uv.x,
@@ -933,78 +1108,31 @@ impl Renderer {
                     );
                     render_pass.set_vertex_buffer(0, buffer.slice(..));
 
-                    // Set texture bind group if available
-                    if let Some(texture_view) = backend.get_texture_view(*texture) {
-                        let bind_group_layout = backend.device().create_bind_group_layout(
-                            &wgpu::BindGroupLayoutDescriptor {
-                                label: Some("Image Bind Group Layout"),
-                                entries: &[
-                                    wgpu::BindGroupLayoutEntry {
-                                        binding: 0,
-                                        visibility: wgpu::ShaderStages::VERTEX,
-                                        ty: wgpu::BindingType::Buffer {
-                                            ty: wgpu::BufferBindingType::Uniform,
-                                            has_dynamic_offset: false,
-                                            min_binding_size: None,
-                                        },
-                                        count: None,
-                                    },
-                                    wgpu::BindGroupLayoutEntry {
-                                        binding: 1,
-                                        visibility: wgpu::ShaderStages::FRAGMENT,
-                                        ty: wgpu::BindingType::Sampler(
-                                            wgpu::SamplerBindingType::Filtering,
-                                        ),
-                                        count: None,
-                                    },
-                                    wgpu::BindGroupLayoutEntry {
-                                        binding: 2,
-                                        visibility: wgpu::ShaderStages::FRAGMENT,
-                                        ty: wgpu::BindingType::Texture {
-                                            sample_type: wgpu::TextureSampleType::Float {
-                                                filterable: true,
-                                            },
-                                            view_dimension: wgpu::TextureViewDimension::D2,
-                                            multisampled: false,
-                                        },
-                                        count: None,
-                                    },
-                                ],
-                            },
-                        );
-                        let uniform_buf = backend.uniform_buffer().unwrap();
-                        let sampler = backend.sampler().unwrap();
-                        let bind_group =
-                            backend
-                                .device()
-                                .create_bind_group(&wgpu::BindGroupDescriptor {
-                                    label: Some("Image Bind Group"),
-                                    layout: &bind_group_layout,
-                                    entries: &[
-                                        wgpu::BindGroupEntry {
-                                            binding: 0,
-                                            resource: uniform_buf.as_entire_binding(),
-                                        },
-                                        wgpu::BindGroupEntry {
-                                            binding: 1,
-                                            resource: wgpu::BindingResource::Sampler(sampler),
-                                        },
-                                        wgpu::BindGroupEntry {
-                                            binding: 2,
-                                            resource: wgpu::BindingResource::TextureView(
-                                                texture_view,
-                                            ),
-                                        },
-                                    ],
-                                });
-                        render_pass.set_bind_group(0, &bind_group, &[]);
+                    if let Some(bind_group) = backend.get_texture_bind_group(*texture) {
+                        render_pass.set_bind_group(0, bind_group, &[]);
+                        render_pass.draw(0..6, 0..1);
                     }
-
-                    render_pass.draw(0..6, 0..1);
                 }
-                crate::render::DrawCommand::Text { .. } => {
-                    // Text rendering requires glyph atlas - skip for now
-                    // Text will be rendered via texture quads once glyph atlas is populated
+                crate::render::DrawCommand::Text {
+                    position,
+                    content,
+                    font_size,
+                    color,
+                    align,
+                } => {
+                    if let Some(text_manager) = text_manager.as_deref_mut() {
+                        text_manager.add_text(crate::text_render::TextItem {
+                            text: content.clone(),
+                            position: (
+                                position.x * coordinate_scale,
+                                position.y * coordinate_scale,
+                            ),
+                            font_size: *font_size * coordinate_scale,
+                            color: [color.r, color.g, color.b, color.a],
+                            max_width: width,
+                            align: *align,
+                        });
+                    }
                 }
                 crate::render::DrawCommand::Video {
                     dest_rect,
@@ -1013,10 +1141,10 @@ impl Renderer {
                     tint,
                 } => {
                     // Video frames are rendered as textured quads
-                    let x0 = to_x(dest_rect.x);
-                    let y0 = to_y(dest_rect.y);
-                    let x1 = to_x(dest_rect.x + dest_rect.width);
-                    let y1 = to_y(dest_rect.y + dest_rect.height);
+                    let x0 = to_x(dest_rect.x * coordinate_scale);
+                    let y0 = to_y(dest_rect.y * coordinate_scale);
+                    let x1 = to_x((dest_rect.x + dest_rect.width) * coordinate_scale);
+                    let y1 = to_y((dest_rect.y + dest_rect.height) * coordinate_scale);
                     let c = [tint.r, tint.g, tint.b, tint.a];
                     let uv = [
                         source_uv.x,
@@ -1046,73 +1174,10 @@ impl Renderer {
                     );
                     render_pass.set_vertex_buffer(0, buffer.slice(..));
 
-                    if let Some(texture_view) = backend.get_texture_view(*texture) {
-                        let sampler = backend.sampler().unwrap();
-                        let uniform_buf = backend.uniform_buffer().unwrap();
-                        let bind_group_layout = backend.device().create_bind_group_layout(
-                            &wgpu::BindGroupLayoutDescriptor {
-                                label: Some("Video Bind Group Layout"),
-                                entries: &[
-                                    wgpu::BindGroupLayoutEntry {
-                                        binding: 0,
-                                        visibility: wgpu::ShaderStages::VERTEX,
-                                        ty: wgpu::BindingType::Buffer {
-                                            ty: wgpu::BufferBindingType::Uniform,
-                                            has_dynamic_offset: false,
-                                            min_binding_size: None,
-                                        },
-                                        count: None,
-                                    },
-                                    wgpu::BindGroupLayoutEntry {
-                                        binding: 1,
-                                        visibility: wgpu::ShaderStages::FRAGMENT,
-                                        ty: wgpu::BindingType::Sampler(
-                                            wgpu::SamplerBindingType::Filtering,
-                                        ),
-                                        count: None,
-                                    },
-                                    wgpu::BindGroupLayoutEntry {
-                                        binding: 2,
-                                        visibility: wgpu::ShaderStages::FRAGMENT,
-                                        ty: wgpu::BindingType::Texture {
-                                            sample_type: wgpu::TextureSampleType::Float {
-                                                filterable: true,
-                                            },
-                                            view_dimension: wgpu::TextureViewDimension::D2,
-                                            multisampled: false,
-                                        },
-                                        count: None,
-                                    },
-                                ],
-                            },
-                        );
-                        let bind_group =
-                            backend
-                                .device()
-                                .create_bind_group(&wgpu::BindGroupDescriptor {
-                                    label: Some("Video Bind Group"),
-                                    layout: &bind_group_layout,
-                                    entries: &[
-                                        wgpu::BindGroupEntry {
-                                            binding: 0,
-                                            resource: uniform_buf.as_entire_binding(),
-                                        },
-                                        wgpu::BindGroupEntry {
-                                            binding: 1,
-                                            resource: wgpu::BindingResource::Sampler(sampler),
-                                        },
-                                        wgpu::BindGroupEntry {
-                                            binding: 2,
-                                            resource: wgpu::BindingResource::TextureView(
-                                                texture_view,
-                                            ),
-                                        },
-                                    ],
-                                });
-                        render_pass.set_bind_group(0, &bind_group, &[]);
+                    if let Some(bind_group) = backend.get_texture_bind_group(*texture) {
+                        render_pass.set_bind_group(0, bind_group, &[]);
+                        render_pass.draw(0..6, 0..1);
                     }
-
-                    render_pass.draw(0..6, 0..1);
                 }
                 // State-changing commands are handled implicitly
                 crate::render::DrawCommand::PushClip { .. }
@@ -1122,6 +1187,10 @@ impl Renderer {
                     // These are state commands handled during scene traversal
                 }
             }
+        }
+
+        if let Some(text_manager) = text_manager {
+            text_manager.flush(width as u32, height as u32, render_pass);
         }
     }
 
@@ -1202,18 +1271,41 @@ impl Renderer {
         frame: &crate::video::VideoFrame,
     ) -> Result<crate::video::VideoTexture, RenderError> {
         // Convert to RGBA (validates format support)
-        let _rgba_data = frame.to_rgba().ok_or_else(|| {
+        let rgba_data = frame.to_rgba().ok_or_else(|| {
             RenderError::Other(format!("Unsupported video format: {:?}", frame.format))
         })?;
 
-        // Create or reuse texture
-        let texture_id = TextureId::new(stream_id.as_u64());
+        // Allocate a renderer-managed ID once per stream so IDs cannot collide
+        // with ordinary textures and successive frames replace the same texture.
+        let cache_key = format!("video-stream:{}", stream_id.as_u64());
+        let texture_id = if let Some(id) = self.cached_texture_ids.get(&cache_key) {
+            *id
+        } else {
+            let id = TextureId::new(self.next_texture_id);
+            self.next_texture_id += 1;
+            self.cached_texture_ids.insert(cache_key, id);
+            id
+        };
         let config = TextureConfig::new(frame.width, frame.height)
-            .with_format(crate::texture::TextureFormat::Rgba8Unorm);
+            .with_format(crate::texture::TextureFormat::Bgra8UnormSrgb)
+            .with_usage(crate::texture::TextureUsage::upload_and_sample());
 
-        // Insert or replace the texture
-        self.textures
-            .insert(texture_id, Texture::new(texture_id, config));
+        let bgra_data = rgba_to_bgra(&rgba_data);
+        let needs_registration = self.textures.get(&texture_id).map_or(true, |texture| {
+            texture.width() != frame.width || texture.height() != frame.height
+        });
+        if let Some(backend) = self.gpu_backend.as_mut() {
+            if needs_registration {
+                backend.register_texture(texture_id, config.clone());
+            }
+            backend.upload_texture_data(texture_id, &bgra_data, frame.width, frame.height);
+        }
+
+        if needs_registration {
+            let mut texture = Texture::new(texture_id, config);
+            texture.uploaded = true;
+            self.textures.insert(texture_id, texture);
+        }
 
         Ok(crate::video::VideoTexture::new(
             texture_id,
@@ -1264,6 +1356,11 @@ mod tests {
     use crate::geometry::Point;
 
     #[test]
+    fn rgba_upload_conversion_matches_bgra_texture_format() {
+        assert_eq!(rgba_to_bgra(&[10, 20, 30, 40]), vec![30, 20, 10, 40]);
+    }
+
+    #[test]
     fn test_renderer_config() {
         let config = RendererConfig::new()
             .with_backend(RendererBackend::Vulkan)
@@ -1299,7 +1396,9 @@ mod tests {
             adapter_name: "Test".to_string(),
             device_description: "Test".to_string(),
             gpu_backend: None,
+            text_manager: None,
             frame_state: None,
+            cached_texture_ids: HashMap::new(),
         };
         let texture_id = renderer.create_texture(TextureConfig::new(256, 256));
         assert_eq!(renderer.texture_count(), 1);
@@ -1318,7 +1417,9 @@ mod tests {
             adapter_name: "Test".to_string(),
             device_description: "Test".to_string(),
             gpu_backend: None,
+            text_manager: None,
             frame_state: None,
+            cached_texture_ids: HashMap::new(),
         };
         let result = renderer.begin_frame(SurfaceId::new(999));
         assert!(result.is_err());
@@ -1340,7 +1441,9 @@ mod tests {
             adapter_name: "Test".to_string(),
             device_description: "Test".to_string(),
             gpu_backend: None,
+            text_manager: None,
             frame_state: None,
+            cached_texture_ids: HashMap::new(),
         };
         let surface_id = SurfaceId::new(1);
         let surface = crate::surface::Surface::new(surface_id, SurfaceConfig::new(800, 600));
@@ -1362,7 +1465,9 @@ mod tests {
             adapter_name: "Test".to_string(),
             device_description: "Test".to_string(),
             gpu_backend: None,
+            text_manager: None,
             frame_state: None,
+            cached_texture_ids: HashMap::new(),
         };
         let surface_id = SurfaceId::new(1);
         let surface = crate::surface::Surface::new(surface_id, SurfaceConfig::new(800, 600));
@@ -1385,7 +1490,9 @@ mod tests {
             adapter_name: "Test".to_string(),
             device_description: "Test".to_string(),
             gpu_backend: None,
+            text_manager: None,
             frame_state: None,
+            cached_texture_ids: HashMap::new(),
         };
         let scene = Scene::new();
         let result = renderer.render_scene(&scene);
@@ -1404,7 +1511,9 @@ mod tests {
             adapter_name: "Test".to_string(),
             device_description: "Test".to_string(),
             gpu_backend: None,
+            text_manager: None,
             frame_state: None,
+            cached_texture_ids: HashMap::new(),
         };
         let result = renderer.end_frame();
         assert!(result.is_err());
@@ -1422,7 +1531,9 @@ mod tests {
             adapter_name: "Test".to_string(),
             device_description: "Test".to_string(),
             gpu_backend: None,
+            text_manager: None,
             frame_state: None,
+            cached_texture_ids: HashMap::new(),
         };
         let surface_id = SurfaceId::new(1);
         let surface = crate::surface::Surface::new(surface_id, SurfaceConfig::new(800, 600));
@@ -1460,7 +1571,9 @@ mod tests {
             adapter_name: "Test".to_string(),
             device_description: "Test".to_string(),
             gpu_backend: None,
+            text_manager: None,
             frame_state: None,
+            cached_texture_ids: HashMap::new(),
         };
         let surface_id = SurfaceId::new(1);
         let surface = crate::surface::Surface::new(surface_id, SurfaceConfig::new(800, 600));
@@ -1490,7 +1603,9 @@ mod tests {
             adapter_name: "Test".to_string(),
             device_description: "Test".to_string(),
             gpu_backend: None,
+            text_manager: None,
             frame_state: None,
+            cached_texture_ids: HashMap::new(),
         };
         let surface_id = SurfaceId::new(1);
         let surface = crate::surface::Surface::new(surface_id, SurfaceConfig::new(800, 600));
@@ -1562,7 +1677,9 @@ mod tests {
             adapter_name: "Test".to_string(),
             device_description: "Test".to_string(),
             gpu_backend: None,
+            text_manager: None,
             frame_state: None,
+            cached_texture_ids: HashMap::new(),
         };
         let surface_id = SurfaceId::new(1);
         let surface = crate::surface::Surface::new(surface_id, SurfaceConfig::new(800, 600));

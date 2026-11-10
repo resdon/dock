@@ -783,6 +783,7 @@ mod tests {
             content: "Hello".to_string(),
             font_size: 14.0,
             color: Color::WHITE,
+            align: 0.0,
         });
 
         let batches = sorter.finish();
@@ -920,6 +921,7 @@ mod tests {
                 content: "Test".to_string(),
                 font_size: 14.0,
                 color: Color::WHITE,
+                align: 0.0,
             },
         ];
 

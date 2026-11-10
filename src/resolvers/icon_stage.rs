@@ -15,15 +15,17 @@ impl IconResolver {
         if application.identity.icon.is_some() {
             return;
         }
-        let id = application.identity.identifier.clone();
-        application.identity.icon = get_icon_path(&id).or_else(|| {
-            let name = application.identity.name.clone();
+
+        let icon = get_icon_path(&application.identity.identifier).or_else(|| {
+            let name = application.identity.name.as_str();
             if name.trim().is_empty() {
                 None
             } else {
-                get_icon_path(&name)
+                get_icon_path(name)
             }
         });
+
+        application.identity.icon = icon;
         if application.identity.icon.is_some() {
             application
                 .resolution_trace

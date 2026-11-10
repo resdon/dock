@@ -121,9 +121,36 @@ impl Path {
     }
 
     /// Draw an ellipse.
-    pub fn ellipse(&mut self, cx: f32, cy: f32, rx: f32, _ry: f32) {
+    pub fn ellipse(&mut self, cx: f32, cy: f32, rx: f32, ry: f32) {
+        let rx = rx.abs();
+        let ry = ry.abs();
+
+        if rx <= 0.0 || ry <= 0.0 {
+            self.move_to(cx, cy);
+            self.close();
+            return;
+        }
+
+        const KAPPA: f32 = 0.5522847498307936;
         self.move_to(cx + rx, cy);
-        self.arc(cx, cy, rx, 0.0, std::f32::consts::PI * 2.0, true);
+
+        for quadrant in 0..4 {
+            let start = quadrant as f32 * (std::f32::consts::PI / 2.0);
+            let end = start + std::f32::consts::PI / 2.0;
+
+            let x1 = cx + rx * start.cos();
+            let y1 = cy + ry * start.sin();
+            let x2 = cx + rx * end.cos();
+            let y2 = cy + ry * end.sin();
+
+            let cp1x = x1 - KAPPA * rx * start.sin();
+            let cp1y = y1 + KAPPA * ry * start.cos();
+            let cp2x = x2 + KAPPA * rx * end.sin();
+            let cp2y = y2 - KAPPA * ry * end.cos();
+
+            self.cubic_bezier_to(cp1x, cp1y, cp2x, cp2y, x2, y2);
+        }
+
         self.close();
     }
 
@@ -487,5 +514,25 @@ mod tests {
             .with_stroke(StrokeStyle::new(2.0), Color::BLACK);
         assert!(s.fill.is_some());
         assert!(s.stroke.is_some());
+    }
+
+    #[test]
+    fn test_ellipse_uses_both_radii() {
+        let mut path = Path::new();
+        path.ellipse(0.0, 0.0, 100.0, 40.0);
+
+        assert_eq!(path.commands.len(), 6);
+        assert!(matches!(path.commands[0], PathCommand::MoveTo(p) if p.x == 100.0 && p.y == 0.0));
+
+        match &path.commands[1] {
+            PathCommand::CubicBezierTo { cp1, cp2, end } => {
+                let kappa = 0.5522847498307936;
+                assert!((cp1.y - (40.0 * kappa)).abs() < 1e-4);
+                assert!((cp2.x - (100.0 * kappa)).abs() < 1e-4);
+                assert!((end.x).abs() < 1e-4);
+                assert!((end.y - 40.0).abs() < 1e-4);
+            }
+            _ => panic!("expected cubic bezier segment"),
+        }
     }
 }

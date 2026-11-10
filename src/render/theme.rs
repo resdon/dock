@@ -24,7 +24,12 @@ pub const RED_ARGB: [u8; 4] = [38, 38, 220, 255];
 pub const RAISED_ARGB: [u8; 4] = [58, 49, 51, 255];
 pub const TEXT: (u8, u8, u8) = (247, 243, 230);
 pub const MUTED: (u8, u8, u8) = (164, 160, 173);
+pub const MUTE: (u8, u8, u8) = MUTED;
+pub const TEXT_MUTED: (u8, u8, u8) = MUTED;
 pub const INK: (u8, u8, u8) = (34, 30, 24);
+pub const YELLOW_SOFT_RGB: [u8; 3] = [YELLOW_SOFT[0], YELLOW_SOFT[1], YELLOW_SOFT[2]];
+pub const MUTE_RGB: [u8; 3] = [MUTED.0, MUTED.1, MUTED.2];
+pub const TEXT_MUTED_RGB: [u8; 3] = [MUTED.0, MUTED.1, MUTED.2];
 
 pub fn fill_rounded(
     canvas: &mut [u8],

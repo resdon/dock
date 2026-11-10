@@ -56,10 +56,11 @@ cargo test --workspace
 
 ## Performance Profiling
 
-See [profiling.md](profiling.md) for detailed instructions on:
+See [profiling.md](profiling.md) and [memory-profiling.md](memory-profiling.md) for detailed instructions on:
 
 - CPU profiling with `perf` and Tracy
-- RAM profiling with `heaptrack` and Valgrind Massif
+- RAM/heap profiling with `heaptrack`, Valgrind Massif, DHAT, and `/proc/<pid>/smaps_rollup`
+- Allocation hotspot analysis and process memory accounting (RSS/PSS/shared mappings)
 - Performance test scenarios (idle, hover, animation, image load, orientation switch)
 - Performance report template
 

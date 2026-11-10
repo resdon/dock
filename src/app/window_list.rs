@@ -18,12 +18,18 @@
 //! the same app don't both map to the same stream. This ensures each
 //! PipeWire stream is assigned to at most one Wayland window.
 
+use std::os::fd::AsFd;
+
+use smithay_client_toolkit::dmabuf::DmabufState;
 use smithay_client_toolkit::{
     compositor::CompositorState, shell::WaylandSurface, shm::slot::SlotPool,
 };
 use wayland_client::protocol::wl_shm;
+use wayland_client::Proxy;
 use wayland_client::QueueHandle;
 
+use crate::config::DockConfig;
+use crate::models::system::WindowId;
 use crate::render::font::FontManager;
 use crate::render::popup::{render_window_list_surface, CaptureFrameData};
 use crate::services::pipewire_capture::PipewireCaptureService;
@@ -61,17 +67,29 @@ pub fn draw_window_list_popup(
     interaction: &crate::types::InteractionState,
     window_list_state: &WindowListState,
     pipewire_capture: Option<&std::sync::Arc<PipewireCaptureService>>,
+    mut gpu_context: Option<&mut wgpu_api::Renderer>,
+    dmabuf_state: &DmabufState,
 ) {
     let show_window_list = window_list_state.is_open;
     if show_window_list {
         if let Some(target_app_id) = &window_list_state.target_app_id {
             // Primary: use foreign_toplevel windows filtered by the hovered app's app_id.
             // These are the actual windows belonging to the app.
-            let app_windows: Vec<&WindowState> = frame
+            let mut app_windows: Vec<&WindowState> = frame
                 .running_by_app
                 .get(target_app_id)
-                .cloned()
-                .unwrap_or_default();
+                .into_iter()
+                .flatten()
+                .filter_map(|id| frame.windows.get(&WindowId(id.clone())))
+                .filter(|window| {
+                    window.output_ids.is_empty()
+                        || window
+                            .output_ids
+                            .iter()
+                            .any(|output| &output.0 == frame.dock_output)
+                })
+                .collect();
+            app_windows.sort_by(|a, b| a.title.cmp(&b.title));
 
             // Match foreign_toplevel windows to PipeWire streams.
             // Each window gets a (WindowState, pipewire_stream_index) pair.
@@ -124,7 +142,11 @@ pub fn draw_window_list_popup(
                             .iter()
                             .filter_map(|e| {
                                 if e.1.is_some() && !e.0.title.is_empty() {
-                                    Some((e.0.title.clone(), e.1.unwrap()))
+                                    if let Some(idx) = e.1 {
+                                        Some((e.0.title.clone(), idx))
+                                    } else {
+                                        None
+                                    }
                                 } else {
                                     None
                                 }
@@ -263,14 +285,16 @@ pub fn draw_window_list_popup(
 
                 let scale_i32 = frame.dock_scale.round() as i32;
 
-                let popup = dock.window_list_popup.get_or_insert_with(|| {
+                if dock.window_list_popup.is_none() {
+                    let Some(sc) = subcompositor else {
+                        tracing::warn!("Subcompositor not available; popup rendering degraded");
+                        return;
+                    };
                     let surf = compositor_state.create_surface(qh);
-                    let sub = subcompositor
-                        .expect("Subcompositor global not bound")
-                        .get_subsurface(&surf, dock.surface.wl_surface(), qh, ());
+                    let sub = sc.get_subsurface(&surf, dock.surface.wl_surface(), qh, ());
                     sub.set_desync();
 
-                    PopupSurface {
+                    dock.window_list_popup = Some(PopupSurface {
                         subsurface: sub,
                         surface: surf,
                         current_buffer: None,
@@ -282,8 +306,13 @@ pub fn draw_window_list_popup(
                         cached_phys_width: 0,
                         cached_phys_height: 0,
                         input_region_key: 0,
-                    }
-                });
+                    });
+                }
+
+                let Some(popup) = dock.window_list_popup.as_mut() else {
+                    tracing::warn!("Window list popup not initialized");
+                    return;
+                };
 
                 popup.current_app_id = Some(target_app_id.clone());
 
@@ -314,8 +343,11 @@ pub fn draw_window_list_popup(
                     // Row height from config.
                     let item_h = frame.config.popup_row_height as i32;
                     let rows_logical_h = item_count_usize as i32 * item_h;
-                    // Calculate hovered item; clamp to valid range so the frame
-                    // keeps updating even when the cursor briefly leaves the popup.
+                    let pointer_on_row = local_ptr_x >= 0
+                        && local_ptr_x < geom.logical_width as i32
+                        && local_ptr_y >= frame_logical_h
+                        && local_ptr_y < frame_logical_h + rows_logical_h;
+                    // Clamp the selection used for capture switching even outside a row.
                     let hovered_item = if local_ptr_x >= 0
                         && local_ptr_x < geom.logical_width as i32
                         && local_ptr_y >= frame_logical_h
@@ -369,8 +401,9 @@ pub fn draw_window_list_popup(
                             && use_matched
                             && (hovered_item as usize) < matched_windows.len()
                         {
-                            let stream_idx = matched_windows[hovered_item as usize].1.unwrap();
-                            service.set_active_row(stream_idx);
+                            if let Some(stream_idx) = matched_windows[hovered_item as usize].1 {
+                                service.set_active_row(stream_idx);
+                            }
                         }
                     }
 
@@ -404,74 +437,352 @@ pub fn draw_window_list_popup(
                         None
                     };
 
-                    popup.cached_content.resize(expected_len, 0);
+                    // GPU rendering path: build draw commands and render via DMA-BUF
                     let windows: Vec<WindowState> = if use_matched {
                         matched_windows.iter().map(|(w, _)| w.clone()).collect()
                     } else {
                         synthetic_windows.clone()
                     };
-                    let windows_refs: Vec<&WindowState> = windows.iter().collect();
-                    // Get the active row index for blue highlight on the active stream's row
-                    let active_row_idx = pipewire_capture
-                        .as_ref()
-                        .map_or(0, |service| *service.active_row.lock());
-                    // Map stream index to window row index: find which matched window
-                    // owns the active stream
-                    let active_window_row = if use_matched {
-                        matched_windows
-                            .iter()
-                            .position(|(_, si)| *si == Some(active_row_idx))
-                            .unwrap_or(0)
-                    } else {
-                        0
-                    };
-                    render_window_list_surface(
-                        &mut popup.cached_content,
-                        &geom,
-                        frame.dock_scale as f32,
-                        &windows_refs,
-                        font_manager,
-                        local_ptr_x,
-                        local_ptr_y,
-                        capture_frame_data.as_ref(),
-                        active_window_row,
-                        frame.config,
-                    );
-                    popup.cached_phys_width = geom.phys_width;
-                    popup.cached_phys_height = geom.phys_height;
 
-                    let (buffer, canvas) = pool
-                        .create_buffer(
+                    // Build draw commands for the window list popup
+                    let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::new();
+                    let config = frame.config;
+                    let scale = frame.dock_scale as f32;
+                    let width = geom.phys_width as f32;
+                    let height = geom.phys_height as f32;
+                    let item_count = windows.len();
+
+                    // Parse colors from config
+                    let text_color = DockConfig::parse_hex_color(&config.popup_text_color);
+                    let border_color = DockConfig::parse_hex_color(&config.popup_border_color);
+                    let close_button_color =
+                        DockConfig::parse_hex_color(&config.popup_close_button_color);
+
+                    // Calculate frame and rows area
+                    let frame_border = config.popup_frame_border as f32 * scale;
+                    let frame_phys_h = frame_logical_h as f32 * scale;
+                    let rows_area_y = frame_phys_h;
+                    let phys_item_h = config.popup_row_height as f32 * scale;
+
+                    // Draw PipeWire capture frame as a textured quad if available
+                    if let Some(ref frame_data) = capture_frame_data {
+                        if let Some(ref mut renderer) = gpu_context {
+                            let active_stream_idx = pipewire_capture
+                                .map(|service| *service.active_row.lock())
+                                .unwrap_or(0);
+                            let cache_key = format!(
+                                "window-list-capture:{:?}:{}",
+                                dock.output.id(),
+                                active_stream_idx
+                            );
+                            if let Some(texture_id) = renderer.replace_cached_texture_from_pixels(
+                                &cache_key,
+                                &frame_data.rgba,
+                                frame_data.width as u32,
+                                frame_data.height as u32,
+                            ) {
+                                let frame_inner_w = width - frame_border * 2.0;
+                                let frame_inner_h = frame_phys_h - frame_border * 2.0;
+                                draw_commands.push(wgpu_api::DrawCommand::Image {
+                                    dest_rect: wgpu_api::Rect {
+                                        x: frame_border,
+                                        y: frame_border / 2.0,
+                                        width: frame_inner_w,
+                                        height: frame_inner_h,
+                                    },
+                                    texture: texture_id,
+                                    source_uv: wgpu_api::Rect {
+                                        x: 0.0,
+                                        y: 0.0,
+                                        width: 1.0,
+                                        height: 1.0,
+                                    },
+                                    tint: wgpu_api::Color {
+                                        r: 1.0,
+                                        g: 1.0,
+                                        b: 1.0,
+                                        a: 1.0,
+                                    },
+                                });
+                            }
+                        }
+                    }
+
+                    // Draw window rows
+                    for (i, window) in windows.iter().enumerate() {
+                        let item_top = rows_area_y + (i as f32 * phys_item_h);
+                        let item_h = phys_item_h;
+
+                        if pointer_on_row && i == hovered_item as usize {
+                            let highlight_color = wgpu_api::Color {
+                                r: border_color.0 as f32 / 255.0,
+                                g: border_color.1 as f32 / 255.0,
+                                b: border_color.2 as f32 / 255.0,
+                                a: 1.0,
+                            };
+                            let thickness = scale.max(1.0);
+                            let dash_length = (config.popup_dash_gap.max(1) as f32 * scale)
+                                .round()
+                                .max(1.0);
+                            let dash_period = dash_length * 2.0;
+                            let row_left = 1.0;
+                            let row_right = (width - thickness - 1.0).max(row_left);
+                            let top = item_top + 1.0;
+                            let bottom = (item_top + item_h - thickness - 1.0).max(top);
+
+                            let mut x = row_left;
+                            while x <= row_right {
+                                draw_commands.push(wgpu_api::DrawCommand::Rectangle {
+                                    rect: wgpu_api::Rect {
+                                        x,
+                                        y: top,
+                                        width: dash_length.min(row_right + thickness - x),
+                                        height: thickness,
+                                    },
+                                    color: highlight_color,
+                                    radius: 0.0,
+                                    stroke: None,
+                                    stroke_width: 0.0,
+                                });
+                                draw_commands.push(wgpu_api::DrawCommand::Rectangle {
+                                    rect: wgpu_api::Rect {
+                                        x,
+                                        y: bottom,
+                                        width: dash_length.min(row_right + thickness - x),
+                                        height: thickness,
+                                    },
+                                    color: highlight_color,
+                                    radius: 0.0,
+                                    stroke: None,
+                                    stroke_width: 0.0,
+                                });
+                                x += dash_period;
+                            }
+
+                            let mut y = top + thickness;
+                            while y < bottom {
+                                draw_commands.push(wgpu_api::DrawCommand::Rectangle {
+                                    rect: wgpu_api::Rect {
+                                        x: row_left,
+                                        y,
+                                        width: thickness,
+                                        height: dash_length.min(bottom - y),
+                                    },
+                                    color: highlight_color,
+                                    radius: 0.0,
+                                    stroke: None,
+                                    stroke_width: 0.0,
+                                });
+                                draw_commands.push(wgpu_api::DrawCommand::Rectangle {
+                                    rect: wgpu_api::Rect {
+                                        x: row_right,
+                                        y,
+                                        width: thickness,
+                                        height: dash_length.min(bottom - y),
+                                    },
+                                    color: highlight_color,
+                                    radius: 0.0,
+                                    stroke: None,
+                                    stroke_width: 0.0,
+                                });
+                                y += dash_period;
+                            }
+                        }
+
+                        // Draw window title text
+                        let text_y = item_top
+                            + item_h / 2.0
+                            + 6.0 * scale
+                            + config.popup_font_size as f32 * scale / 2.0;
+                        let text_x = config.popup_text_padding as f32 * scale;
+                        draw_commands.push(wgpu_api::DrawCommand::Text {
+                            position: wgpu_api::Point::new(text_x, text_y),
+                            content: window.title.clone(),
+                            font_size: config.popup_font_size as f32 * scale,
+                            color: wgpu_api::Color {
+                                r: text_color.0 as f32 / 255.0,
+                                g: text_color.1 as f32 / 255.0,
+                                b: text_color.2 as f32 / 255.0,
+                                a: 1.0,
+                            },
+                            align: 0.0,
+                        });
+
+                        // Draw close button (X)
+                        let close_btn_size = config.popup_close_button_size as f32 * scale;
+                        let close_margin = config.popup_close_button_margin as f32 * scale;
+                        let close_btn_x = width - close_btn_size - close_margin;
+                        let close_btn_y = item_top + (item_h - close_btn_size) / 2.0;
+                        draw_commands.push(wgpu_api::DrawCommand::Rectangle {
+                            rect: wgpu_api::Rect {
+                                x: close_btn_x,
+                                y: close_btn_y,
+                                width: close_btn_size,
+                                height: close_btn_size,
+                            },
+                            color: wgpu_api::Color {
+                                r: close_button_color.0 as f32 / 255.0,
+                                g: close_button_color.1 as f32 / 255.0,
+                                b: close_button_color.2 as f32 / 255.0,
+                                a: 0.5,
+                            },
+                            radius: close_btn_size / 4.0,
+                            stroke: None,
+                            stroke_width: 0.0,
+                        });
+                    }
+
+                    // Draw horizontal dashed separators between rows
+                    let separator_color_f = wgpu_api::Color {
+                        r: border_color.0 as f32 / 255.0,
+                        g: border_color.1 as f32 / 255.0,
+                        b: border_color.2 as f32 / 255.0,
+                        a: 1.0,
+                    };
+                    let dash_len = config.popup_dash_gap.max(1) as f32;
+                    let dash_period = dash_len * 2.0;
+                    let line_thickness = scale.max(1.0);
+                    for i in 1..item_count {
+                        let line_y = rows_area_y + (i as f32 * phys_item_h);
+                        let mut x = 0.0f32;
+                        while x < width {
+                            let seg_w = dash_len.min(width - x);
+                            draw_commands.push(wgpu_api::DrawCommand::Rectangle {
+                                rect: wgpu_api::Rect {
+                                    x,
+                                    y: line_y,
+                                    width: seg_w,
+                                    height: line_thickness,
+                                },
+                                color: separator_color_f,
+                                radius: 0.0,
+                                stroke: None,
+                                stroke_width: 0.0,
+                            });
+                            x += dash_period;
+                        }
+                    }
+
+                    // GPU rendering via DMA-BUF with glyphon text rendering
+                    let gpu_success = if let Some(ref mut renderer) = gpu_context {
+                        match renderer.render_to_dmabuf(
+                            geom.phys_width as u32,
+                            geom.phys_height as u32,
+                            &draw_commands,
+                        ) {
+                            Ok(export_info) => match dmabuf_state.create_params(qh) {
+                                Ok(params) => {
+                                    for (i, plane) in export_info.planes.iter().enumerate() {
+                                        params.add(
+                                            plane.fd.as_fd(),
+                                            i as u32,
+                                            plane.offset,
+                                            plane.stride,
+                                            export_info.modifier,
+                                        );
+                                    }
+                                    let (wl_buffer, _params) = params.create_immed(
+                                            geom.phys_width,
+                                            geom.phys_height,
+                                            export_info.fourcc as u32,
+                                            wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_buffer_params_v1::Flags::empty(),
+                                            qh,
+                                        );
+                                    popup.surface.set_buffer_scale(scale_i32);
+                                    popup.surface.attach(Some(&wl_buffer), 0, 0);
+                                    popup.surface.damage_buffer(
+                                        0,
+                                        0,
+                                        geom.phys_width,
+                                        geom.phys_height,
+                                    );
+
+                                    let region =
+                                        compositor_state.wl_compositor().create_region(qh, ());
+                                    region.add(0, 0, geom.logical_width, geom.logical_height);
+                                    popup.surface.set_input_region(Some(&region));
+                                    region.destroy();
+
+                                    popup.surface.commit();
+                                    true
+                                }
+                                Err(e) => {
+                                    let _ = e;
+                                    false
+                                }
+                            },
+                            Err(e) => {
+                                let _ = e;
+                                false
+                            }
+                        }
+                    } else {
+                        false
+                    };
+
+                    // Fallback: if GPU rendering failed, use CPU rendering
+                    if !gpu_success {
+                        popup.cached_content.resize(expected_len, 0);
+                        let windows_refs: Vec<&WindowState> = windows.iter().collect();
+                        let active_row_idx = pipewire_capture
+                            .as_ref()
+                            .map_or(0, |service| *service.active_row.lock());
+                        let active_window_row = if use_matched {
+                            matched_windows
+                                .iter()
+                                .position(|(_, si)| *si == Some(active_row_idx))
+                                .unwrap_or(0)
+                        } else {
+                            0
+                        };
+                        render_window_list_surface(
+                            &mut popup.cached_content,
+                            &geom,
+                            frame.dock_scale as f32,
+                            &windows_refs,
+                            font_manager,
+                            local_ptr_x,
+                            local_ptr_y,
+                            capture_frame_data.as_ref(),
+                            active_window_row,
+                            frame.config,
+                        );
+                        popup.cached_phys_width = geom.phys_width;
+                        popup.cached_phys_height = geom.phys_height;
+
+                        let (buffer, canvas) = match pool.create_buffer(
                             geom.phys_width,
                             geom.phys_height,
                             geom.phys_width * 4,
                             wl_shm::Format::Argb8888,
-                        )
-                        .expect("Failed to allocate window list popup buffer");
-                    if !super::copy_popup_content(canvas, &popup.cached_content) {
-                        return;
+                        ) {
+                            Ok(bc) => bc,
+                            Err(e) => {
+                                tracing::warn!("Failed to allocate window list popup buffer: {}", e);
+                                return;
+                            }
+                        };
+                        if !super::copy_popup_content(canvas, &popup.cached_content) {
+                            return;
+                        }
+
+                        popup.surface.set_buffer_scale(scale_i32);
+                        if let Err(e) = buffer.attach_to(&popup.surface) {
+                            tracing::warn!("Failed to attach window list buffer: {}", e);
+                            return;
+                        }
+                        popup
+                            .surface
+                            .damage_buffer(0, 0, geom.phys_width, geom.phys_height);
+
+                        let region = compositor_state.wl_compositor().create_region(qh, ());
+                        region.add(0, 0, geom.logical_width, geom.logical_height);
+                        popup.surface.set_input_region(Some(&region));
+                        region.destroy();
+
+                        popup.surface.commit();
+                        popup.current_buffer = Some(buffer);
                     }
-                    // Fade animations are disabled, skip alpha application
-                    // dock.window_list_fade.apply_alpha_to_canvas(canvas);
-
-                    popup.surface.set_buffer_scale(scale_i32);
-                    buffer
-                        .attach_to(&popup.surface)
-                        .expect("Failed to attach window list buffer");
-                    popup
-                        .surface
-                        .damage_buffer(0, 0, geom.phys_width, geom.phys_height);
-
-                    // wl_region coordinates are in the surface's logical coordinate
-                    // space. Buffer dimensions are physical pixels and must not be used
-                    // for input regions on a scaled surface.
-                    let region = compositor_state.wl_compositor().create_region(qh, ());
-                    region.add(0, 0, geom.logical_width, geom.logical_height);
-                    popup.surface.set_input_region(Some(&region));
-                    region.destroy();
-
-                    popup.surface.commit();
-                    popup.current_buffer = Some(buffer);
                 } else if let Some(popup) = dock.window_list_popup.take() {
                     popup.surface.attach(None, 0, 0);
                     popup.surface.commit();

@@ -61,63 +61,55 @@ impl ResourceRecovery {
 
     /// Attempt to recover from texture cache overflow.
     ///
-    /// # Returns
-    /// - `Recovered` if textures were evicted.
-    /// - `Retryable` if more eviction is needed.
-    /// - `Failed` if no textures could be evicted.
+    /// Returns `NotImplemented` because no renderer-owned texture eviction is
+    /// performed by this module.
     pub fn recover_texture_cache_overflow(&self) -> RecoveryResult {
         let evicted = self.eviction_count.fetch_add(1, Ordering::SeqCst) + 1;
 
-        tracing::warn!(
-            subsystem = "gpu",
-            evicted = evicted,
-            max_eviction = self.config.max_eviction_count,
-            "Evicting textures from cache"
-        );
-
         if evicted > self.config.max_eviction_count {
-            tracing::error!(subsystem = "gpu", "Texture cache eviction limit reached");
+            tracing::error!(
+                subsystem = "gpu",
+                evicted,
+                max_eviction = self.config.max_eviction_count,
+                "Texture cache recovery budget exhausted (no integrated recovery action)"
+            );
             return RecoveryResult::Failed;
         }
 
-        // In a real implementation, this would:
-        // 1. Identify least-recently-used textures
-        // 2. Release their GPU memory
-        // 3. Mark them for re-loading when needed
-        RecoveryResult::Recovered
+        tracing::warn!(
+            subsystem = "gpu",
+            evicted,
+            max_eviction = self.config.max_eviction_count,
+            "Texture cache overflow recovery requested but not implemented/integrated"
+        );
+        RecoveryResult::NotImplemented
     }
 
     /// Attempt to recover from buffer pool exhaustion.
     ///
-    /// # Returns
-    /// - `Recovered` if buffers were returned to the pool.
-    /// - `Retryable` if buffers are still in use.
+    /// Returns `NotImplemented` because buffer pool management is not integrated
+    /// with this recovery module.
     pub fn recover_buffer_pool(&self) -> RecoveryResult {
-        tracing::warn!(subsystem = "gpu", "Waiting for buffer pool to free up");
-
-        // In a real implementation, this would:
-        // 1. Wait for in-use buffers to be returned
-        // 2. Expand the pool if possible
-        RecoveryResult::Retryable
+        tracing::warn!(
+            subsystem = "gpu",
+            "Buffer pool recovery requested but not implemented/integrated"
+        );
+        RecoveryResult::NotImplemented
     }
 
     /// Attempt to recover from memory pressure by reducing quality.
     ///
-    /// # Returns
-    /// - `Recovered` if quality was reduced.
-    /// - `NotAttempted` if quality reduction is disabled.
+    /// Returns `NotImplemented` when enabled (no quality reduction action taken),
+    /// or `NotAttempted` when disabled.
     pub fn recover_by_quality_reduction(&self) -> RecoveryResult {
         if !self.config.reduce_quality {
             return RecoveryResult::NotAttempted;
         }
-
-        tracing::warn!(subsystem = "gpu", "Reducing texture quality to free memory");
-
-        // In a real implementation, this would:
-        // 1. Downscale textures
-        // 2. Reduce mipmap levels
-        // 3. Switch to lower-quality formats
-        RecoveryResult::Recovered
+        tracing::warn!(
+            subsystem = "gpu",
+            "Quality-reduction recovery requested but not implemented/integrated"
+        );
+        RecoveryResult::NotImplemented
     }
 
     /// Check if memory pressure recovery should be triggered.
@@ -152,10 +144,10 @@ mod tests {
     }
 
     #[test]
-    fn test_texture_cache_recovery() {
+    fn test_texture_cache_recovery_not_implemented() {
         let recovery = ResourceRecovery::default_config();
         let result = recovery.recover_texture_cache_overflow();
-        assert_eq!(result, RecoveryResult::Recovered);
+        assert_eq!(result, RecoveryResult::NotImplemented);
         assert_eq!(recovery.eviction_count(), 1);
     }
 
@@ -173,17 +165,17 @@ mod tests {
     }
 
     #[test]
-    fn test_buffer_pool_recovery() {
+    fn test_buffer_pool_recovery_not_implemented() {
         let recovery = ResourceRecovery::default_config();
         let result = recovery.recover_buffer_pool();
-        assert_eq!(result, RecoveryResult::Retryable);
+        assert_eq!(result, RecoveryResult::NotImplemented);
     }
 
     #[test]
-    fn test_quality_reduction() {
+    fn test_quality_reduction_not_implemented() {
         let recovery = ResourceRecovery::default_config();
         let result = recovery.recover_by_quality_reduction();
-        assert_eq!(result, RecoveryResult::Recovered);
+        assert_eq!(result, RecoveryResult::NotImplemented);
     }
 
     #[test]

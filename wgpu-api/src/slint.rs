@@ -6,16 +6,9 @@
 //!
 //! ## Integration Options
 //!
-//! Two approaches for Slint integration:
-//!
-//! **Option A: Independent rendering** (recommended for initial setup)
-//! Slint owns its own rendering and window. The wgpu renderer operates
-//! independently. This is the easiest and safest initial architecture.
-//!
-//! **Option B: Shared wgpu context** (advanced)
-//! Slint renders into a shared wgpu rendering context, potentially avoiding
-//! an additional GPU composition step. This is more sophisticated but can
-//! be integrated after Option A is working.
+//! Independent rendering is currently implemented: Slint selects its own
+//! wgpu backend, separate from the `wgpu-api` renderer. Sharing a device is
+//! not supported because the renderer owns and hides its backend resources.
 //!
 //! ## Widget Types
 //!
@@ -43,11 +36,10 @@
 //! │              ┌──────────────────────┐                       │
 //! │              │  Slint Runtime       │                       │
 //! │              │  (wgpu backend)      │                       │
-//! │              └──────────┬───────────┘                       │
-//! │                         ▼                                    │
+//! │              └──────────┼───────────┘                       │
 //! │              ┌──────────────────────┐                       │
-//! │              │  wgpu Renderer       │                       │
-//! │              │  (shared device)     │                       │
+//! │              │  wgpu-api Renderer   │                       │
+//! │              │  (independent device)│                       │
 //! │              └──────────────────────┘                       │
 //! └─────────────────────────────────────────────────────────────┘
 //! ```
@@ -321,17 +313,28 @@ impl DockWidget {
         Size::new(self.dock_width as f32, self.dock_height as f32)
     }
 
-    /// Find the dock item under a given point (hit test).
+    /// Find the dock item under a point in logical dock coordinates.
     pub fn hit_test(&self, point: Point) -> Option<i32> {
         for (i, item) in self.dock_items.iter().enumerate() {
-            let x = self.item_x(i as i32) as f32 + item.offset_x;
-            let y = 0.0;
-            let rect = Rect::new(x, y, self.icon_size as f32, self.dock_height as f32);
+            let x = self.item_x(i as i32) as f32 + item.offset_x + item.icon_x;
+            let y = item.icon_y;
+            let rect = Rect::new(x, y, item.icon_width, item.icon_height);
             if rect.contains(&point) {
                 return Some(i as i32);
             }
         }
         None
+    }
+
+    /// Find the dock item under a point expressed in physical pixels.
+    ///
+    /// `scale_factor` converts the input point to the logical dock coordinates
+    /// used by [`Self::hit_test`].
+    pub fn hit_test_physical(&self, point: Point, scale_factor: f32) -> Option<i32> {
+        if !scale_factor.is_finite() || scale_factor <= 0.0 {
+            return None;
+        }
+        self.hit_test(Point::new(point.x / scale_factor, point.y / scale_factor))
     }
 
     /// Set the hover color.
@@ -415,15 +418,23 @@ impl DashConfig {
 
     /// Compute the X positions for all dashes.
     pub fn dash_positions(&self, window_count: i32) -> Vec<f32> {
-        let count = window_count.min(5).max(1) as i32;
-        let dash_w = self.dash_width(count);
-        let mut positions = Vec::with_capacity(count as usize);
+        let mut positions = [0.0; 5];
+        let count = self.dash_positions_into(window_count, &mut positions);
+        positions[..count].to_vec()
+    }
+
+    /// Write dash positions into caller-provided storage without allocating.
+    ///
+    /// Returns the number of initialized entries, at most five.
+    pub fn dash_positions_into(&self, window_count: i32, positions: &mut [f32; 5]) -> usize {
+        let count = window_count.clamp(1, 5) as usize;
+        let dash_w = self.dash_width(count as i32);
         let mut x = self.x_offset;
-        for _ in 0..count {
-            positions.push(x);
+        for position in &mut positions[..count] {
+            *position = x;
             x += dash_w + self.gap;
         }
-        positions
+        count
     }
 }
 
@@ -578,7 +589,7 @@ impl BluetoothState {
             scanning: false,
             minimized: false,
             settings_open: false,
-            adapter_name: "archlinux".to_string(),
+            adapter_name: "Bluetooth".to_string(),
             sweep_cos: 1.0,
             sweep_sin: 0.0,
             dot1_x: 0.0,
@@ -717,8 +728,8 @@ pub enum SlintRenderMode {
     /// Slint owns its own rendering and window (Option A).
     /// Safest and easiest initial architecture.
     Independent,
-    /// Slint renders into a shared wgpu context (Option B).
-    /// More sophisticated, avoids additional GPU composition.
+    /// Reserved for future shared-context support. Currently this selects
+    /// the same independent backend as `Independent`.
     SharedContext,
 }
 
@@ -777,18 +788,14 @@ impl Default for SlintIntegrationConfig {
 
 /// Adapter that connects Slint's wgpu-30 rendering to our wgpu backend.
 ///
-/// This allows Slint to render widgets through our shared wgpu device/queue
-/// instead of using a separate GPU context. Slint manages UI state (widgets,
-/// layout, events, properties) while we control the GPU resources.
+/// This selects Slint's wgpu backend, which currently owns an independent
+/// device and queue. `wgpu-api` continues to own its own backend resources.
 ///
 /// ## Usage
 ///
 /// ```ignore
-/// // Initialize the wgpu renderer
-/// let renderer = wgpu_api::Renderer::new().await?;
-///
-/// // Create the Slint adapter with our renderer
-/// let adapter = SlintWgpuAdapter::new(&renderer)?;
+/// // Create the Slint adapter
+/// let adapter = SlintWgpuAdapter::new()?;
 ///
 /// // Select the wgpu backend for Slint
 /// adapter.select_backend()?;
@@ -805,17 +812,13 @@ pub struct SlintWgpuAdapter {
 impl SlintWgpuAdapter {
     /// Create a new Slint wgpu adapter.
     ///
-    /// This function configures Slint to use the wgpu-30 backend with our
-    /// shared wgpu device and queue. It must be called before creating any
-    /// Slint components.
+    /// This prepares Slint's wgpu-30 backend. Slint currently creates its own
+    /// wgpu device, independent of the `wgpu-api` renderer.
     ///
     /// # Errors
     ///
     /// Returns an error if Slint backend selection fails.
-    pub fn new(_renderer: &crate::renderer::Renderer) -> Result<Self, String> {
-        // The adapter is a marker type — the actual integration happens
-        // via BackendSelector::require_wgpu_30() which we call in select_backend().
-        // The renderer's device/queue are shared with Slint via WGPUConfiguration::Manual.
+    pub fn new() -> Result<Self, String> {
         Ok(Self { initialized: false })
     }
 
@@ -925,7 +928,7 @@ impl WidgetRegistry {
 
     /// Register a Slint component.
     pub fn register_component(&mut self, name: impl Into<String>, size: Size) -> WidgetId {
-        let id = WidgetId(self.next_widget_id.fetch_add(1, Ordering::SeqCst));
+        let id = WidgetId(self.next_widget_id.fetch_add(1, Ordering::Relaxed));
         let component = SlintComponent::new(id, name, size);
         self.components.insert(id, component);
         id
@@ -942,8 +945,14 @@ impl WidgetRegistry {
     }
 
     /// Remove a component.
-    pub fn unregister_component(&mut self, id: WidgetId) {
-        self.components.remove(&id);
+    /// Remove a component and return its associated texture, if any.
+    ///
+    /// The caller remains responsible for releasing the texture through the
+    /// renderer, which owns all GPU resources.
+    pub fn unregister_component(&mut self, id: WidgetId) -> Option<TextureId> {
+        self.components
+            .remove(&id)
+            .and_then(|component| component.texture)
     }
 
     /// Set the dock widget.
@@ -1224,7 +1233,7 @@ mod tests {
     fn test_bluetooth_state() {
         let mut state = BluetoothState::new();
         assert!(!state.power_on);
-        assert_eq!(state.adapter_name, "archlinux");
+        assert_eq!(state.adapter_name, "Bluetooth");
 
         state.toggle_power();
         assert!(state.power_on);
@@ -1333,8 +1342,54 @@ mod tests {
         assert_eq!(registry.component_count(), 1);
         assert!(registry.get_component(id).is_some());
 
-        registry.unregister_component(id);
+        assert_eq!(registry.unregister_component(id), None);
         assert_eq!(registry.component_count(), 0);
+    }
+
+    #[test]
+    fn test_unregister_component_returns_owned_texture_id() {
+        let mut registry = WidgetRegistry::new();
+        let id = registry.register_component("DockWidget", Size::new(100.0, 60.0));
+        registry
+            .get_component_mut(id)
+            .unwrap()
+            .set_texture(TextureId::new(42));
+        assert_eq!(registry.unregister_component(id), Some(TextureId::new(42)));
+    }
+
+    #[test]
+    fn test_hit_test_tracks_animation_geometry_and_scale() {
+        let mut widget = DockWidget::new();
+        let mut item = DockItem::new("A", "");
+        item.set_anim_scale(1.25, 48.0);
+        item.set_offset_x(10.0);
+        widget.add_item(item);
+
+        assert_eq!(widget.hit_test(Point::new(5.0, 25.0)), Some(0));
+        assert_eq!(
+            widget.hit_test_physical(Point::new(10.0, 50.0), 2.0),
+            Some(0)
+        );
+        assert_eq!(widget.hit_test_physical(Point::new(10.0, 50.0), 0.0), None);
+    }
+
+    #[test]
+    fn test_dash_positions_into_fixed_storage() {
+        let config = DashConfig::new();
+        let mut positions = [f32::NAN; 5];
+        let count = config.dash_positions_into(3, &mut positions);
+        assert_eq!(count, 3);
+        assert_eq!(positions[0], config.x_offset);
+        assert!(
+            (positions[2] - (config.x_offset + 2.0 * (config.dash_width(3) + config.gap))).abs()
+                < 1e-5
+        );
+        assert!(positions[3].is_nan());
+    }
+
+    #[test]
+    fn test_bluetooth_adapter_name_starts_unset() {
+        assert_eq!(BluetoothState::new().adapter_name, "Bluetooth");
     }
 
     #[test]

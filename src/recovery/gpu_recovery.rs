@@ -61,23 +61,20 @@ impl GpuRecovery {
 
     /// Attempt to recover from a GPU device loss.
     ///
-    /// # Returns
-    /// - `Recovered` if the GPU was successfully reinitialized.
-    /// - `Retryable` if recovery failed but can be retried.
-    /// - `Failed` if recovery is not possible.
+    /// Returns `NotImplemented` because no renderer-integrated recovery action
+    /// is currently wired here. Attempt tracking is preserved for observability.
     pub fn recover_device_loss(&self) -> RecoveryResult {
         if !self.config.retry_device_loss {
             return RecoveryResult::NotAttempted;
         }
 
         let attempts = self.attempt_count.fetch_add(1, Ordering::SeqCst) + 1;
-
         if attempts > self.config.max_attempts {
             tracing::error!(
                 subsystem = "gpu",
                 attempts = attempts,
                 max_attempts = self.config.max_attempts,
-                "GPU recovery attempts exhausted"
+                "GPU recovery attempts exhausted (no integrated recovery action)"
             );
             return RecoveryResult::Failed;
         }
@@ -85,46 +82,36 @@ impl GpuRecovery {
         tracing::warn!(
             subsystem = "gpu",
             attempt = attempts,
-            "Attempting GPU device recovery"
+            "GPU device recovery requested but not implemented/integrated"
         );
-
-        // In a real implementation, this would trigger the renderer to
-        // reinitialize the GPU device and recreate all textures.
-        // For now, we return Retryable to indicate the recovery path exists.
-        RecoveryResult::Retryable
+        RecoveryResult::NotImplemented
     }
 
     /// Attempt to recover from GPU memory pressure.
     ///
-    /// # Returns
-    /// - `Recovered` if resources were released.
-    /// - `Retryable` if some resources remain.
-    /// - `Failed` if no resources could be released.
+    /// Returns `NotImplemented` because this module does not own renderer
+    /// resources and cannot safely evict/recreate them without integration.
     pub fn recover_memory_pressure(&self) -> RecoveryResult {
         if !self.config.release_on_pressure {
             return RecoveryResult::NotAttempted;
         }
-
-        tracing::warn!(subsystem = "gpu", "Attempting GPU memory pressure recovery");
-
-        // In a real implementation, this would:
-        // 1. Evict least-recently-used textures from cache
-        // 2. Release unused GPU buffers
-        // 3. Reduce texture quality if needed
-        RecoveryResult::Recovered
+        tracing::warn!(
+            subsystem = "gpu",
+            "GPU memory pressure recovery requested but not implemented/integrated"
+        );
+        RecoveryResult::NotImplemented
     }
 
     /// Attempt to recover from a presentation failure.
     ///
-    /// # Returns
-    /// - `Recovered` if presentation was retried successfully.
-    /// - `Retryable` if presentation should be retried.
+    /// Returns `NotImplemented` because presentation/swapchain recovery is not
+    /// integrated with the renderer from this module.
     pub fn recover_presentation(&self) -> RecoveryResult {
-        tracing::warn!(subsystem = "gpu", "Attempting GPU presentation recovery");
-
-        // In a real implementation, this would retry the presentation
-        // or recreate the swapchain if needed.
-        RecoveryResult::Retryable
+        tracing::warn!(
+            subsystem = "gpu",
+            "GPU presentation recovery requested but not implemented/integrated"
+        );
+        RecoveryResult::NotImplemented
     }
 
     /// Reset the recovery attempt counter.
@@ -151,10 +138,10 @@ mod tests {
     }
 
     #[test]
-    fn test_device_loss_recovery() {
+    fn test_device_loss_recovery_not_implemented() {
         let recovery = GpuRecovery::default_config();
         let result = recovery.recover_device_loss();
-        assert_eq!(result, RecoveryResult::Retryable);
+        assert_eq!(result, RecoveryResult::NotImplemented);
         assert_eq!(recovery.attempt_count(), 1);
     }
 
@@ -172,17 +159,17 @@ mod tests {
     }
 
     #[test]
-    fn test_memory_pressure_recovery() {
+    fn test_memory_pressure_recovery_not_implemented() {
         let recovery = GpuRecovery::default_config();
         let result = recovery.recover_memory_pressure();
-        assert_eq!(result, RecoveryResult::Recovered);
+        assert_eq!(result, RecoveryResult::NotImplemented);
     }
 
     #[test]
-    fn test_presentation_recovery() {
+    fn test_presentation_recovery_not_implemented() {
         let recovery = GpuRecovery::default_config();
         let result = recovery.recover_presentation();
-        assert_eq!(result, RecoveryResult::Retryable);
+        assert_eq!(result, RecoveryResult::NotImplemented);
     }
 
     #[test]

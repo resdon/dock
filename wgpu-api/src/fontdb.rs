@@ -122,7 +122,7 @@ impl FontEntry {
 
         // Weight difference
         let weight_diff = (self.properties.weight as i32 - props.weight as i32).unsigned_abs();
-        score += weight_diff / 100;
+        score += weight_diff / 10;
 
         // Style difference
         if self.properties.style != props.style {
@@ -175,7 +175,7 @@ impl FontDatabase {
         if let Some(home) = std::env::var_os("HOME") {
             let home_path = PathBuf::from(home);
             system_dirs.push(home_path.join(".local/share/fonts"));
-            system_dirs.push(PathBuf::from(std::env::var_os("HOME").unwrap()).join(".fonts"));
+            system_dirs.push(home_path.join(".fonts"));
         }
 
         Self {
@@ -207,48 +207,41 @@ impl FontDatabase {
             return Err("Invalid font data: too short".to_string());
         }
 
-        // Use fontdb to parse the font and extract metadata
-        let db = fontdb::Database::default();
+        // Parse font metadata from the provided data.
+        let mut db = fontdb::Database::new();
+        db.load_font_data(data.clone());
+        db.set_serif_family("Noto Serif".to_string());
+        db.set_sans_serif_family("Noto Sans".to_string());
+        db.set_monospace_family("Noto Sans Mono".to_string());
 
-        let (family, weight, style) = db
-            .query(&fontdb::Query {
-                families: &[],
-                style: fontdb::Style::Normal,
-                weight: fontdb::Weight(400),
-                stretch: fontdb::Stretch::Normal,
-            })
-            .map(|id| {
-                for face in db.faces() {
-                    if face.id == id {
-                        let family = face
-                            .families
-                            .first()
-                            .map(|f| f.0.clone())
-                            .unwrap_or_else(|| "Unknown".to_string());
-                        let weight = match face.weight.0 {
-                            100..=149 => FontWeight::Thin,
-                            150..=249 => FontWeight::ExtraLight,
-                            250..=349 => FontWeight::Light,
-                            350..=449 => FontWeight::Normal,
-                            450..=549 => FontWeight::Medium,
-                            550..=649 => FontWeight::SemiBold,
-                            650..=749 => FontWeight::Bold,
-                            750..=849 => FontWeight::ExtraBold,
-                            _ => FontWeight::Black,
-                        };
-                        let style = if face.style == fontdb::Style::Italic {
-                            FontStyle::Italic
-                        } else if face.style == fontdb::Style::Oblique {
-                            FontStyle::Oblique
-                        } else {
-                            FontStyle::Normal
-                        };
-                        return (family, weight, style);
-                    }
-                }
-                ("Unknown".to_string(), FontWeight::Normal, FontStyle::Normal)
-            })
-            .unwrap_or(("Unknown".to_string(), FontWeight::Normal, FontStyle::Normal));
+        let (family, weight, style) = if let Some(face) = db.faces().next() {
+            let family = face
+                .families
+                .first()
+                .map(|f| f.0.clone())
+                .unwrap_or_else(|| "Unknown".to_string());
+            let weight = match face.weight.0 {
+                100..=149 => FontWeight::Thin,
+                150..=249 => FontWeight::ExtraLight,
+                250..=349 => FontWeight::Light,
+                350..=449 => FontWeight::Normal,
+                450..=549 => FontWeight::Medium,
+                550..=649 => FontWeight::SemiBold,
+                650..=749 => FontWeight::Bold,
+                750..=849 => FontWeight::ExtraBold,
+                _ => FontWeight::Black,
+            };
+            let style = if face.style == fontdb::Style::Italic {
+                FontStyle::Italic
+            } else if face.style == fontdb::Style::Oblique {
+                FontStyle::Oblique
+            } else {
+                FontStyle::Normal
+            };
+            (family, weight, style)
+        } else {
+            ("Unknown".to_string(), FontWeight::Normal, FontStyle::Normal)
+        };
 
         let properties = FontProperties::new(weight, style);
         let id = self.next_id;
@@ -260,10 +253,7 @@ impl FontDatabase {
         self.entries.push(entry);
 
         // Update family mapping
-        self.families
-            .entry(family)
-            .or_insert_with(Vec::new)
-            .push(id);
+        self.families.entry(family).or_insert_with(Vec::new).push(id);
 
         Ok(id)
     }

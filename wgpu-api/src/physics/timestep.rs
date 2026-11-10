@@ -63,13 +63,13 @@
 
 use std::collections::HashMap;
 
-use super::body::{BodyId, PhysicsBody};
-use super::world::{PhysicsWorld, PhysicsWorldConfig};
+use super::body::BodyId;
+use super::world::PhysicsWorld;
 use crate::geometry::Point;
 
 /// Configuration for the fixed timestep physics simulation.
 ///
-/// Controls the simulation rate, substep granularity, and solver iterations.
+/// Controls the simulation rate, substep granularity, and collision iterations.
 #[derive(Debug, Clone, Copy)]
 pub struct PhysicsConfig {
     /// Fixed simulation timestep in seconds.
@@ -87,10 +87,10 @@ pub struct PhysicsConfig {
     /// Prevents the "spiral of death" where the simulation can never catch up.
     pub max_substeps: u32,
 
-    /// Number of velocity solver iterations per step.
+    /// Legacy velocity-iteration setting mirrored into the world config.
     ///
-    /// More iterations produce more accurate constraint resolution but cost
-    /// more CPU time.  For UI physics, 3 is usually sufficient.
+    /// The fixed-step simulator currently has no separate velocity solver, so
+    /// this value does not repeat force application or change simulation output.
     pub velocity_iterations: u32,
 
     /// Number of position solver iterations per step.
@@ -284,6 +284,8 @@ impl FixedTimestepSimulator {
     /// Called before each fixed simulation step so that interpolation can
     /// blend between the previous and current state.
     fn save_previous_states(&mut self, world: &PhysicsWorld) {
+        self.previous_states
+            .retain(|id, _| world.get_body(*id).is_some());
         for (id, body) in world.iter_bodies() {
             self.previous_states.insert(
                 *id,
@@ -300,16 +302,10 @@ impl FixedTimestepSimulator {
         // Save current state as previous for interpolation
         self.save_previous_states(world);
 
-        // Run one fixed step with the configured timestep
-        let original_dt = world.config.timestep;
-        world.config.timestep = self.config.fixed_dt;
-
-        // Apply velocity and position iterations
-        for _ in 0..self.config.velocity_iterations {
-            world.apply_springs(self.config.fixed_dt);
-            world.apply_fields(self.config.fixed_dt);
-            world.apply_gravity(self.config.fixed_dt);
-        }
+        // Accumulate forces once; solver iterations must not apply them again.
+        world.apply_springs(self.config.fixed_dt);
+        world.apply_fields(self.config.fixed_dt);
+        world.apply_gravity(self.config.fixed_dt);
 
         // Resolve collisions
         for _ in 0..self.config.position_iterations {
@@ -320,9 +316,6 @@ impl FixedTimestepSimulator {
         world.clamp_velocities();
         world.integrate_all(self.config.fixed_dt);
         world.sleep_idle_bodies();
-
-        // Restore original timestep
-        world.config.timestep = original_dt;
 
         self.total_steps += 1;
     }
@@ -479,8 +472,9 @@ impl FixedTimestepSimulator {
 
     /// Configure the physics world for fixed timestep simulation.
     ///
-    /// Sets the world's timestep to match the fixed timestep and configures
-    /// solver iterations.  Call this once after creating the world.
+    /// Sets the world's timestep and substep limit to match this simulator.
+    /// The solver-iteration value is mirrored for compatibility; the fixed-step
+    /// simulator does not currently run a separate velocity solver.
     pub fn configure_world(&self, world: &mut PhysicsWorld) {
         world.config.timestep = self.config.fixed_dt;
         world.config.max_substeps = self.config.max_substeps;
@@ -497,7 +491,7 @@ impl Default for FixedTimestepSimulator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::physics::body::{BodyType, CollisionShape};
+    use crate::physics::body::{CollisionShape, PhysicsBody};
 
     fn make_test_body(id: u64, pos: Point) -> PhysicsBody {
         PhysicsBody::dynamic_body(BodyId::new(id), pos, CollisionShape::circle(10.0), 1.0)
@@ -740,6 +734,42 @@ mod tests {
         let body = world.get_body(BodyId::new(1)).unwrap();
         // Force should have been applied as acceleration
         assert!(body.acceleration.x > 0.0);
+    }
+
+    #[test]
+    fn test_removed_bodies_are_pruned_from_previous_states() {
+        let mut sim = FixedTimestepSimulator::default_config();
+        let mut world = PhysicsWorld::new();
+        let id = world.add_body(make_test_body(1, Point::ORIGIN));
+
+        sim.save_previous_states(&world);
+        assert!(sim.previous_states.contains_key(&id));
+
+        world.remove_body(id);
+        sim.save_previous_states(&world);
+        assert!(!sim.previous_states.contains_key(&id));
+    }
+
+    #[test]
+    fn test_velocity_iterations_do_not_repeat_force_application() {
+        let run_step = |velocity_iterations| {
+            let mut sim = FixedTimestepSimulator::new(PhysicsConfig {
+                fixed_dt: 0.01,
+                max_substeps: 1,
+                velocity_iterations,
+                position_iterations: 1,
+            });
+            let mut world = PhysicsWorld::new();
+            world.collisions_enabled = false;
+            let mut body = make_test_body(1, Point::ORIGIN);
+            body.set_rest_position(Point::new(10.0, 0.0));
+            let id = world.add_body(body);
+
+            sim.run_fixed_step(&mut world);
+            world.get_body(id).unwrap().velocity.x
+        };
+
+        assert!((run_step(1) - run_step(3)).abs() < f32::EPSILON);
     }
 
     #[test]

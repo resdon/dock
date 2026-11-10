@@ -583,19 +583,18 @@ impl PhysicsBody {
 
     /// Apply a continuous force at the body's center.
     ///
-    /// The force is accumulated in the acceleration field, so that
-    /// `a = F / m` according to Newton's second law.  Velocity is then
-    /// updated from acceleration over the given timestep.
+    /// The acceleration is accumulated for diagnostics, while each force
+    /// contributes its own `F / m * dt` velocity change exactly once.
     pub fn apply_force(&mut self, force: Vector2D, dt: f32) {
         if self.body_type != BodyType::Dynamic || self.is_sleeping {
             return;
         }
-        // Track acceleration: a = F / m
-        self.acceleration.x += force.x * self.inv_mass;
-        self.acceleration.y += force.y * self.inv_mass;
-        // Integrate acceleration into velocity
-        self.velocity.x += self.acceleration.x * dt;
-        self.velocity.y += self.acceleration.y * dt;
+        let ax = force.x * self.inv_mass;
+        let ay = force.y * self.inv_mass;
+        self.acceleration.x += ax;
+        self.acceleration.y += ay;
+        self.velocity.x += ax * dt;
+        self.velocity.y += ay * dt;
         self.is_sleeping = false;
     }
 
@@ -913,6 +912,21 @@ mod tests {
         );
         body.apply_force(Vector2D::new(10.0, 0.0), 1.0);
         assert!((body.velocity.x - 10.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_multiple_forces_are_not_reintegrated() {
+        let mut body = PhysicsBody::dynamic_body(
+            BodyId::new(19),
+            Point::ORIGIN,
+            CollisionShape::circle(5.0),
+            1.0,
+        );
+        body.apply_force(Vector2D::new(10.0, 0.0), 0.5);
+        body.apply_force(Vector2D::new(6.0, 0.0), 0.5);
+
+        assert!((body.velocity.x - 8.0).abs() < f32::EPSILON);
+        assert!((body.acceleration.x - 16.0).abs() < f32::EPSILON);
     }
 
     #[test]

@@ -31,13 +31,14 @@ fn draw_border(
     h: i32,
     color: &[u8; 4],
     style: &PopupBorderStyle,
+    dash_gap: i32,
 ) {
     if matches!(style, PopupBorderStyle::None) {
         return;
     }
 
     let is_dashes = matches!(style, PopupBorderStyle::Dashes);
-    let dash_gap = 4; // pixels per dash segment
+    let dash_gap = dash_gap.max(1);
 
     // Top edge
     for dx in 0..w {
@@ -191,19 +192,8 @@ fn draw_capture_frame(
         return;
     }
 
-    // Draw frame background (black) - Argb8888 little-endian: [B, G, R, A]
-    for fy in 0..frame_h {
-        for fx in 0..frame_w {
-            let px = frame_x + fx;
-            let py = frame_y + fy;
-            if px >= 0 && py >= 0 && px < canvas_width && py < _canvas_height {
-                let idx = ((py * canvas_width + px) * 4) as usize;
-                if idx + 3 < canvas.len() {
-                    canvas[idx..idx + 4].copy_from_slice(&[0, 0, 0, 255]);
-                }
-            }
-        }
-    }
+    // Frame background is transparent — skip the black fill.
+    // Canvas is already zeroed (transparent) by the caller.
 
     // Scale and draw the frame image
     let x_step = src_w as f32 / frame_w as f32;
@@ -292,39 +282,24 @@ pub fn render_window_list_surface(
     let item_h_log = config.popup_row_height as f32;
     let phys_item_h = (item_h_log * scale_factor).round() as i32;
     let rows_phys_h = item_count as i32 * phys_item_h;
-    let rows_logical_h = item_count as f32 * item_h_log;
     let frame_phys_h = menu_height - rows_phys_h;
-    let frame_logical_h = (frame_phys_h as f32 / scale_factor).round() as f32;
 
     let rows_area_y = frame_phys_h;
 
     // Parse colors from config (canvas is BGRA: [B, G, R, A])
     // Text colors default to green (#00FF00) for high contrast against dark backgrounds
     let close_hover_color = DockConfig::parse_hex_color_bgra(&config.popup_close_hover_color);
-    let hover_border_color = DockConfig::parse_hex_color_bgra(&config.popup_hover_border_color);
+    // Popup border color also matches the dashed block text blue
+    let popup_border_color = DockConfig::parse_hex_color_bgra(&config.dashed_block_text_color);
     let close_button_color = DockConfig::parse_hex_color_bgra(&config.popup_close_button_color);
     let close_button_hover_color =
         DockConfig::parse_hex_color_bgra(&config.popup_close_button_hover_color);
     let close_cross_color = DockConfig::parse_hex_color_bgra(&config.popup_close_cross_color);
     let _frame_bg_color = DockConfig::parse_hex_color_bgra(&config.popup_frame_bg_color);
-    // Window title text — green (#00FF00) for high contrast readability
+    // Window title text — blue (#007AFF) to match dashed block text color
     let text_color = DockConfig::parse_hex_color(&config.popup_text_color);
     let close_btn_size_cfg = config.popup_close_button_size as f32;
     let font_size_cfg = config.popup_font_size as f32;
-
-    // Evaluate hovered item using logical coordinates
-    // Pointer Y must be below the frame area to hit a row
-    let _hovered_item_idx = if (local_pointer_x as f32) >= 0.0
-        && (local_pointer_x as f32) < (geometry.logical_width as f32)
-        && (local_pointer_y as f32) >= frame_logical_h
-        && (local_pointer_y as f32) < (frame_logical_h + rows_logical_h)
-    {
-        let rows_y = local_pointer_y as f32 - frame_logical_h;
-        let idx = ((rows_y / item_h_log) as i32).clamp(0, (item_count - 1) as i32) as usize;
-        Some(idx)
-    } else {
-        None
-    };
 
     // Transparent popup: no background fill, no border, no rounded corners.
     // Canvas is Argb8888 little-endian - use _ARGB color constants.
@@ -353,12 +328,6 @@ pub fn render_window_list_surface(
     let ptr_phys_x = (local_pointer_x as f32 * scale_factor).round() as i32;
     let ptr_phys_y = (local_pointer_y as f32 * scale_factor).round() as i32;
 
-    // Pre-compute which row is hovered (for blue border highlight)
-    let hovered_row_idx = (0..item_count).find(|&i| {
-        let item_top_phys = rows_area_y + i as i32 * phys_item_h;
-        ptr_phys_y >= item_top_phys && ptr_phys_y < item_top_phys + phys_item_h
-    });
-
     // Pre-compute which row's close button is hovered (if any)
     let close_hovered_row = (0..item_count).find(|&i| {
         let item_top_phys = rows_area_y + i as i32 * phys_item_h;
@@ -371,6 +340,14 @@ pub fn render_window_list_surface(
             && ptr_phys_x < close_btn_x + close_btn_size
             && ptr_phys_y >= close_btn_y
             && ptr_phys_y < close_btn_y + close_btn_size
+    });
+
+    let hovered_row_idx = (0..item_count).find(|&i| {
+        let item_top_phys = rows_area_y + i as i32 * phys_item_h;
+        ptr_phys_x >= 0
+            && ptr_phys_x < menu_width
+            && ptr_phys_y >= item_top_phys
+            && ptr_phys_y < item_top_phys + phys_item_h
     });
 
     for i in 0..item_count {
@@ -396,13 +373,7 @@ pub fn render_window_list_surface(
             }
         }
 
-        // Draw border highlight: red when close button is hovered, blue on regular row hover
-        if Some(i) == close_hovered_row || Some(i) == hovered_row_idx {
-            let border_color: [u8; 4] = if Some(i) == close_hovered_row {
-                close_hover_color
-            } else {
-                hover_border_color
-            };
+        if Some(i) == hovered_row_idx {
             draw_border(
                 canvas,
                 menu_width,
@@ -411,35 +382,34 @@ pub fn render_window_list_surface(
                 row_y,
                 row_w,
                 row_h,
-                &border_color,
-                &config.popup_border_style,
+                &popup_border_color,
+                &PopupBorderStyle::Dashes,
+                (config.popup_dash_gap as f32 * scale_factor).round() as i32,
             );
         }
     }
 
     // 2. Render dashed separator lines between items (offset by rows_area_y)
-    if !matches!(&config.popup_border_style, PopupBorderStyle::None) {
-        let separator_color = DockConfig::parse_hex_color_bgra(&config.popup_border_color);
-        let is_dashes = matches!(&config.popup_border_style, PopupBorderStyle::Dashes);
-        let dash_gap = config.popup_dash_gap as i32;
-        for i in 1..item_count {
-            let line_y = rows_area_y + i as i32 * phys_item_h;
-            if line_y < menu_height {
-                for x in 0..menu_width {
-                    if is_dashes && (x / dash_gap) % 2 != 0 {
-                        continue;
-                    }
-                    let idx = ((line_y * menu_width + x) * 4) as usize;
-                    if idx + 3 < canvas.len() {
-                        canvas[idx..idx + 4].copy_from_slice(&separator_color);
-                    }
+    // Use the same blue as the dashed block text: #007AFF
+    let separator_color = popup_border_color;
+    let dash_gap = config.popup_dash_gap.max(1) as i32;
+    for i in 1..item_count {
+        let line_y = rows_area_y + i as i32 * phys_item_h;
+        if line_y < menu_height {
+            for x in 0..menu_width {
+                if (x / dash_gap) % 2 != 0 {
+                    continue;
+                }
+                let idx = ((line_y * menu_width + x) * 4) as usize;
+                if idx + 3 < canvas.len() {
+                    canvas[idx..idx + 4].copy_from_slice(&separator_color);
                 }
             }
         }
     }
 
     // 3. Render Text labels & Close buttons (offset by rows_area_y)
-    let font_size = (font_size_cfg * scale_factor) as i32;
+    let font_size = (font_size_cfg * 2.0 * scale_factor) as i32;
     let text_x = (config.popup_text_padding as f32 * scale_factor).round() as i32;
 
     for (i, w) in windows.iter().enumerate() {
@@ -461,7 +431,11 @@ pub fn render_window_list_surface(
 
         let text_offset_y =
             ((current_item_h_phys as f32 - 14.0 * scale_factor) / 2.0).max(0.0) as i32;
-        let text_y = item_top_phys + text_offset_y + POPUP_TEXT_BASELINE_NUDGE_PX;
+        let text_y = item_top_phys
+            + text_offset_y
+            + POPUP_TEXT_BASELINE_NUDGE_PX
+            + (6.0 * scale_factor).round() as i32
+            + (font_size_cfg * scale_factor / 2.0).round() as i32;
 
         if text_y < menu_height {
             crate::render::text::draw_text(
@@ -585,8 +559,7 @@ pub fn render_context_menu_surface(
     // Canvas pixels stay at alpha 0 (transparent).
     buffer[..expected_len].fill(0);
 
-    // Parse config colors — all text colors default to green (#00FF00)
-    // for consistent green text color scheme across the dock
+    // Parse config colors — text defaults to blue (#007AFF) to match dashed block
     let text_color_cfg = DockConfig::parse_hex_color(&config.popup_text_color);
     let border_color_bgra = DockConfig::parse_hex_color_bgra(&config.popup_border_color);
     // Context menu action colors — all green for consistency
@@ -614,13 +587,17 @@ pub fn render_context_menu_surface(
                 width,
                 current_item_h_phys,
                 &border_color_bgra,
-                &config.popup_border_style,
+                &PopupBorderStyle::Dashes,
+                (config.popup_dash_gap as f32 * scale_factor).round() as i32,
             );
         }
 
         let text_offset_y =
             ((current_item_h_phys as f32 - 14.0 * scale_factor) / 2.0).max(0.0) as i32;
-        let text_y = item_top_phys + text_offset_y + POPUP_TEXT_BASELINE_NUDGE_PX;
+        let text_y = item_top_phys
+            + text_offset_y
+            + POPUP_TEXT_BASELINE_NUDGE_PX
+            + (config.context_menu_text_offset_y as f32 * scale_factor).round() as i32;
 
         if text_y >= height {
             break;

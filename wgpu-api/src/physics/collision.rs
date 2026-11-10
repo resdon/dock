@@ -99,7 +99,7 @@ pub fn aabb_vs_aabb(a: &PhysicsBody, b: &PhysicsBody) -> Option<Collision> {
     let b_rect = b.bounding_rect();
 
     match a_rect.intersection(&b_rect) {
-        Some(intersection) => {
+        Some(_intersection) => {
             // Compute normal as the axis of least penetration
             let overlap_x = (a_rect.width / 2.0 + b_rect.width / 2.0)
                 - (a_rect.center().x - b_rect.center().x).abs();
@@ -147,9 +147,13 @@ pub fn circle_vs_circle(a: &PhysicsBody, b: &PhysicsBody) -> Option<Collision> {
     let dist_sq = dx * dx + dy * dy;
     let min_dist = radius_a + radius_b;
 
-    if dist_sq < min_dist * min_dist && dist_sq > 0.0001 {
+    if dist_sq < min_dist * min_dist {
         let dist = dist_sq.sqrt();
-        let normal = Vector2D::new(dx / dist, dy / dist);
+        let normal = if dist_sq > 0.0 {
+            Vector2D::new(dx / dist, dy / dist)
+        } else {
+            Vector2D::X
+        };
         let penetration = min_dist - dist;
         let contact = Point::new(
             a.position.x + normal.x * radius_a,
@@ -249,22 +253,22 @@ pub fn detect_collision(a: &PhysicsBody, b: &PhysicsBody) -> Option<Collision> {
 
 /// Broad-phase: find all potentially colliding pairs using AABB overlap.
 pub fn broad_phase(bodies: &[PhysicsBody]) -> Vec<(usize, usize)> {
-    let mut pairs = Vec::new();
-    let len = bodies.len();
+    let bounds: Vec<_> = bodies
+        .iter()
+        .map(|body| (body.id, body.bounding_rect(), body.enabled))
+        .collect();
+    broad_phase_bounds(&bounds)
+}
 
-    for i in 0..len {
-        for j in (i + 1)..len {
-            if bodies[i].enabled && bodies[j].enabled {
-                if bodies[i]
-                    .bounding_rect()
-                    .intersects(&bodies[j].bounding_rect())
-                {
-                    pairs.push((i, j));
-                }
+pub(super) fn broad_phase_bounds(bounds: &[(BodyId, Rect, bool)]) -> Vec<(usize, usize)> {
+    let mut pairs = Vec::new();
+    for i in 0..bounds.len() {
+        for j in (i + 1)..bounds.len() {
+            if bounds[i].2 && bounds[j].2 && bounds[i].1.intersects(&bounds[j].1) {
+                pairs.push((i, j));
             }
         }
     }
-
     pairs
 }
 
@@ -417,6 +421,26 @@ mod tests {
         let collision = circle_vs_circle(&a, &b).unwrap();
         let impulse = collision.compute_impulse(&a, &b);
         assert!(impulse.length() > 0.0);
+    }
+
+    #[test]
+    fn test_coincident_circles_collide() {
+        let a = PhysicsBody::dynamic_body(
+            BodyId::new(1),
+            Point::ORIGIN,
+            CollisionShape::circle(10.0),
+            1.0,
+        );
+        let b = PhysicsBody::dynamic_body(
+            BodyId::new(2),
+            Point::ORIGIN,
+            CollisionShape::circle(10.0),
+            1.0,
+        );
+
+        let collision = circle_vs_circle(&a, &b).unwrap();
+        assert_eq!(collision.normal, Vector2D::X);
+        assert_eq!(collision.penetration, 20.0);
     }
 
     #[test]

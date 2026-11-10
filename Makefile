@@ -6,7 +6,7 @@ DATA_DIR=$(HOME)/.local/share/dock
 .PHONY: build install uninstall dist
 
 build:
-	@if [ ! -f $(BINARY_NAME) ]; then \
+	@if [ ! -f target/release/$(BINARY_NAME) ] && [ ! -f target/debug/$(BINARY_NAME) ]; then \
 		echo "Compiling $(BINARY_NAME)..."; \
 		cargo build --release; \
 	fi
@@ -14,10 +14,13 @@ build:
 install: build
 	@echo "Installing $(BINARY_NAME) binary to $(INSTALL_BIN)..."
 	mkdir -p $(INSTALL_BIN)
-	@if [ -f $(BINARY_NAME) ]; then \
-		install -m 755 $(BINARY_NAME) $(INSTALL_BIN)/$(BINARY_NAME); \
-	else \
+	@if [ -f target/release/$(BINARY_NAME) ]; then \
 		install -m 755 target/release/$(BINARY_NAME) $(INSTALL_BIN)/$(BINARY_NAME); \
+	elif [ -f target/debug/$(BINARY_NAME) ]; then \
+		install -m 755 target/debug/$(BINARY_NAME) $(INSTALL_BIN)/$(BINARY_NAME); \
+	else \
+		echo "Build artifact not found for $(BINARY_NAME)" >&2; \
+		exit 1; \
 	fi
 	
 	@echo "Installing assets to $(DATA_DIR)..."

@@ -105,29 +105,39 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
     crate::cache::icon_indexer::spawn_startup_indexer();
 
     let (badge_tx, badge_rx) = tokio::sync::mpsc::unbounded_channel();
-    // Keep the async listener alive independently of initialize_app(). The old
-    // code spawned onto a local Runtime and immediately dropped that Runtime,
-    // which cancelled its task as soon as initialization returned.
-    thread::spawn(move || {
-        if let Ok(runtime) = tokio::runtime::Runtime::new() {
-            runtime.block_on(async move {
-                let _ = crate::listeners::start_unity_dbus_listener(badge_tx).await;
-            });
-        }
-    });
-
     let (tray_tx, tray_rx) = tokio::sync::mpsc::unbounded_channel();
     let (tray_action_tx, tray_action_rx) = tokio::sync::mpsc::unbounded_channel();
-    thread::spawn(move || {
-        if let Ok(runtime) = tokio::runtime::Runtime::new() {
+
+    // Keep async D-Bus listeners alive on a single shared runtime instead of
+    // spawning one runtime per listener (reduces background reactor overhead).
+    thread::Builder::new()
+        .name("dock-dbus-runtime".to_string())
+        .spawn(move || {
+            let runtime = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(rt) => rt,
+                Err(e) => {
+                    eprintln!("[init] Failed to create shared D-Bus runtime: {e}");
+                    return;
+                }
+            };
+
             runtime.block_on(async move {
-                if let Err(_e) =
+                tokio::spawn(async move {
+                    if let Err(e) = crate::listeners::start_unity_dbus_listener(badge_tx).await {
+                        eprintln!("[init] Unity D-Bus listener exited: {e:?}");
+                    }
+                });
+                if let Err(e) =
                     crate::listeners::start_status_notifier_listener(tray_tx, tray_action_rx).await
                 {
+                    eprintln!("[init] Status notifier listener exited: {e:?}");
                 }
             });
-        }
-    });
+        })
+        .expect("Failed to spawn dock-dbus-runtime thread");
 
     let (system_bar_tx, system_bar_rx) = std::sync::mpsc::channel();
     crate::app::system_bar::spawn_system_bar_monitor(system_bar_tx);
@@ -271,8 +281,11 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
         dragged_app_id: None,
         last_drag_draw: Instant::now(),
         sys_scanner: sysinfo::System::new_with_specifics(
-            sysinfo::RefreshKind::nothing()
-                .with_processes(sysinfo::ProcessRefreshKind::everything()),
+            sysinfo::RefreshKind::nothing().with_processes(
+                sysinfo::ProcessRefreshKind::nothing()
+                    .with_cpu()
+                    .with_memory(),
+            ),
         )
         .expect("Failed to create sysinfo System"),
         last_process_scan: Instant::now() - std::time::Duration::from_secs(1),
@@ -338,15 +351,15 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
         pending_focus_app_id: None,
         minimize_app_id: None,
         pipewire_capture: None,
+        cached_apps_in_dock: None,
+        cached_running_by_app: None,
+        cached_pipewire_window_ids: None,
     };
 
     // Initialize Slint renderers (software renderer - direct buffer rendering)
     state.slint_renderer = match crate::render::slint_dock::SlintDockRenderer::new() {
         Ok(renderer) => Some(renderer),
-        Err(e) => {
-            eprintln!("[SLINT] Dock renderer init failed: {}", e);
-            None
-        }
+        Err(_e) => None,
     };
 
     state.data_device_manager = state
@@ -576,7 +589,7 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
             height: surface_height,
             current_buffer: None,
             scale_notifier,
-            scale_factor,
+            scale_factor: state.scale_factor,
             hover_popup: None,
             menu_popup: None,
             window_list_popup: None,

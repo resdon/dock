@@ -1918,3 +1918,334 @@ mod tests {
         assert!(stats.texture_cache_size <= 1);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Unified frame pipeline scaffolding (M1 roadmap)
+// ---------------------------------------------------------------------------
+//
+// These types/interfaces are forward-looking scaffolding for the unified
+// PipeWire + Vulkan/wgpu capture-import-render pipeline tracked in
+// `docs/architecture/pipewire-vulkan-wgpu-milestones.md`.
+//
+// They are intentionally additive and do not replace the existing runtime path
+// yet. Integration should proceed incrementally behind adapters while preserving
+// current capture/render behavior and project invariants.
+
+/// Stable application-level source identity for capture streams.
+///
+/// # Invariants
+/// - Must not be derived solely from transient PipeWire node IDs.
+/// - Stable across reconnects/re-negotiation when the logical source is the same
+///   (where identity can be established).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CaptureSourceId(pub u64);
+
+/// Logical capture source kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CaptureSourceKind {
+    Screen,
+    Window,
+    Camera,
+    PipeWireNode,
+}
+
+/// Normalized pixel format for unified frame negotiation/import/conversion.
+///
+/// This is broader than [`VideoFormat`] and intended for descriptor-driven
+/// pipelines (including HDR-capable formats). Mapping from SPA/PipeWire formats
+/// and to GPU/upload/conversion paths is explicit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum UnifiedPixelFormat {
+    Bgra8,
+    Bgrx8,
+    Rgba8,
+    Rgbx8,
+    Nv12,
+    Nv21,
+    I420,
+    Yv12,
+    P010,
+    Yuy2,
+    Uyvy,
+    Rgba16Float,
+    Unknown(u32),
+}
+
+/// Video dimensions in pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct VideoSize {
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Per-plane layout metadata for planar/semi-planar or multi-plane DMA-BUF frames.
+///
+/// # Units
+/// - `offset` and `size` are bytes.
+/// - `stride` is bytes per row for the plane.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PlaneLayout {
+    pub offset: u64,
+    pub stride: u32,
+    pub size: u64,
+    /// Index into the frame's DMA-BUF FD table (for multi-fd/multi-plane buffers).
+    pub fd_index: u8,
+}
+
+/// Color matrix metadata.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ColorMatrix {
+    Bt601,
+    Bt709,
+    Bt2020,
+    Unknown,
+}
+
+/// Color range metadata.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ColorRange {
+    Full,
+    Limited,
+    Unknown,
+}
+
+/// Transfer function metadata.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TransferFunction {
+    Srgb,
+    Bt1886,
+    Pq,
+    Hlg,
+    Unknown,
+}
+
+/// Normalized, source-agnostic frame descriptor.
+///
+/// Describes format/layout/metadata independently of transport ownership.
+/// A generation counter allows consumers/importers to detect renegotiation and
+/// invalidate cached GPU resources.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnifiedFrameDescriptor {
+    pub size: VideoSize,
+    pub format: UnifiedPixelFormat,
+    pub planes: Vec<PlaneLayout>,
+    pub modifier: Option<u64>,
+    pub matrix: ColorMatrix,
+    pub range: ColorRange,
+    pub transfer: TransferFunction,
+    pub generation: u64,
+}
+
+/// DMA-BUF plane handle metadata.
+///
+/// # Ownership / safety
+/// - Raw FD ownership/lifetime is managed by capture/lease implementation.
+/// - Renderer/import code must not assume mmap-ability.
+/// - Actual FD duplication/import must occur in isolated platform-specific code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DmaBufPlaneHandle {
+    /// Raw file descriptor value (scaffolding representation).
+    ///
+    /// Production code should use owned/duplicated FD wrappers and explicit
+    /// lifetime management on the PipeWire-owning side.
+    pub raw_fd: i32,
+    pub layout: PlaneLayout,
+}
+
+/// Unified frame memory transport.
+#[derive(Debug, Clone)]
+pub enum UnifiedFrameMemory {
+    /// DMA-BUF backed frame (single or multi-plane).
+    DmaBuf {
+        planes: Vec<DmaBufPlaneHandle>,
+        modifier: Option<u64>,
+    },
+    /// CPU-readable shared memory frame payload (already copied/safe to read).
+    SharedMemory {
+        data: Vec<u8>,
+        planes: Vec<PlaneLayout>,
+    },
+}
+
+/// Normalized acquired frame (descriptor + memory transport snapshot).
+///
+/// # Ownership
+/// - This is a scaffolding value type; production paths should pair it with an
+///   explicit [`FrameLease`] to control source buffer return/release.
+#[derive(Debug, Clone)]
+pub struct UnifiedVideoFrame {
+    pub source: CaptureSourceId,
+    pub descriptor: UnifiedFrameDescriptor,
+    pub memory: UnifiedFrameMemory,
+    pub timestamp_ns: u64,
+    pub sequence: u64,
+}
+
+/// Token identifying a leased capture buffer/frame instance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BufferToken {
+    pub source: CaptureSourceId,
+    pub buffer_id: u64,
+    pub generation: u64,
+}
+
+/// GPU completion signal used to gate DMA-BUF buffer release.
+///
+/// Production implementations may use timeline semaphores/submission tracking.
+/// `Immediate` is intended for paths where the source buffer can be released at
+/// once (e.g. SHM copied into owned staging memory).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum GpuCompletion {
+    Immediate,
+    Submission(u64),
+    Timeline { semaphore_id: u64, value: u64 },
+}
+
+/// Error returned by frame lease operations (scaffolding).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LeaseError {
+    AlreadyReleased,
+    ReleaseDispatchFailed,
+    InvalidState,
+}
+
+/// Explicit lease for a captured frame/buffer.
+///
+/// Implementations must ensure the underlying PipeWire/SPA buffer is released on
+/// the correct owning thread/context and not before GPU consumption for DMA-BUF.
+pub trait FrameLease: Send + Sync {
+    fn token(&self) -> BufferToken;
+    fn release_after(&self, completion: GpuCompletion) -> Result<(), LeaseError>;
+}
+
+/// Selected/available import path for a frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ImportPath {
+    DirectDmaBuf,
+    VulkanMultiPlane,
+    GpuCopy,
+    SharedMemoryUpload,
+}
+
+/// Import capability/support classification for a descriptor+memory pair.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ImportSupport {
+    Supported,
+    SupportedWithConversion,
+    Unsupported,
+}
+
+/// Error returned by external frame import/conversion operations (scaffolding).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImportError {
+    UnsupportedFormat,
+    UnsupportedModifier,
+    InvalidLayout,
+    DeviceUnavailable,
+    ImportFailed,
+    ConversionFailed,
+}
+
+/// Opaque imported/render-ready texture handle for unified pipeline scaffolding.
+///
+/// This avoids exposing backend/wgpu types in cross-subsystem interfaces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ImportedTextureHandle(pub u64);
+
+/// Result of importing/normalizing a captured frame for rendering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ImportedFrame {
+    pub source: CaptureSourceId,
+    pub texture: ImportedTextureHandle,
+    pub path: ImportPath,
+    pub generation: u64,
+}
+
+/// External frame importer interface (scaffolding).
+///
+/// Implementations are responsible for capability checks, import/conversion,
+/// caching/reuse integration, and safe fallback selection as applicable.
+pub trait ExternalFrameImporter {
+    fn supports(
+        &self,
+        descriptor: &UnifiedFrameDescriptor,
+        memory: &UnifiedFrameMemory,
+    ) -> ImportSupport;
+
+    fn import(&mut self, frame: &UnifiedVideoFrame) -> Result<ImportedFrame, ImportError>;
+
+    fn retire(&mut self, handle: ImportedTextureHandle) -> Result<(), ImportError>;
+}
+
+#[cfg(test)]
+mod unified_scaffold_tests {
+    use super::*;
+
+    #[test]
+    fn unified_descriptor_tracks_generation_and_planes() {
+        let desc = UnifiedFrameDescriptor {
+            size: VideoSize {
+                width: 1920,
+                height: 1080,
+            },
+            format: UnifiedPixelFormat::Nv12,
+            planes: vec![
+                PlaneLayout {
+                    offset: 0,
+                    stride: 1920,
+                    size: 1920 * 1080,
+                    fd_index: 0,
+                },
+                PlaneLayout {
+                    offset: 1920 * 1080,
+                    stride: 1920,
+                    size: 1920 * 540,
+                    fd_index: 0,
+                },
+            ],
+            modifier: Some(0),
+            matrix: ColorMatrix::Bt709,
+            range: ColorRange::Limited,
+            transfer: TransferFunction::Srgb,
+            generation: 3,
+        };
+
+        assert_eq!(desc.generation, 3);
+        assert_eq!(desc.planes.len(), 2);
+        assert_eq!(desc.format, UnifiedPixelFormat::Nv12);
+    }
+
+    #[test]
+    fn buffer_token_identity_includes_generation() {
+        let a = BufferToken {
+            source: CaptureSourceId(1),
+            buffer_id: 7,
+            generation: 1,
+        };
+        let b = BufferToken {
+            source: CaptureSourceId(1),
+            buffer_id: 7,
+            generation: 2,
+        };
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn gpu_completion_variants_are_representable() {
+        let immediate = GpuCompletion::Immediate;
+        let submit = GpuCompletion::Submission(42);
+        let timeline = GpuCompletion::Timeline {
+            semaphore_id: 9,
+            value: 3,
+        };
+        assert_eq!(immediate, GpuCompletion::Immediate);
+        assert_eq!(submit, GpuCompletion::Submission(42));
+        assert_eq!(
+            timeline,
+            GpuCompletion::Timeline {
+                semaphore_id: 9,
+                value: 3
+            }
+        );
+    }
+}

@@ -65,7 +65,7 @@
 //! Errors (surface lost, outdated, OOM, device loss) are handled gracefully
 //! without crashing the application.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fmt;
 
 use crate::geometry::{Rect, Size};
@@ -914,8 +914,8 @@ pub struct CachedGlyph {
 pub struct GlyphCache {
     /// Cached glyphs by key (for fast lookup).
     glyphs: HashMap<GlyphCacheKey, CachedGlyph>,
-    /// Insertion order for LRU eviction.
-    order: Vec<GlyphCacheKey>,
+    /// Insertion order for LRU eviction; keeps O(1) oldest eviction.
+    order: VecDeque<GlyphCacheKey>,
     /// Maximum number of cached glyphs.
     max_glyphs: usize,
 }
@@ -925,7 +925,7 @@ impl GlyphCache {
     pub fn new(max_glyphs: usize) -> Self {
         Self {
             glyphs: HashMap::with_capacity(max_glyphs),
-            order: Vec::with_capacity(max_glyphs),
+            order: VecDeque::with_capacity(max_glyphs),
             max_glyphs,
         }
     }
@@ -940,12 +940,11 @@ impl GlyphCache {
         }
         // Evict oldest if at capacity
         if self.glyphs.len() >= self.max_glyphs {
-            if let Some(oldest) = self.order.first().cloned() {
-                self.order.remove(0);
+            if let Some(oldest) = self.order.pop_front() {
                 self.glyphs.remove(&oldest);
             }
         }
-        self.order.push(key);
+        self.order.push_back(key);
         self.glyphs.insert(key, glyph);
     }
 

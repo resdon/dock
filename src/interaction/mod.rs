@@ -29,7 +29,9 @@ pub fn update(
     let hard_timeout = Duration::from_millis(cfg.hard_timeout);
     let menu_time_out = Duration::from_millis(cfg.context_menu_timeout);
     let menu_fade_time: f32 = cfg.context_menu_fade_in;
-    let list_time_out = Duration::from_millis(cfg.popup_timeout);
+    // Keep configured shorter delays, but don't leave the window list lingering
+    // for more than two seconds after the pointer leaves it.
+    let list_time_out = Duration::from_millis(cfg.popup_timeout).min(Duration::from_secs(2));
     let list_fade_time: f32 = cfg.popup_fade_in;
     let dock_time_out = Duration::from_millis(1000);
     let dock_time_delay_ms: u64 = 500;

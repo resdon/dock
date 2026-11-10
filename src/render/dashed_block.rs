@@ -22,9 +22,11 @@
 //! See `config.rs` for the full list of configurable options.
 
 use crate::config::DockConfig;
-use crate::render::color_check::{write_bgra_color, write_bgra_pixel};
+use crate::render::color_check::{draw_dashed_border, write_bgra_pixel};
 use crate::render::font::FontManager;
 use crate::render::text::draw_text;
+use std::collections::HashMap;
+use std::sync::Mutex;
 
 /// Hit-test the Bluetooth icon inside the dashed block widget.
 ///
@@ -51,6 +53,16 @@ pub fn bluetooth_icon_at(x: f64, y: f64, config: &DockConfig) -> bool {
 use resvg::tiny_skia::{Pixmap, Transform};
 use resvg::usvg::{Options, Tree};
 
+#[derive(Clone)]
+struct CachedDashedIcons {
+    rclone: Vec<u8>,
+    bluetooth: Vec<u8>,
+    speaker: Vec<u8>,
+    pac: Vec<u8>,
+}
+
+static DASHED_ICON_CACHE: Mutex<Option<HashMap<u32, CachedDashedIcons>>> = Mutex::new(None);
+
 /// Logical width of the dashed block widget (from config, fallback default).
 pub const DASHED_BLOCK_WIDTH: i32 = 64;
 /// Logical height of the dashed block widget (from config, fallback default).
@@ -68,7 +80,7 @@ pub const DASHED_BLOCK_HEIGHT: i32 = 48;
 /// - `canvas` — mutable slice of BGRA8888 pixels (4 bytes per pixel)
 /// - `width` — canvas width in pixels
 /// - `height` — canvas height in pixels
-/// - `_scale` — scale factor (unused, kept for API consistency)
+/// - `scale` — scale factor used to scale the keyboard-layout text offset
 /// - `alpha` — global alpha multiplier (0.0 = fully transparent, 1.0 = fully opaque)
 /// - `font_manager` — font cache for glyph rendering
 /// - `config` — dock configuration with all dashed_block_* settings
@@ -76,7 +88,7 @@ pub fn render_dashed_block(
     canvas: &mut [u8],
     width: u32,
     height: u32,
-    _scale: f64,
+    scale: f64,
     alpha: f32,
     font_manager: &mut FontManager,
     config: &DockConfig,
@@ -94,33 +106,9 @@ pub fn render_dashed_block(
     let border_color = DockConfig::parse_hex_color(&config.dashed_block_border_color);
     let dash_len = config.dashed_block_dash_length as usize; // pixels per dash segment
     let gap_len = config.dashed_block_gap_length as usize; // pixels per gap segment
-    let cycle = dash_len + gap_len; // total cycle length for the dash pattern
     let thickness = config.dashed_block_border_thickness as usize; // border thickness in pixels
 
-    // Draw dashed border on all four sides
-    // Each side iterates along its axis and checks the position within the dash cycle.
-    // If the position falls within the dash segment, the pixel is drawn; otherwise it's skipped.
-    for y in 0..h {
-        for x in 0..w {
-            let on_border = if y < thickness {
-                x % cycle < dash_len
-            } else if y >= h - thickness {
-                x % cycle < dash_len
-            } else if x < thickness {
-                y % cycle < dash_len
-            } else if x >= w - thickness {
-                y % cycle < dash_len
-            } else {
-                false
-            };
-
-            if on_border {
-                let idx = (y * w + x) * 4;
-                // write_bgra_color writes BGRA8888: [B, G, R, A] with the alpha multiplied by the global alpha
-                write_bgra_color(canvas, idx, border_color, a);
-            }
-        }
-    }
+    draw_dashed_border(canvas, w, h, dash_len, gap_len, thickness, border_color, a);
 
     // === Text color for keyboard layout (from config)
     let text_color = DockConfig::parse_hex_color(&config.dashed_block_text_color);
@@ -230,7 +218,10 @@ pub fn render_dashed_block(
     }
     // Position text to the left of the bottom row icons, vertically centered with the row
     let kb_text_x = row_start_x as i32 - kb_text_width - 4;
-    let kb_text_y = bottom_row_y as i32 + icon_size as i32 / 2 + kb_font_size as i32 / 3; // center-align with icons
+    let kb_text_y = bottom_row_y as i32
+        + icon_size as i32 / 2
+        + kb_font_size as i32 / 3
+        + (config.dashed_block_kb_text_offset_y as f64 * scale).round() as i32;
     draw_text(
         canvas,
         width as i32,
@@ -244,40 +235,8 @@ pub fn render_dashed_block(
     );
 
     // Render all 4 SVG icons onto the canvas
-    render_svg_icon(
-        rclone_svg,
-        rclone_icon_x,
-        top_row_y,
-        icon_size,
-        w,
-        h,
-        canvas,
-        a,
-        &options,
-    );
-    render_svg_icon(
-        bt_svg, bt_icon_x, top_row_y, icon_size, w, h, canvas, a, &options,
-    );
-    render_svg_icon(
-        speaker_svg,
-        speaker_icon_x,
-        bottom_row_y,
-        icon_size,
-        w,
-        h,
-        canvas,
-        a,
-        &options,
-    );
-    render_svg_icon(
-        pac_svg,
-        pac_icon_x,
-        bottom_row_y,
-        icon_size,
-        w,
-        h,
-        canvas,
-        a,
-        &options,
-    );
+    render_svg_icon(rclone_svg, rclone_icon_x, top_row_y, icon_size, w, h, canvas, a, &options);
+    render_svg_icon(bt_svg, bt_icon_x, top_row_y, icon_size, w, h, canvas, a, &options);
+    render_svg_icon(speaker_svg, speaker_icon_x, bottom_row_y, icon_size, w, h, canvas, a, &options);
+    render_svg_icon(pac_svg, pac_icon_x, bottom_row_y, icon_size, w, h, canvas, a, &options);
 }

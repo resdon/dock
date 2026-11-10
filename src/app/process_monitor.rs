@@ -20,9 +20,21 @@ pub fn spawn_process_monitor(snapshot_tx: Sender<ProcessSnapshot>, enabled_rx: R
             // executable paths, command lines, environment and other metadata;
             // that adds avoidable /proc work when many processes are running.
             let process_refresh = ProcessRefreshKind::nothing().with_cpu().with_memory();
-            let mut system =
-                System::new_with_specifics(RefreshKind::nothing().with_processes(process_refresh))
-                    .expect("Failed to create sysinfo System");
+            let mut system = match System::new_with_specifics(
+                RefreshKind::nothing().with_processes(process_refresh),
+            ) {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::warn!("Failed to create sysinfo System with specifics: {}, falling back", e);
+                    match System::new_all() {
+                        Ok(s) => s,
+                        Err(e2) => {
+                            tracing::error!("Failed to create sysinfo System entirely: {}", e2);
+                            return;
+                        }
+                    }
+                }
+            };
             loop {
                 match enabled_rx.recv() {
                     Ok(true) => {}
@@ -77,5 +89,5 @@ pub fn spawn_process_monitor(snapshot_tx: Sender<ProcessSnapshot>, enabled_rx: R
                 }
             }
         })
-        .expect("failed to start process monitor");
+        .ok();
 }

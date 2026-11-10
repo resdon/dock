@@ -176,3 +176,7 @@ After profiling, fill in this template:
 | `tracy` | Add `tracy-client` dep | CPU/GPU timeline, frame timing | Live capture |
 | `MangoHud` | `sudo apt install mangohud` | FPS, GPU load overlay | On-screen HUD |
 | `RenderDoc` | Download from renderdoc.org | Frame capture, draw calls | Frame analysis |
+
+## Related guides
+
+- [memory-profiling.md](memory-profiling.md) — practical heap/process memory workflow (Heaptrack, DHAT, `/proc/smaps_rollup`, Dock-specific investigation targets)

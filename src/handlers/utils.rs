@@ -9,11 +9,13 @@ use std::path::{Path, PathBuf};
 /// A dock started by a desktop entry commonly has $HOME as its CWD, so the old
 /// ./scripts lookup silently selected an outdated /usr/share copy instead of
 /// the script belonging to the source tree used for this build.
-pub fn get_launcher_path() -> String {
+///
+/// Returns `None` if no existing launcher script can be found.
+pub fn get_launcher_path() -> Option<PathBuf> {
     if let Some(override_path) = env::var_os("DOCK_LAUNCHER_PATH") {
         let path = PathBuf::from(override_path);
         if path.is_file() {
-            return path.to_string_lossy().into_owned();
+            return Some(path);
         }
     }
 
@@ -22,7 +24,7 @@ pub fn get_launcher_path() -> String {
     // of whether the dock was started from a terminal, desktop entry or WM.
     let manifest_script = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/launcher.sh");
     if manifest_script.is_file() {
-        return manifest_script.to_string_lossy().into_owned();
+        return Some(manifest_script);
     }
 
     // Installed packages may keep a user-specific launcher in XDG_DATA_HOME.
@@ -32,22 +34,22 @@ pub fn get_launcher_path() -> String {
     });
     let user_path = Path::new(&data_home).join("dock/launcher.sh");
     if user_path.is_file() {
-        return user_path.to_string_lossy().into_owned();
+        return Some(user_path);
     }
 
     // Arch package installation path (PKGBUILD installs launcher.sh here).
     let system_path = Path::new("/usr/share/dock/launcher.sh");
     if system_path.is_file() {
-        return system_path.to_string_lossy().into_owned();
+        return Some(system_path.to_path_buf());
     }
 
     // Last-resort development lookup, retained for manually copied binaries.
     let cwd_script = Path::new("./scripts/launcher.sh");
     if cwd_script.is_file() {
-        return cwd_script.to_string_lossy().into_owned();
+        return Some(cwd_script.to_path_buf());
     }
 
-    system_path.to_string_lossy().into_owned()
+    None
 }
 
 pub use crate::events::utils::{parse_uri_list, parse_window_states, percent_decode};
@@ -60,7 +62,7 @@ mod launcher_path_tests {
     fn source_build_uses_its_own_launcher_script() {
         let packaged_script = Path::new(env!("CARGO_MANIFEST_DIR")).join("scripts/launcher.sh");
         if packaged_script.is_file() && env::var_os("DOCK_LAUNCHER_PATH").is_none() {
-            assert_eq!(PathBuf::from(get_launcher_path()), packaged_script);
+            assert_eq!(get_launcher_path(), Some(packaged_script));
         }
     }
 }

@@ -5,6 +5,7 @@
 
 use crate::color::Color;
 use crate::geometry::Size;
+use half::f16;
 
 /// Opaque identifier for a loaded image.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -32,7 +33,7 @@ pub enum ImageFormat {
     Grayscale8,
     /// 1 byte per pixel: alpha channel only.
     Alpha8,
-    /// 2 bytes per pixel: R16G16B16A16 (half-float).
+    /// 2 bytes per channel (8 bytes per pixel): R16G16B16A16 half-float.
     Rgba16Float,
 }
 
@@ -73,7 +74,7 @@ pub enum ImageWrap {
 }
 
 /// Raw image pixel data.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ImageData {
     /// Pixel data bytes.
     pub pixels: Vec<u8>,
@@ -160,15 +161,14 @@ impl ImageData {
                 Some([v, v, v, 255])
             }
             ImageFormat::Alpha8 => Some([255, 255, 255, self.pixels[offset]]),
-            ImageFormat::Rgba16Float => {
-                // Simplified: just return first 4 bytes as approximation
-                Some([
-                    self.pixels[offset],
-                    self.pixels[offset + 1],
-                    self.pixels[offset + 2],
-                    self.pixels[offset + 3],
-                ])
-            }
+            ImageFormat::Rgba16Float => Some(std::array::from_fn(|channel| {
+                let channel_offset = offset + channel * 2;
+                let bits = u16::from_le_bytes([
+                    self.pixels[channel_offset],
+                    self.pixels[channel_offset + 1],
+                ]);
+                (f16::from_bits(bits).to_f32().clamp(0.0, 1.0) * 255.0).round() as u8
+            })),
         }
     }
 
@@ -206,7 +206,13 @@ impl ImageData {
             ImageFormat::Alpha8 => {
                 self.pixels[offset] = rgba[3];
             }
-            ImageFormat::Rgba16Float => {}
+            ImageFormat::Rgba16Float => {
+                for (channel, value) in rgba.into_iter().enumerate() {
+                    let bytes = f16::from_f32(value as f32 / 255.0).to_le_bytes();
+                    let channel_offset = offset + channel * 2;
+                    self.pixels[channel_offset..channel_offset + 2].copy_from_slice(&bytes);
+                }
+            }
         }
     }
 
@@ -266,7 +272,7 @@ impl ImageData {
 /// A loaded image ready for rendering.
 ///
 /// Wraps ImageData with rendering hints and caching.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Image {
     /// Raw pixel data.
     pub data: ImageData,
@@ -369,5 +375,23 @@ mod tests {
         let scaled = img.scale(2, 2);
         assert_eq!(scaled.width, 2);
         assert_eq!(scaled.height, 2);
+    }
+
+    #[test]
+    fn test_rgba16_float_pixel_round_trip() {
+        let mut data = ImageData {
+            pixels: vec![0; 8],
+            width: 1,
+            height: 1,
+            format: ImageFormat::Rgba16Float,
+            stride: 8,
+        };
+        data.set_pixel(0, 0, [128, 64, 255, 0]);
+        assert_eq!(&data.pixels[4..8], &[0, 0x3c, 0, 0]);
+        let pixel = data.get_pixel(0, 0).unwrap();
+        assert!((pixel[0] as i16 - 128).abs() <= 1);
+        assert!((pixel[1] as i16 - 64).abs() <= 1);
+        assert_eq!(pixel[2], 255);
+        assert_eq!(pixel[3], 0);
     }
 }

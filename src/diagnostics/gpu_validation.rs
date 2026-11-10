@@ -1,25 +1,21 @@
 //! GPU validation and error scope monitoring.
 //!
 //! # Purpose
-//! Provides GPU error detection through wgpu's error scope mechanism
-//! and validation layer integration.
+//! Provides explicit GPU error and warning recording. This helper does not
+//! install wgpu error scopes or an uncaptured-error callback.
 //!
 //! # Usage
 //! ```rust
 //! use dock::diagnostics::GpuValidator;
 //!
-//! let mut validator = GpuValidator::new();
-//! validator.push_error_scope();
-//! // ... GPU operations ...
-//! if let Some(error) = validator.pop_error_scope() {
-//!     validator.on_error(&error);
-//! }
+//! let validator = GpuValidator::new();
+//! validator.record_error("texture upload", "invalid image dimensions");
 //! ```
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-/// Represents a GPU error detected by wgpu's error scope mechanism.
+/// A GPU validation error recorded by [`GpuValidator`].
 #[derive(Debug, Clone)]
 pub struct GpuValidationError {
     /// Label of the resource that caused the error.
@@ -30,10 +26,9 @@ pub struct GpuValidationError {
     pub error_count: usize,
 }
 
-/// Monitors GPU errors through wgpu's error scope mechanism.
+/// Counts and logs GPU errors and warnings explicitly reported by callers.
 ///
-/// This is a diagnostic helper that tracks GPU error counts and provides
-/// structured logging for GPU validation failures.
+/// This helper does not install wgpu error scopes or a device error callback.
 #[derive(Debug)]
 pub struct GpuValidator {
     error_count: Arc<AtomicUsize>,
@@ -50,20 +45,31 @@ impl GpuValidator {
     }
 
     /// Record a GPU error.
-    pub fn record_error(&self, label: impl Into<String>, message: impl Into<String>) {
-        let count = self.error_count.fetch_add(1, Ordering::SeqCst) + 1;
+    pub fn record_error(
+        &self,
+        label: impl Into<String>,
+        message: impl Into<String>,
+    ) -> GpuValidationError {
+        let label = label.into();
+        let message = message.into();
+        let count = self.error_count.fetch_add(1, Ordering::Relaxed) + 1;
         tracing::error!(
             subsystem = "gpu",
             error_count = count,
-            label = %label.into(),
-            error = %message.into(),
+            label = %label,
+            error = %message,
             "GPU validation error"
         );
+        GpuValidationError {
+            label,
+            message,
+            error_count: count,
+        }
     }
 
     /// Record a GPU warning.
     pub fn record_warning(&self, label: impl Into<String>, message: impl Into<String>) {
-        let count = self.warning_count.fetch_add(1, Ordering::SeqCst) + 1;
+        let count = self.warning_count.fetch_add(1, Ordering::Relaxed) + 1;
         tracing::warn!(
             subsystem = "gpu",
             warning_count = count,
@@ -75,12 +81,12 @@ impl GpuValidator {
 
     /// Get the total error count.
     pub fn error_count(&self) -> usize {
-        self.error_count.load(Ordering::SeqCst)
+        self.error_count.load(Ordering::Relaxed)
     }
 
     /// Get the total warning count.
     pub fn warning_count(&self) -> usize {
-        self.warning_count.load(Ordering::SeqCst)
+        self.warning_count.load(Ordering::Relaxed)
     }
 
     /// Check if any errors have been recorded.
@@ -90,8 +96,8 @@ impl GpuValidator {
 
     /// Reset all error and warning counts.
     pub fn reset(&self) {
-        self.error_count.store(0, Ordering::SeqCst);
-        self.warning_count.store(0, Ordering::SeqCst);
+        self.error_count.store(0, Ordering::Relaxed);
+        self.warning_count.store(0, Ordering::Relaxed);
     }
 
     /// Get a summary of GPU validation status.
@@ -113,11 +119,11 @@ impl Default for GpuValidator {
 /// Callback type for GPU error handling.
 pub type GpuErrorCallback = Box<dyn Fn(&str, &str) + Send + Sync>;
 
-/// Sets up an uncaptured error handler for wgpu.
+/// Callback wrapper for uncaptured GPU errors.
 ///
 /// # Purpose
-/// Catches GPU errors that are not caught by error scopes, providing
-/// a last-resort error reporting mechanism.
+/// Provides a callback for an integration layer to install on a wgpu device.
+/// This type does not install itself because `dock` does not own wgpu devices.
 pub struct UncapturedErrorHandler {
     callback: Option<GpuErrorCallback>,
 }
@@ -159,9 +165,12 @@ mod tests {
     #[test]
     fn test_record_error() {
         let validator = GpuValidator::new();
-        validator.record_error("test", "validation failed");
+        let error = validator.record_error("test", "validation failed");
         assert_eq!(validator.error_count(), 1);
         assert!(validator.has_errors());
+        assert_eq!(error.label, "test");
+        assert_eq!(error.message, "validation failed");
+        assert_eq!(error.error_count, 1);
     }
 
     #[test]

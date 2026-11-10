@@ -246,8 +246,9 @@ impl DmabufHandler for AppState {
         &mut self,
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
-        _buffer: &wayland_client::protocol::wl_buffer::WlBuffer,
+        buffer: &wayland_client::protocol::wl_buffer::WlBuffer,
     ) {
+        buffer.destroy();
     }
 }
 
@@ -270,12 +271,15 @@ impl SeatHandler for AppState {
             if let Some(ref ddm) = self.data_device_manager {
                 self.data_device = Some(ddm.get_data_device(&seat, qh, ()));
             }
-            let wl_pointer = self
-                .seat_state
-                .get_pointer(qh, &seat)
-                .expect("Failed to secure pointer handle");
-            self.wl_pointer = Some(wl_pointer);
-            self.wl_seat = Some(seat);
+            match self.seat_state.get_pointer(qh, &seat) {
+                Ok(wl_pointer) => {
+                    self.wl_pointer = Some(wl_pointer);
+                    self.wl_seat = Some(seat);
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to secure pointer handle: {}", e);
+                }
+            }
         }
     }
 

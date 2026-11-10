@@ -3,12 +3,11 @@
 //! Memory-maps TTF files and rasterizes individual glyphs to pixel buffers.
 
 use fontdue::{Font, FontSettings};
-use memmap2::Mmap;
-use std::collections::HashMap;
+use lru::LruCache;
 use std::fs::{self, File};
 use std::io::{Read, Write};
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 pub struct CachedGlyph {
     pub bitmap: Vec<u8>,
@@ -17,16 +16,17 @@ pub struct CachedGlyph {
 
 pub struct FontManager {
     primary_font: Font,
-    _primary_mmap: Option<Mmap>,
+    _primary_font_data: Option<Vec<u8>>,
     cache_dir: PathBuf,
-    cache: HashMap<(char, u32), CachedGlyph>,
+    cache: LruCache<(char, u32), CachedGlyph>,
 }
 
 impl FontManager {
+    const GLYPH_CACHE_CAPACITY: usize = 1024;
+
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error>> {
-        let file = File::open(&path)?;
-        let mmap = unsafe { Mmap::map(&file)? };
-        let primary_font = Font::from_bytes(&mmap[..], FontSettings::default())
+        let data = fs::read(&path)?;
+        let primary_font = Font::from_bytes(data.as_slice(), FontSettings::default())
             .map_err(|e| format!("Failed to parse font: {e}"))?;
 
         let cache_dir = dirs::cache_dir()
@@ -36,14 +36,15 @@ impl FontManager {
 
         Ok(Self {
             primary_font,
-            _primary_mmap: Some(mmap),
+            _primary_font_data: Some(data),
             cache_dir,
-            cache: HashMap::new(),
+            cache: LruCache::new(NonZeroUsize::new(Self::GLYPH_CACHE_CAPACITY).unwrap()),
         })
     }
 
     pub fn new(font_data: &[u8]) -> Self {
-        let font = Font::from_bytes(font_data, FontSettings::default()).expect("Invalid font data");
+        let data = font_data.to_vec();
+        let font = Font::from_bytes(data.as_slice(), FontSettings::default()).expect("Invalid font data");
         let cache_dir = dirs::cache_dir()
             .unwrap_or_else(|| PathBuf::from("/tmp"))
             .join("dock/glyphs");
@@ -51,9 +52,9 @@ impl FontManager {
 
         Self {
             primary_font: font,
-            _primary_mmap: None,
+            _primary_font_data: Some(data),
             cache_dir,
-            cache: HashMap::new(),
+            cache: LruCache::new(NonZeroUsize::new(Self::GLYPH_CACHE_CAPACITY).unwrap()),
         }
     }
 
@@ -106,29 +107,9 @@ impl FontManager {
         Some(CachedGlyph { bitmap, metrics })
     }
 
-    fn find_system_font_path_for_char(character: char) -> Option<PathBuf> {
-        let lang = Self::char_to_lang(character);
-        let pattern = format!(":lang={}", lang);
-
-        let output = Command::new("fc-match")
-            .arg(&pattern)
-            .arg("-f")
-            .arg("%{file}")
-            .output();
-
-        match output {
-            Ok(out) if out.status.success() => {
-                let path_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                if !path_str.is_empty() {
-                    let path = PathBuf::from(&path_str);
-                    if path.exists() {
-                        return Some(path);
-                    }
-                }
-            }
-            Ok(_out) => {}
-            Err(_e) => {}
-        }
+    fn find_system_font_path_for_char(_character: char) -> Option<PathBuf> {
+        // Avoid spawning subprocesses (fc-match) on the render thread.
+        // Fallback glyph discovery relies on static candidate paths below.
         None
     }
 
@@ -142,24 +123,21 @@ impl FontManager {
     }
 
     /// Rasterize one fallback glyph without retaining entire fallback font
-    /// collections. The former cache stored up to eight parsed font faces per
-    /// file; on CJK TTC files that could consume hundreds of megabytes even
-    /// though the dock only needed one small glyph. Each face is now parsed,
-    /// queried, rasterized if needed, and dropped before trying the next face.
+    /// collections. Read font bytes into an owned buffer instead of mmap to
+    /// avoid UB if files are modified/truncated while mapped.
     fn rasterize_glyph_from_path(
         path: &Path,
         character: char,
         size: f32,
     ) -> Option<(fontdue::Metrics, Vec<u8>)> {
-        let file = File::open(path).ok()?;
-        let mmap = unsafe { Mmap::map(&file).ok()? };
+        let data = fs::read(path).ok()?;
 
         for collection_index in 0..8 {
             let settings = FontSettings {
                 collection_index,
                 ..FontSettings::default()
             };
-            let font = match Font::from_bytes(&mmap[..], settings) {
+            let font = match Font::from_bytes(data.as_slice(), settings) {
                 Ok(font) => font,
                 Err(_) => break,
             };
@@ -231,7 +209,7 @@ impl FontManager {
     pub fn get_glyph(&mut self, character: char, size: f32) -> &CachedGlyph {
         let key = (character, size as u32);
 
-        if !self.cache.contains_key(&key) {
+        if !self.cache.contains(&key) {
             let primary_glyph_idx = self.primary_font.lookup_glyph_index(character);
 
             let mut valid_primary = false;
@@ -242,8 +220,7 @@ impl FontManager {
 
                 // Whitespace glyphs (especially U+0020) legitimately have no
                 // bitmap but do have advance metrics. Treat them as valid so
-                // FontManager does not invoke fc-match/fallback font discovery
-                // for every space character.
+                // fallback font discovery is not triggered for spaces.
                 if !bitmap.is_empty()
                     || metrics.advance_width > 0.0
                     || (metrics.width == 0 && metrics.height == 0 && character.is_whitespace())
@@ -254,13 +231,12 @@ impl FontManager {
             }
 
             // Only use fallback font discovery for ASCII/printable characters.
-            // For CJK, emoji, and other complex scripts, skip the expensive
-            // fc-match subprocess and TTC file parsing to avoid blocking the
-            // main render thread. Draw a tofu placeholder instead.
+            // For CJK, emoji, and other complex scripts, draw a tofu placeholder
+            // instead of blocking render-time font discovery/parsing.
             let cached_glyph = if valid_primary {
                 primary_res.unwrap()
             } else if (character as u32) < 0x80 {
-                // ASCII missing from primary font — try fallback
+                // ASCII missing from primary font — try fallback candidates.
                 if let Some(glyph) = self.extract_single_glyph(character, size) {
                     glyph
                 } else {
@@ -268,25 +244,25 @@ impl FontManager {
                     CachedGlyph { bitmap, metrics }
                 }
             } else {
-                // Non-ASCII character not in primary font: draw a tofu box
-                // instead of blocking on fc-match + CJK TTC parsing.
+                // Non-ASCII character not in primary font: draw a tofu box.
                 let (metrics, _) = self.primary_font.rasterize('W', size);
                 let w = metrics.width.max(8);
                 let h = metrics.height.max(8);
                 let mut bitmap = vec![0u8; (w * h) as usize];
-                // Draw a simple rectangle outline (tofu)
-                for y in 0..h {
+                if w > 0 && h > 0 {
                     for x in 0..w {
-                        let is_border = y == 0 || y == h - 1 || x == 0 || x == w - 1;
-                        if is_border {
-                            bitmap[(y * w + x) as usize] = 255;
-                        }
+                        bitmap[x] = 255;
+                        bitmap[(h - 1) * w + x] = 255;
+                    }
+                    for y in 0..h {
+                        bitmap[y * w] = 255;
+                        bitmap[y * w + (w - 1)] = 255;
                     }
                 }
                 CachedGlyph { bitmap, metrics }
             };
 
-            self.cache.insert(key, cached_glyph);
+            self.cache.put(key, cached_glyph);
         }
 
         self.cache.get(&key).unwrap()
@@ -294,7 +270,6 @@ impl FontManager {
 
     pub fn clear_cache(&mut self) {
         self.cache.clear();
-        self.cache.shrink_to_fit();
     }
 
     /// Measure the pixel width of a string at the given font size.

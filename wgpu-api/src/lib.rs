@@ -103,6 +103,7 @@ pub mod shaping;
 pub mod slint;
 pub mod surface;
 pub mod text;
+pub(crate) mod text_render;
 pub mod texture;
 pub mod transform;
 pub mod video;

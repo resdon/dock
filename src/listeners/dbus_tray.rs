@@ -691,7 +691,7 @@ async fn perform_action(connection: &Connection, action: &TrayAction) {
             }
             TrayActionKind::Scroll { delta, orientation } => {
                 proxy
-                    .call_noreply("Scroll", &(*delta, orientation.as_str()))
+                    .call_noreply("Scroll", &(*delta, orientation))
                     .await
             }
         };

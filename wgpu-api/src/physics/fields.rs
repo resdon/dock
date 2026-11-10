@@ -374,7 +374,13 @@ impl CohesionField {
             Point::new(cx / total_mass, cy / total_mass)
         } else {
             let n = bodies.len() as f32;
-            Point::new(cx / n, cy / n)
+            let mut px = 0.0;
+            let mut py = 0.0;
+            for body in bodies {
+                px += body.position.x;
+                py += body.position.y;
+            }
+            Point::new(px / n, py / n)
         }
     }
 
@@ -395,7 +401,7 @@ impl CohesionField {
         }
         let center = Self::center_of_mass(bodies);
         let strength = self.strength;
-        let mut forces: Vec<Vector2D> = bodies
+        let forces: Vec<Vector2D> = bodies
             .iter()
             .map(|b| {
                 let dx = center.x - b.position.x;
@@ -483,10 +489,7 @@ impl SeparationField {
         let mut counts: Vec<usize> = vec![0; len];
 
         for i in 0..len {
-            for j in 0..len {
-                if i == j {
-                    continue;
-                }
+            for j in (i + 1)..len {
                 let dx = bodies[i].position.x - bodies[j].position.x;
                 let dy = bodies[i].position.y - bodies[j].position.y;
                 let dist_sq = dx * dx + dy * dy;
@@ -494,9 +497,14 @@ impl SeparationField {
                     let dist = dist_sq.sqrt();
                     let overlap = min_dist - dist;
                     let magnitude = strength * overlap / dist;
-                    forces[i].x += dx * magnitude;
-                    forces[i].y += dy * magnitude;
+                    let fx = dx * magnitude;
+                    let fy = dy * magnitude;
+                    forces[i].x += fx;
+                    forces[i].y += fy;
                     counts[i] += 1;
+                    forces[j].x -= fx;
+                    forces[j].y -= fy;
+                    counts[j] += 1;
                 }
             }
         }
@@ -697,8 +705,9 @@ impl ForceField {
         let mut total = Vector2D::ZERO;
 
         for source in &self.sources {
-            total.x += source.compute_force(body).x;
-            total.y += source.compute_force(body).y;
+            let f = source.compute_force(body);
+            total.x += f.x;
+            total.y += f.y;
         }
 
         if let Some(ref magnetic) = self.magnetic {
@@ -985,7 +994,7 @@ mod tests {
     #[test]
     fn test_falloff_exponent() {
         let mut field = MagneticField::new(Point::new(100.0, 0.0), 500.0);
-        field.falloff = 0.0; // No falloff
+        field.falloff = 2.0;
         let body1 = PhysicsBody::dynamic_body(
             BodyId::new(1),
             Point::new(90.0, 0.0),
@@ -1000,7 +1009,7 @@ mod tests {
         );
         let f1 = field.compute_force(&body1);
         let f2 = field.compute_force(&body2);
-        // With no falloff, closer body gets stronger force
+        // With positive falloff, closer body gets stronger force.
         assert!(f1.length() > f2.length());
     }
 }

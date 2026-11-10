@@ -472,15 +472,15 @@ impl GlyphAtlas {
             return false;
         }
 
-        // In a real implementation, we would:
-        // 1. Create a new texture
-        // 2. Copy the old atlas data to the new texture
-        // 3. Update all cached texture regions
-        // For now, we just update the size tracking
+        // Without GPU-side atlas copy/reupload support here, cached glyph regions
+        // would reference the previous texture/coordinates and render corrupted text.
+        // Invalidate the cache so glyphs are re-rasterized into the new atlas.
         self.current_texture = TextureId::new(self.current_texture.as_u64() + 1);
         self.size = Size::new(new_width as f32, new_height as f32);
         self.cursor = Point::new(0.0, 0.0);
         self.current_row_height = 0;
+        self.cache.clear();
+        self.stats.glyph_count = 0;
         self.stats.atlas_width = new_width;
         self.stats.atlas_height = new_height;
         self.stats.total_pixels = new_width * new_height;

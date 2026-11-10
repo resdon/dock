@@ -10,6 +10,7 @@ use crate::state::IconLoadResult;
 
 pub struct IconLoadRequest {
     pub app_id: String,
+    pub size: u32,
 }
 
 pub struct IconLoader {
@@ -31,11 +32,8 @@ impl IconLoader {
                 };
 
                 if let Some(ref path) = icon_path {
-                    // Icon size matches the dock's icon size (48px). Slint renders
-                    // icons directly at this resolution, no downsampling needed.
-                    const ICON_SOURCE_SIZE: u32 = 48;
                     if let Some((width, _height, rgba)) =
-                        crate::terminal_graphics::load_image_raw_rgba(path, ICON_SOURCE_SIZE)
+                        crate::terminal_graphics::load_image_raw_rgba(path, req.size.max(1))
                     {
                         let _ = result_tx.send(IconLoadResult {
                             app_id: req.app_id.clone(),
@@ -64,7 +62,7 @@ impl IconLoader {
         Self { tx }
     }
 
-    pub fn request(&self, app_id: String) {
-        let _ = self.tx.send(IconLoadRequest { app_id });
+    pub fn request(&self, app_id: String, size: u32) {
+        let _ = self.tx.send(IconLoadRequest { app_id, size });
     }
 }

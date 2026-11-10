@@ -105,7 +105,7 @@ impl Insets {
 
     /// Check if all insets are zero.
     pub fn is_empty(&self) -> bool {
-        self.top <= 0.0 && self.right <= 0.0 && self.bottom <= 0.0 && self.left <= 0.0
+        self.top == 0.0 && self.right == 0.0 && self.bottom == 0.0 && self.left == 0.0
     }
 
     /// Add two insets together.
@@ -356,6 +356,12 @@ mod tests {
         let insets = Insets::uniform(10.0);
         assert_eq!(insets.horizontal(), 20.0);
         assert_eq!(insets.vertical(), 20.0);
+    }
+
+    #[test]
+    fn test_negative_insets_are_not_empty() {
+        assert!(!Insets::uniform(-5.0).is_empty());
+        assert!(Insets::ZERO.is_empty());
     }
 
     #[test]

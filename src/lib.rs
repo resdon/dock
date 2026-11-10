@@ -64,12 +64,19 @@ pub mod terminal_graphics {
     const SVG_CACHE_DIR: &str = ".icon_cache";
 
     fn svg_cache_path(svg_path: &Path, target_size: u32) -> Option<String> {
-        let stem = svg_path.file_stem()?.to_str()?;
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = DefaultHasher::new();
+        svg_path.hash(&mut hasher);
+        target_size.hash(&mut hasher);
+
+        let cache_key = format!("{:x}", hasher.finish());
         let cache_dir = dirs::cache_dir()?.join("dock").join(SVG_CACHE_DIR);
         fs::create_dir_all(&cache_dir).ok()?;
         Some(
             cache_dir
-                .join(format!("{}_{}.png", stem, target_size))
+                .join(format!("{}_{}.png", cache_key, target_size))
                 .to_string_lossy()
                 .into_owned(),
         )

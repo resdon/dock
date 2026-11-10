@@ -681,9 +681,16 @@ pub enum InputEvent {
     /// Window close request from the compositor.
     CloseRequest,
     /// Window configure event (size/position change).
-    Configure { size: Size, scale_factor: f32 },
-    /// Window focus change.
-    FocusChange(bool),
+    Configure {
+        window_id: WaylandWindowId,
+        size: Size,
+        scale_factor: f32,
+    },
+    /// Focus change for a specific window.
+    FocusChange {
+        window_id: WaylandWindowId,
+        focused: bool,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -790,18 +797,18 @@ impl WaylandConnection {
     /// Process an input event and route it to the appropriate window.
     pub fn process_input_event(&mut self, event: &InputEvent) {
         match event {
-            InputEvent::Configure { size, scale_factor } => {
-                // Resize event — find the focused window
-                for window in self.windows.values_mut() {
-                    if window.focused {
-                        window.on_resize(*size, *scale_factor);
-                    }
+            InputEvent::Configure {
+                window_id,
+                size,
+                scale_factor,
+            } => {
+                if let Some(window) = self.windows.get_mut(window_id) {
+                    window.on_resize(*size, *scale_factor);
                 }
             }
-            InputEvent::FocusChange(focused) => {
-                // Update focus state for all windows
+            InputEvent::FocusChange { window_id, focused } => {
                 for window in self.windows.values_mut() {
-                    window.on_focus_changed(*focused && window.id == window.id);
+                    window.on_focus_changed(*focused && window.id == *window_id);
                 }
             }
             InputEvent::CloseRequest => {
@@ -1189,6 +1196,7 @@ mod tests {
         conn.get_window_mut(window_id).unwrap().focused = true;
 
         let event = InputEvent::Configure {
+            window_id,
             size: Size::new(1024.0, 768.0),
             scale_factor: 2.0,
         };
@@ -1197,6 +1205,43 @@ mod tests {
         let window = conn.get_window(window_id).unwrap();
         assert!((window.size.width - 1024.0).abs() < f32::EPSILON);
         assert!((window.scale_factor - 2.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_focus_change_targets_only_the_selected_window() {
+        let mut conn = WaylandConnection::new();
+        let first = conn.create_window(WaylandWindowConfig::new("First"));
+        let second = conn.create_window(WaylandWindowConfig::new("Second"));
+
+        conn.process_input_event(&InputEvent::FocusChange {
+            window_id: second,
+            focused: true,
+        });
+
+        assert!(!conn.get_window(first).unwrap().focused);
+        assert!(conn.get_window(second).unwrap().focused);
+    }
+
+    #[test]
+    fn test_configure_targets_nonfocused_window() {
+        let mut conn = WaylandConnection::new();
+        let first = conn.create_window(WaylandWindowConfig::new("First"));
+        let second = conn.create_window(WaylandWindowConfig::new("Second"));
+
+        conn.process_input_event(&InputEvent::Configure {
+            window_id: second,
+            size: Size::new(320.0, 240.0),
+            scale_factor: 1.5,
+        });
+
+        assert_eq!(
+            conn.get_window(first).unwrap().size,
+            Size::new(800.0, 600.0)
+        );
+        assert_eq!(
+            conn.get_window(second).unwrap().size,
+            Size::new(320.0, 240.0)
+        );
     }
 
     #[test]

@@ -13,6 +13,16 @@ use crate::models::system::{
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DistributionResolver;
 
+fn contains_ascii_case_insensitive(haystack: &str, needle_lower_ascii: &str) -> bool {
+    if needle_lower_ascii.is_empty() {
+        return true;
+    }
+    haystack
+        .as_bytes()
+        .windows(needle_lower_ascii.len())
+        .any(|w| w.eq_ignore_ascii_case(needle_lower_ascii.as_bytes()))
+}
+
 impl DistributionResolver {
     pub fn resolve(
         &self,
@@ -29,8 +39,8 @@ impl DistributionResolver {
         env: &HashMap<String, String>,
     ) -> (DistributionContext, ResolutionTrace) {
         let path = executable
-            .map(|p| p.to_string_lossy().to_lowercase())
-            .unwrap_or_default();
+            .map(|p| p.to_string_lossy())
+            .unwrap_or_else(|| std::borrow::Cow::Borrowed(""));
         let mut result = DistributionContext::default();
         let mut trace = ResolutionTrace::default();
         if let Some(id) = env
@@ -48,7 +58,7 @@ impl DistributionResolver {
             );
             return (result, trace);
         }
-        if path.contains("steam") {
+        if contains_ascii_case_insensitive(&path, "steam") {
             result.provider = DistributionProvider::Steam;
             trace.strengthen(
                 ResolutionConfidence::Strong,
@@ -56,7 +66,7 @@ impl DistributionResolver {
             );
             return (result, trace);
         }
-        if path.contains("lutris") {
+        if contains_ascii_case_insensitive(&path, "lutris") {
             result.provider = DistributionProvider::Lutris;
             trace.strengthen(
                 ResolutionConfidence::Strong,
@@ -64,7 +74,9 @@ impl DistributionResolver {
             );
             return (result, trace);
         }
-        if path.contains("heroic") || path.contains("epicgames") {
+        if contains_ascii_case_insensitive(&path, "heroic")
+            || contains_ascii_case_insensitive(&path, "epicgames")
+        {
             result.provider = DistributionProvider::Heroic;
             trace.strengthen(
                 ResolutionConfidence::Strong,
@@ -72,7 +84,7 @@ impl DistributionResolver {
             );
             return (result, trace);
         }
-        if path.contains("gog") {
+        if contains_ascii_case_insensitive(&path, "gog") {
             result.provider = DistributionProvider::GOG;
             trace.strengthen(
                 ResolutionConfidence::Strong,
@@ -80,7 +92,7 @@ impl DistributionResolver {
             );
             return (result, trace);
         }
-        if path.contains("bottles") {
+        if contains_ascii_case_insensitive(&path, "bottles") {
             result.provider = DistributionProvider::Bottles;
             trace.strengthen(
                 ResolutionConfidence::Strong,

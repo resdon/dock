@@ -127,7 +127,7 @@ pub fn spawn_audio_monitor(snapshot_tx: Sender<AudioSnapshot>, action_rx: Receiv
                 }
             }
         })
-        .expect("failed to start PipeWire audio monitor");
+        .ok();
 }
 
 /// Run a `wpctl` subprocess and return its stdout.
@@ -201,7 +201,9 @@ fn apply_action(action: AudioAction) {
                 .map_err(|e| format!("could not control MPRIS player with playerctl: {e}"))
         }
     };
-    if let Err(_error) = result {}
+    if let Err(error) = result {
+        eprintln!("Audio action failed: {error}");
+    }
 }
 
 /// Current section while parsing `wpctl status` output.

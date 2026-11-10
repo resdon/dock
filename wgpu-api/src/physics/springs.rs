@@ -15,7 +15,9 @@ pub struct SpringConstraint {
     /// First body ID.
     pub body_a: BodyId,
     /// Second body ID.
-    pub body_b: BodyId,
+    pub body_b: Option<BodyId>,
+    /// Optional fixed endpoint for a spring attached to a world-space point.
+    pub fixed_point: Option<Point>,
     /// Rest length of the spring.
     pub rest_length: f32,
     /// Spring stiffness (higher = stiffer).
@@ -37,7 +39,8 @@ impl SpringConstraint {
     ) -> Self {
         Self {
             body_a,
-            body_b,
+            body_b: Some(body_b),
+            fixed_point: None,
             rest_length,
             stiffness,
             damping,
@@ -54,7 +57,8 @@ impl SpringConstraint {
     ) -> Self {
         Self {
             body_a,
-            body_b: BodyId::new(0), // sentinel for fixed point
+            body_b: None,
+            fixed_point: Some(fixed_point),
             rest_length: 0.0,
             stiffness,
             damping,
@@ -84,7 +88,7 @@ impl SpringConstraint {
         let rel_vel_y = b.velocity.y - a.velocity.y;
         let rel_vel_along_axis = rel_vel_x * nx + rel_vel_y * ny;
 
-        // Spring force: F = -k * displacement
+        // This is the force on body B; the caller applies its inverse to A.
         let spring_force = -self.stiffness * displacement;
 
         // Damping force: F = -c * relative_velocity
@@ -110,7 +114,7 @@ impl SpringConstraint {
         let displacement = current_length - self.rest_length;
         let rel_vel_along_axis = body.velocity.x * nx + body.velocity.y * ny;
 
-        let spring_force = -self.stiffness * displacement;
+        let spring_force = self.stiffness * displacement;
         let damping_force = -self.damping * self.stiffness * rel_vel_along_axis;
         let total_force = spring_force + damping_force;
 
@@ -122,9 +126,26 @@ impl SpringConstraint {
         if !self.enabled {
             return;
         }
+        if let Some(point) = self.fixed_point {
+            a.apply_force(self.compute_force_to_point(a, point), dt);
+            return;
+        }
         let force = self.compute_force(a, b);
         a.apply_force(Vector2D::new(-force.x, -force.y), dt);
         b.apply_force(force, dt);
+    }
+
+    /// Apply this spring when it is attached to a fixed world-space point.
+    /// Returns `true` when this spring has a fixed endpoint, even if disabled.
+    pub fn apply_to_fixed_point(&self, body: &mut PhysicsBody, dt: f32) -> bool {
+        let Some(point) = self.fixed_point else {
+            return false;
+        };
+        if self.enabled {
+            let force = self.compute_force_to_point(body, point);
+            body.apply_force(force, dt);
+        }
+        true
     }
 
     /// Check if the spring is at rest.
@@ -249,8 +270,11 @@ impl SpringChain {
 
         for i in 0..self.spring_count() {
             let spring = self.get_spring(i).unwrap();
+            let Some(body_b_id) = spring.body_b else {
+                continue;
+            };
             let a_body = bodies_map.get(&spring.body_a);
-            let b_body = bodies_map.get(&spring.body_b);
+            let b_body = bodies_map.get(&body_b_id);
             match (a_body, b_body) {
                 (Some(a), Some(b)) => {
                     let f = spring.compute_force(a, b);
@@ -260,7 +284,7 @@ impl SpringChain {
                     entry_a.x -= f.x;
                     entry_a.y -= f.y;
                     let entry_b = force_map
-                        .entry(spring.body_b)
+                        .entry(body_b_id)
                         .or_insert_with(|| crate::geometry::Vector2D::ZERO);
                     entry_b.x += f.x;
                     entry_b.y += f.y;
@@ -339,7 +363,7 @@ impl RadialSpringSystem {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::geometry::{Point, Vector2D};
+    use crate::geometry::Point;
     use crate::physics::body::{BodyId, CollisionShape, PhysicsBody};
 
     #[test]
@@ -538,5 +562,22 @@ mod tests {
         let force = spring.compute_force_to_point(&body, Point::new(100.0, 100.0));
         assert!(force.x > 0.0);
         assert!(force.y > 0.0);
+        assert_eq!(spring.fixed_point, Some(Point::new(100.0, 100.0)));
+        assert_eq!(spring.body_b, None);
+    }
+
+    #[test]
+    fn test_apply_fixed_point_spring_uses_stored_endpoint() {
+        let spring =
+            SpringConstraint::to_fixed_point(BodyId::new(1), Point::new(10.0, 0.0), 10.0, 0.0);
+        let mut body = PhysicsBody::dynamic_body(
+            BodyId::new(1),
+            Point::ORIGIN,
+            CollisionShape::circle(5.0),
+            1.0,
+        );
+
+        assert!(spring.apply_to_fixed_point(&mut body, 1.0));
+        assert!(body.velocity.x > 0.0);
     }
 }

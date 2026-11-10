@@ -39,12 +39,12 @@ impl PointerHandler for AppState {
             motion::handle_motion_events(self, events, dock_surface_ptr.as_ref(), scale_factor);
 
         // Step 2: State Retrieval & Layout Metrics
-        let running_by_app = self.get_running_by_app();
-        let apps_in_dock = self.get_apps_in_dock();
+        let running_by_app = self.get_running_by_app_cached();
+        let apps_in_dock = self.get_apps_in_dock_cached();
 
-        let dock_height = 60;
-        let box_size = 48;
-        let spacing = 8;
+        let dock_height = self.config.dock_height as i32;
+        let box_size = self.config.icon_size as i32;
+        let spacing = self.config.spacing as i32;
 
         let total_items = apps_in_dock.len() as i32;
         let dock_width = self

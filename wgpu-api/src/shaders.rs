@@ -154,7 +154,7 @@ struct FragmentInput {
 
 @fragment
 fn main(input: FragmentInput) -> @location(0) vec4<f32> {
-    let texel_size = 1.0 / textureDimensions(texture_view);
+    let texel_size = vec2<f32>(1.0) / vec2<f32>(textureDimensions(texture_view));
     let radius = uniforms.radius;
     var color = vec4<f32>(0.0);
     var weight = 0.0;

@@ -38,7 +38,7 @@ pub struct SolverStats {
     pub collision_pairs: usize,
     /// Number of iterations performed.
     pub iterations: u32,
-    /// Maximum penetration found.
+    /// Maximum penetration found, or negative if no collisions occurred.
     pub max_penetration: f32,
 }
 
@@ -47,7 +47,7 @@ impl SolverStats {
         Self {
             collision_pairs: 0,
             iterations: 0,
-            max_penetration: 0.0,
+            max_penetration: -1.0,
         }
     }
 }
@@ -90,27 +90,20 @@ impl PhysicsSolver {
         let position_correction = self.config.position_correction;
 
         for _ in 0..iterations {
-            // Clone bodies for broad phase to avoid borrow conflicts
-            let bodies_clone: Vec<PhysicsBody> = bodies.iter().cloned().collect();
-            let pairs = collision::broad_phase(&bodies_clone);
+            let pairs = collision::broad_phase(bodies);
             self.stats.collision_pairs = pairs.len();
 
-            // Collect all collisions first
+            // Collect all collisions first (read-only pass).
             let mut collisions: Vec<(usize, usize, Collision)> = Vec::new();
             for &(i, j) in &pairs {
-                let a = bodies_clone[i].clone();
-                let b = bodies_clone[j].clone();
-                let collision = match collision::detect_collision(&a, &b) {
-                    Some(c) => c,
-                    None => continue,
-                };
-
-                self.stats.max_penetration = self.stats.max_penetration.max(collision.penetration);
-
-                collisions.push((i, j, collision));
+                if let Some(collision) = collision::detect_collision(&bodies[i], &bodies[j]) {
+                    self.stats.max_penetration =
+                        self.stats.max_penetration.max(collision.penetration);
+                    collisions.push((i, j, collision));
+                }
             }
 
-            // Apply resolutions
+            // Apply resolutions (mutable pass).
             for (i, j, collision) in collisions {
                 if i == j {
                     continue;
@@ -137,6 +130,7 @@ impl PhysicsSolver {
 
         for _ in 0..iterations {
             let pairs = collision::broad_phase(&body_vec);
+            self.stats.collision_pairs = pairs.len();
 
             // Collect all collisions first
             let mut collisions: Vec<(BodyId, BodyId, Collision)> = Vec::new();

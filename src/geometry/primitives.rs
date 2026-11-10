@@ -16,8 +16,8 @@ impl Point {
     /// Calculates relative local pointer position inside a bounding box.
     /// Used like: `let (x, y) = global_ptr.to_local_coords(bounds_x, bounds_y, scale);`
     pub fn to_local_coords(&self, bounds_x: f64, bounds_y: f64, scale: f64) -> (i32, i32) {
-        let local_x = ((self.x * scale) - bounds_x).max(0.0) as i32;
-        let local_y = ((self.y * scale) - bounds_y).max(0.0) as i32;
+        let local_x = ((self.x * scale) - bounds_x).max(0.0).round() as i32;
+        let local_y = ((self.y * scale) - bounds_y).max(0.0).round() as i32;
         (local_x, local_y)
     }
 }

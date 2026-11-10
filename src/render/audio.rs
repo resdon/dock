@@ -42,15 +42,22 @@ fn rect(
     }
     let x0 = x.max(0);
     let y0 = y.max(0);
-    let x1 = (x + w).min(width);
-    let y1 = (y + h).min(height);
+    let x1 = x.saturating_add(w).min(width);
+    let y1 = y.saturating_add(h).min(height);
+    if x0 >= x1 || y0 >= y1 || width <= 0 {
+        return;
+    }
+
+    let row_bytes = (x1 - x0) as usize * 4;
     for py in y0..y1 {
-        for px in x0..x1 {
-            let i = ((py * width + px) * 4) as usize;
-            if i + 3 < canvas.len() {
-                // wl_shm ARGB8888 on little-endian is BGRA.
-                canvas[i..i + 4].copy_from_slice(&color);
-            }
+        let start = ((py as usize * width as usize) + x0 as usize) * 4;
+        if start >= canvas.len() {
+            break;
+        }
+        let end = start.saturating_add(row_bytes).min(canvas.len() & !3);
+        for pixel in canvas[start..end].chunks_exact_mut(4) {
+            // wl_shm ARGB8888 on little-endian is BGRA.
+            pixel.copy_from_slice(&color);
         }
     }
 }
@@ -85,19 +92,22 @@ fn short_name(value: &str, max_chars: usize) -> String {
         .replace("alsa_input.", "")
         .replace("bluez_output.", "BT ")
         .replace("bluez_input.", "BT ");
-    let chars: Vec<char> = compact.chars().collect();
-    if chars.len() <= max_chars {
-        compact
-    } else {
-        format!(
-            "{}...",
-            chars
-                .iter()
-                .take(max_chars.saturating_sub(3))
-                .copied()
-                .collect::<String>()
-        )
+
+    let char_count = compact.chars().count();
+    if char_count <= max_chars {
+        return compact;
     }
+
+    let take = max_chars.saturating_sub(3);
+    let mut out = String::with_capacity(compact.len().min(take + 3));
+    for (i, c) in compact.chars().enumerate() {
+        if i >= take {
+            break;
+        }
+        out.push(c);
+    }
+    out.push_str("...");
+    out
 }
 
 fn draw_slider(

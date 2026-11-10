@@ -50,12 +50,12 @@ impl ShapedText {
     pub fn new(lines: Vec<ShapedLine>, char_count: usize, byte_count: usize) -> Self {
         let width = lines.iter().map(|l| l.width).fold(0.0_f32, f32::max);
         let height: f32 = lines.iter().map(|l| l.height).sum();
-        let fonts_used = lines
+        let mut fonts_used: Vec<u32> = lines
             .iter()
             .flat_map(|l| l.all_glyphs().map(|g| g.font_id))
-            .collect::<std::collections::HashSet<_>>()
-            .into_iter()
             .collect();
+        fonts_used.sort_unstable();
+        fonts_used.dedup();
 
         Self {
             lines,
@@ -151,7 +151,11 @@ impl ShaperConfig {
 
     /// Set the font size.
     pub fn with_size(mut self, size: f32) -> Self {
-        self.font_size = size;
+        self.font_size = if size.is_finite() && size > 0.0 {
+            size
+        } else {
+            14.0
+        };
         self
     }
 

@@ -1,7 +1,6 @@
 //! 2D affine transformation matrix.
 //!
-//! All transforms use a 3x3 matrix in column-major order for efficient
-//! composition and GPU shader compatibility.
+//! All transforms use a 3x3 matrix in row-major order.
 
 use crate::geometry::Point;
 
@@ -245,7 +244,7 @@ impl Transform {
     /// Get the translation component.
     pub fn translation(&self) -> Point {
         let e = &self.matrix.elements;
-        Point::new(e[6], e[7])
+        Point::new(e[2], e[5])
     }
 
     /// Get the scale component.
@@ -291,6 +290,7 @@ mod tests {
         let p = t.transform_point(&Point::ORIGIN);
         assert!((p.x - 10.0).abs() < f32::EPSILON);
         assert!((p.y - 20.0).abs() < f32::EPSILON);
+        assert_eq!(t.translation(), Point::new(10.0, 20.0));
     }
 
     #[test]

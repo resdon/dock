@@ -159,6 +159,12 @@ pub struct AppState {
     pub current_output: Option<WlOutput>,
     pub docks: Vec<DockInstance>,
 
+    /// Cached dock app ordering and running-window grouping to avoid per-frame
+    /// rebuilds in the main loop. Invalidated on pinned/window state changes.
+    pub(crate) cached_apps_in_dock: Option<Vec<String>>,
+    pub(crate) cached_running_by_app: Option<HashMap<String, Vec<ObjectId>>>,
+    pub(crate) cached_pipewire_window_ids: Option<Vec<(String, u32)>>,
+
     // Fractional Scaling
     pub fractional_scale_manager: Option<WpFractionalScaleManagerV1>,
     pub fractional_scale_notifier: Option<WpFractionalScaleV1>,
@@ -259,6 +265,31 @@ pub struct AppState {
 }
 
 impl AppState {
+    pub fn invalidate_dock_app_cache(&mut self) {
+        self.cached_apps_in_dock = None;
+        self.cached_running_by_app = None;
+        self.cached_pipewire_window_ids = None;
+    }
+
+    pub fn refresh_dock_app_cache(&mut self) {
+        self.cached_apps_in_dock = Some(self.compute_apps_in_dock_uncached());
+        self.cached_running_by_app = Some(self.compute_running_by_app_uncached());
+    }
+
+    pub fn get_apps_in_dock_cached(&mut self) -> Vec<String> {
+        if self.cached_apps_in_dock.is_none() || self.cached_running_by_app.is_none() {
+            self.refresh_dock_app_cache();
+        }
+        self.cached_apps_in_dock.clone().unwrap_or_default()
+    }
+
+    pub fn get_running_by_app_cached(&mut self) -> HashMap<String, Vec<ObjectId>> {
+        if self.cached_running_by_app.is_none() || self.cached_apps_in_dock.is_none() {
+            self.refresh_dock_app_cache();
+        }
+        self.cached_running_by_app.clone().unwrap_or_default()
+    }
+
     pub fn apply_tray_snapshot(&mut self, snapshot: crate::models::TraySnapshot) -> bool {
         let changed = self.tray_items.len() != snapshot.items.len()
             || self
@@ -284,17 +315,11 @@ impl AppState {
                                 .map(|i| (i.width, i.height, i.rgba.as_slice()))
                 });
 
-        let _item_count = snapshot.items.len();
         self.tray_items = snapshot.items;
         if changed {
             for dock in &mut self.docks {
                 dock.status_strip_rendered = false;
             }
-            let _icon_count = self
-                .tray_items
-                .iter()
-                .filter(|item| item.icon.is_some())
-                .count();
         }
         changed
     }
@@ -324,6 +349,67 @@ impl AppState {
             local_y.round() as i32,
             self.tray_items.len(),
         )
+    }
+
+    fn dock_has_surface<F>(&self, surface: &WlSurface, f: F) -> bool
+    where
+        F: Fn(&DockInstance) -> bool,
+    {
+        self.docks
+            .iter()
+            .find(|dock| {
+                dock.tray_bar
+                    .as_ref()
+                    .is_some_and(|bar| bar.surface.id() == surface.id())
+                    || dock
+                        .system_status_bar
+                        .as_ref()
+                        .is_some_and(|bar| bar.surface.id() == surface.id())
+                    || dock
+                        .status_widget_bar
+                        .as_ref()
+                        .is_some_and(|bar| bar.surface.id() == surface.id())
+                    || dock
+                        .audio_player_bar
+                        .as_ref()
+                        .is_some_and(|bar| bar.surface.id() == surface.id())
+                    || dock
+                        .dashed_block_surface
+                        .as_ref()
+                        .is_some_and(|block| block.surface.wl_surface() == surface)
+                    || dock
+                        .date_time_block_surface
+                        .as_ref()
+                        .is_some_and(|block| block.surface.wl_surface() == surface)
+                    || dock.surface.wl_surface().id() == surface.id()
+            })
+            .is_some_and(f)
+    }
+
+    /// Returns the parent-dock-local offset for a subsurface/popup surface, if known.
+    /// Used to map child-surface pointer coordinates into main dock space.
+    pub fn surface_offset_in_dock_space(&self, surface: &WlSurface) -> Option<(f32, f32)> {
+        for dock in &self.docks {
+            let candidates: [Option<&crate::types::PopupSurface>; 11] = [
+                dock.tray_bar.as_ref(),
+                dock.status_widget_bar.as_ref(),
+                dock.audio_player_bar.as_ref(),
+                dock.system_status_bar.as_ref(),
+                dock.context_menu_popup.as_ref(),
+                dock.window_list_popup.as_ref(),
+                dock.hover_popup.as_ref(),
+                dock.audio_popup.as_ref(),
+                dock.bluetooth_popup.as_ref(),
+                dock.rclone_popup.as_ref(),
+                dock.process_popup.as_ref(),
+            ];
+            for popup in candidates.into_iter().flatten() {
+                if popup.surface.id() == surface.id() {
+                    return Some((popup.position.0 as f32, popup.position.1 as f32));
+                }
+            }
+        }
+        None
     }
 
     pub fn is_status_tray_bar_surface(&self, surface: &WlSurface) -> bool {
@@ -380,11 +466,7 @@ impl AppState {
     }
 
     fn widget_button_at_surface(&self, surface: &WlSurface, x: f64, y: f64, index: usize) -> bool {
-        let on_widget_bar = self.docks.iter().any(|dock| {
-            dock.status_widget_bar
-                .as_ref()
-                .is_some_and(|bar| bar.surface.id() == surface.id())
-        });
+        let on_widget_bar = self.is_status_widget_bar_surface(surface);
         on_widget_bar
             && crate::render::widget_bar::button_at(index, x.round() as i32, y.round() as i32)
     }
@@ -743,6 +825,7 @@ impl AppState {
         }
 
         self.sync_media_state_from_registry();
+        self.invalidate_dock_app_cache();
     }
 
     pub fn sync_media_state_from_registry(&mut self) {

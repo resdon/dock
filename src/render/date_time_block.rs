@@ -23,97 +23,116 @@
 //! See `config.rs` for the full list of configurable options.
 
 use crate::config::DockConfig;
-use crate::render::color_check::write_bgra_color;
+use crate::render::color_check::draw_dashed_border;
 use crate::render::font::FontManager;
 use crate::render::text::draw_text;
+use std::sync::Mutex;
 
 /// Logical width of the date/time block widget (from config, fallback default).
 pub const DATE_TIME_BLOCK_WIDTH: i32 = 104;
 /// Logical height of the date/time block widget (from config, fallback default).
 pub const DATE_TIME_BLOCK_HEIGHT: i32 = 62;
 
-/// Format the current time as "HH:MM" using libc::strftime.
-fn format_time() -> String {
-    let now = unsafe { libc::time(std::ptr::null_mut()) };
-    let mut local: libc::tm = unsafe { std::mem::zeroed() };
-    if unsafe { libc::localtime_r(&now, &mut local) }.is_null() {
-        return String::new();
-    }
-    let mut buf = [0i8; 16];
+#[derive(Clone, Default)]
+struct CachedDateTime {
+    minute_key: Option<(i32, i32, i32, i32, i32)>, // year, mon, mday, hour, min
+    day_key: Option<(i32, i32, i32)>,              // year, mon, mday
+    time: String,
+    day_month: String,
+    year: String,
+}
+
+static DATE_TIME_CACHE: Mutex<CachedDateTime> = Mutex::new(CachedDateTime {
+    minute_key: None,
+    day_key: None,
+    time: String::new(),
+    day_month: String::new(),
+    year: String::new(),
+});
+
+/// Format a libc::tm using strftime.
+///
+/// # Safety
+/// Calls libc::strftime which requires a valid tm struct and format string.
+fn format_from_tm(local: &libc::tm, fmt: &[u8], buf_len: usize) -> String {
+    let mut buf = vec![0i8; buf_len];
     let n = unsafe {
-        libc::strftime(
-            buf.as_mut_ptr(),
-            buf.len(),
-            b"%H:%M\0".as_ptr() as *const _,
-            &local,
-        )
+        libc::strftime(buf.as_mut_ptr(), buf.len(), fmt.as_ptr() as *const _, local)
     };
     if n == 0 {
         return String::new();
     }
-    String::from_utf8_lossy(
-        &buf[..n as usize]
-            .iter()
-            .map(|c| *c as u8)
-            .collect::<Vec<u8>>(),
+    // strftime writes bytes; interpret as UTF-8 lossily.
+    // buf[..n] is already a valid &[i8] slice — no unsafe cast needed.
+    let bytes = &buf[..n as usize];
+    // SAFETY: i8 and u8 have identical memory layouts; this is a safe reinterpretation.
+    let bytes_u8: &[u8] = unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const u8, bytes.len()) };
+    String::from_utf8_lossy(bytes_u8).trim().to_owned()
+}
+
+/// Get the current local time as a libc::tm struct.
+///
+/// # Safety
+/// Calls libc::time and libc::localtime_r which require proper initialization.
+fn current_local_tm() -> Option<libc::tm> {
+    let now = unsafe { libc::time(std::ptr::null_mut()) };
+    if now == libc::time_t::MAX {
+        return None;
+    }
+    let mut local: libc::tm = unsafe { std::mem::zeroed() };
+    if unsafe { libc::localtime_r(&now, &mut local) }.is_null() {
+        None
+    } else {
+        Some(local)
+    }
+}
+
+fn cached_date_time_strings() -> (String, String, String) {
+    let Some(local) = current_local_tm() else {
+        return (String::new(), String::new(), String::new());
+    };
+
+    let minute_key = (
+        local.tm_year,
+        local.tm_mon,
+        local.tm_mday,
+        local.tm_hour,
+        local.tm_min,
+    );
+    let day_key = (local.tm_year, local.tm_mon, local.tm_mday);
+
+    let mut cache = DATE_TIME_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+
+    if cache.minute_key != Some(minute_key) {
+        cache.time = format_from_tm(&local, b"%H:%M\0", 16);
+        cache.minute_key = Some(minute_key);
+    }
+    if cache.day_key != Some(day_key) {
+        cache.day_month = format_from_tm(&local, b"%e %B\0", 32);
+        cache.year = format_from_tm(&local, b"'%y\0", 16);
+        cache.day_key = Some(day_key);
+    }
+
+    (
+        cache.time.clone(),
+        cache.day_month.clone(),
+        cache.year.clone(),
     )
-    .into_owned()
+}
+
+/// Format the current time as "HH:MM" using libc::strftime.
+pub fn format_time() -> String {
+    cached_date_time_strings().0
 }
 
 /// Format the current day and month as "8 November" using libc::strftime.
-fn format_day_month() -> String {
-    let now = unsafe { libc::time(std::ptr::null_mut()) };
-    let mut local: libc::tm = unsafe { std::mem::zeroed() };
-    if unsafe { libc::localtime_r(&now, &mut local) }.is_null() {
-        return String::new();
-    }
-    let mut buf = [0i8; 32];
-    let n = unsafe {
-        libc::strftime(
-            buf.as_mut_ptr(),
-            buf.len(),
-            b"%e %B\0".as_ptr() as *const _,
-            &local,
-        )
-    };
-    if n == 0 {
-        return String::new();
-    }
-    String::from_utf8_lossy(
-        &buf[..n as usize]
-            .iter()
-            .map(|c| *c as u8)
-            .collect::<Vec<u8>>(),
-    )
-    .into_owned()
+pub fn format_day_month() -> String {
+    cached_date_time_strings().1
 }
 
 /// Format the current year as "'26" using libc::strftime.
-fn format_year() -> String {
-    let now = unsafe { libc::time(std::ptr::null_mut()) };
-    let mut local: libc::tm = unsafe { std::mem::zeroed() };
-    if unsafe { libc::localtime_r(&now, &mut local) }.is_null() {
-        return String::new();
-    }
-    let mut buf = [0i8; 16];
-    let n = unsafe {
-        libc::strftime(
-            buf.as_mut_ptr(),
-            buf.len(),
-            b"'%y\0".as_ptr() as *const _,
-            &local,
-        )
-    };
-    if n == 0 {
-        return String::new();
-    }
-    String::from_utf8_lossy(
-        &buf[..n as usize]
-            .iter()
-            .map(|c| *c as u8)
-            .collect::<Vec<u8>>(),
-    )
-    .into_owned()
+pub fn format_year() -> String {
+    cached_date_time_strings().2
 }
 
 /// Renders the date/time block into a BGRA8888 canvas.
@@ -128,7 +147,7 @@ fn format_year() -> String {
 /// - `canvas` — mutable slice of BGRA8888 pixels (4 bytes per pixel)
 /// - `width` — canvas width in pixels
 /// - `height` — canvas height in pixels
-/// - `_scale` — scale factor (unused, kept for API consistency)
+/// - `scale` — scale factor used to scale the time text offset
 /// - `alpha` — global alpha multiplier (0.0 = fully transparent, 1.0 = fully opaque)
 /// - `font_manager` — font cache for glyph rendering
 /// - `config` — dock configuration with all date_time_block_* settings
@@ -136,7 +155,7 @@ pub fn render_date_time_block(
     canvas: &mut [u8],
     width: u32,
     height: u32,
-    _scale: f64,
+    scale: f64,
     alpha: f32,
     font_manager: &mut FontManager,
     config: &DockConfig,
@@ -153,38 +172,20 @@ pub fn render_date_time_block(
     let border_color = DockConfig::parse_hex_color(&config.date_time_block_border_color);
     let dash_len = config.date_time_block_dash_length as usize;
     let gap_len = config.date_time_block_gap_length as usize;
-    let cycle = dash_len + gap_len;
     let thickness = config.date_time_block_border_thickness as usize;
 
-    // Draw dashed border on all four sides
-    for y in 0..h {
-        for x in 0..w {
-            let on_border = if y < thickness {
-                x % cycle < dash_len
-            } else if y >= h - thickness {
-                x % cycle < dash_len
-            } else if x < thickness {
-                y % cycle < dash_len
-            } else if x >= w - thickness {
-                y % cycle < dash_len
-            } else {
-                false
-            };
-
-            if on_border {
-                let idx = (y * w + x) * 4;
-                write_bgra_color(canvas, idx, border_color, a);
-            }
-        }
-    }
+    draw_dashed_border(canvas, w, h, dash_len, gap_len, thickness, border_color, a);
 
     // === Text color for time, date, and year (from config) ===
     let text_color = DockConfig::parse_hex_color(&config.date_time_block_text_color);
 
+    // === Fetch formatted time/date/year once (cached by minute/day) ===
+    let (time_str, day_month_str, year_str) = cached_date_time_strings();
+
     // === Draw current time (HH:MM) centered near the top ===
-    let time_str = format_time();
     let time_font_size = config.date_time_block_time_font_size as usize;
-    let time_text_y = config.date_time_block_time_text_y as i32;
+    let time_text_y = config.date_time_block_time_text_y as i32
+        + (config.date_time_block_time_offset_y as f64 * scale).round() as i32;
     let mut time_text_width = 0i32;
     for c in time_str.chars() {
         if c == '\u{200b}' || c.is_control() {
@@ -207,7 +208,6 @@ pub fn render_date_time_block(
     );
 
     // === Draw current day+month (e.g., "8 November") centered below the time ===
-    let day_month_str = format_day_month();
     let date_font_size = config.date_time_block_date_font_size as usize;
     let day_month_text_y = config.date_time_block_day_month_y as i32;
     let mut day_month_text_width = 0i32;
@@ -232,7 +232,6 @@ pub fn render_date_time_block(
     );
 
     // === Draw current year (e.g., "'26") centered below the day+month ===
-    let year_str = format_year();
     let year_text_y = config.date_time_block_year_y as i32;
     let mut year_text_width = 0i32;
     for c in year_str.chars() {

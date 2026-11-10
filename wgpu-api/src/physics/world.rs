@@ -32,12 +32,20 @@
 //! 6. Sleep idle bodies
 
 use std::collections::HashMap;
+use std::time::Instant;
 
 use super::body::{BodyId, PhysicsBody};
 use super::fields::ForceField;
 use super::forces::SpringForce;
 use super::solver::PhysicsSolver;
 use crate::geometry::{Point, Rect, Vector2D};
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct DragTracking {
+    pub(crate) last_position: Point,
+    pub(crate) last_timestamp: Instant,
+    pub(crate) velocity: Vector2D,
+}
 
 /// Configuration for the physics world.
 #[derive(Debug, Clone, Copy)]
@@ -48,7 +56,8 @@ pub struct PhysicsWorldConfig {
     pub timestep: f32,
     /// Maximum substeps for stability. Default: 4.
     pub max_substeps: u32,
-    /// Number of solver iterations for constraints. Default: 8.
+    /// Legacy solver-iteration metadata. `PhysicsWorld::step` does not use this
+    /// value; fixed-step collision iterations are configured by the simulator.
     pub solver_iterations: u32,
     /// Velocity threshold for sleep detection. Default: 0.01.
     pub sleep_threshold: f32,
@@ -138,6 +147,8 @@ pub struct PhysicsWorld {
     pub springs_enabled: bool,
     /// Whether rigid-body collision resolution is enabled (System B).
     pub collisions_enabled: bool,
+    /// Per-body drag state tracked independently of global spring settings.
+    pub(super) drag_tracking: HashMap<BodyId, DragTracking>,
     /// Field system (C): optional force field applied each step.
     pub force_field: Option<ForceField>,
     /// Physics solver for rigid-body collision resolution (System B).
@@ -156,6 +167,7 @@ impl PhysicsWorld {
             spring_damping: 0.8,
             springs_enabled: true,
             collisions_enabled: true,
+            drag_tracking: HashMap::new(),
             force_field: None,
             solver: PhysicsSolver::new(),
         }
@@ -172,6 +184,7 @@ impl PhysicsWorld {
             spring_damping: 0.8,
             springs_enabled: true,
             collisions_enabled: true,
+            drag_tracking: HashMap::new(),
             force_field: None,
             solver: PhysicsSolver::new(),
         }
@@ -212,6 +225,11 @@ impl PhysicsWorld {
     /// Get a mutable reference to a body.
     pub fn get_body_mut(&mut self, id: BodyId) -> Option<&mut PhysicsBody> {
         self.bodies.get_mut(&id)
+    }
+
+    /// Get the current position of a body without exposing its internal storage.
+    pub fn get_body_position(&self, id: BodyId) -> Option<Point> {
+        self.bodies.get(&id).map(|body| body.position)
     }
 
     /// Get the total number of bodies.
@@ -404,68 +422,65 @@ impl PhysicsWorld {
         if !self.collisions_enabled {
             return;
         }
-        let body_vec: Vec<PhysicsBody> = self.bodies.values().cloned().collect();
-        let body_ids: Vec<BodyId> = self.bodies.keys().copied().collect();
-
-        let pairs = super::collision::broad_phase(&body_vec);
+        let body_bounds: Vec<_> = self
+            .bodies
+            .iter()
+            .map(|(id, body)| (*id, body.bounding_rect(), body.enabled))
+            .collect();
+        let pairs = super::collision::broad_phase_bounds(&body_bounds);
         self.stats.collision_pairs = pairs.len();
 
         for &(i, j) in &pairs {
-            let id_a = body_ids[i];
-            let id_b = body_ids[j];
+            let id_a = body_bounds[i].0;
+            let id_b = body_bounds[j].0;
+            let Some((collision, impulse, friction, a_inv, b_inv)) = self
+                .bodies
+                .get(&id_a)
+                .zip(self.bodies.get(&id_b))
+                .and_then(|(a, b)| {
+                    super::collision::detect_collision(a, b).map(|collision| {
+                        let impulse = collision.compute_impulse(a, b);
+                        let friction = collision.compute_friction_impulse(a, b, &impulse);
+                        (collision, impulse, friction, a.inv_mass, b.inv_mass)
+                    })
+                })
+            else {
+                continue;
+            };
 
-            let a_clone = self.bodies.get(&id_a).cloned();
-            let b_clone = self.bodies.get(&id_b).cloned();
-            match (a_clone, b_clone) {
-                (Some(a), Some(b)) => {
-                    if let Some(collision) = super::collision::detect_collision(&a, &b) {
-                        // Apply impulse results directly
-                        let impulse = collision.compute_impulse(&a, &b);
-                        if impulse.length_squared() > 0.0001 {
-                            if let Some(mut_a) = self.bodies.get_mut(&id_a) {
-                                mut_a.apply_impulse(crate::geometry::Vector2D::new(
-                                    -impulse.x, -impulse.y,
-                                ));
-                            }
-                            if let Some(mut_b) = self.bodies.get_mut(&id_b) {
-                                mut_b.apply_impulse(impulse);
-                            }
-                        }
-                        // Position correction
-                        let friction = collision.compute_friction_impulse(&a, &b, &impulse);
-                        if friction.length_squared() > 0.0001 {
-                            if let Some(mut_a) = self.bodies.get_mut(&id_a) {
-                                mut_a.apply_impulse(crate::geometry::Vector2D::new(
-                                    -friction.x,
-                                    -friction.y,
-                                ));
-                            }
-                            if let Some(mut_b) = self.bodies.get_mut(&id_b) {
-                                mut_b.apply_impulse(friction);
-                            }
-                        }
-                        let correction_percent = self.config.position_correction;
-                        let correction = collision.penetration * correction_percent;
-                        let correction_vec = crate::geometry::Vector2D::new(
-                            collision.normal.x * correction,
-                            collision.normal.y * correction,
-                        );
-                        let a_inv = a.inv_mass;
-                        let b_inv = b.inv_mass;
-                        let total_inv = a_inv + b_inv;
-                        if total_inv > 0.0 {
-                            if let Some(mut_a) = self.bodies.get_mut(&id_a) {
-                                mut_a.position.x -= correction_vec.x * (a_inv / total_inv);
-                                mut_a.position.y -= correction_vec.y * (a_inv / total_inv);
-                            }
-                            if let Some(mut_b) = self.bodies.get_mut(&id_b) {
-                                mut_b.position.x += correction_vec.x * (b_inv / total_inv);
-                                mut_b.position.y += correction_vec.y * (b_inv / total_inv);
-                            }
-                        }
-                    }
+            if impulse.length_squared() > 0.0001 {
+                if let Some(body) = self.bodies.get_mut(&id_a) {
+                    body.apply_impulse(crate::geometry::Vector2D::new(-impulse.x, -impulse.y));
                 }
-                _ => continue,
+                if let Some(body) = self.bodies.get_mut(&id_b) {
+                    body.apply_impulse(impulse);
+                }
+            }
+
+            if friction.length_squared() > 0.0001 {
+                if let Some(body) = self.bodies.get_mut(&id_a) {
+                    body.apply_impulse(crate::geometry::Vector2D::new(-friction.x, -friction.y));
+                }
+                if let Some(body) = self.bodies.get_mut(&id_b) {
+                    body.apply_impulse(friction);
+                }
+            }
+
+            let correction = collision.penetration * self.config.position_correction;
+            let correction_vec = crate::geometry::Vector2D::new(
+                collision.normal.x * correction,
+                collision.normal.y * correction,
+            );
+            let total_inv = a_inv + b_inv;
+            if total_inv > 0.0 {
+                if let Some(body) = self.bodies.get_mut(&id_a) {
+                    body.position.x -= correction_vec.x * (a_inv / total_inv);
+                    body.position.y -= correction_vec.y * (a_inv / total_inv);
+                }
+                if let Some(body) = self.bodies.get_mut(&id_b) {
+                    body.position.x += correction_vec.x * (b_inv / total_inv);
+                    body.position.y += correction_vec.y * (b_inv / total_inv);
+                }
             }
         }
     }

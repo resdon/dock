@@ -101,6 +101,55 @@ pub fn write_bgra_color(canvas: &mut [u8], idx: usize, color: (u8, u8, u8), a: u
     write_bgra_pixel(canvas, idx, color.0, color.1, color.2, a);
 }
 
+/// Draws a dashed rectangular border on a BGRA8888 canvas.
+pub fn draw_dashed_border(
+    canvas: &mut [u8],
+    width: usize,
+    height: usize,
+    dash_length: usize,
+    gap_length: usize,
+    thickness: usize,
+    color: (u8, u8, u8),
+    alpha: u8,
+) {
+    let cycle = dash_length.saturating_add(gap_length);
+    if width == 0 || height == 0 || dash_length == 0 || cycle == 0 || thickness == 0 {
+        return;
+    }
+
+    let thickness = thickness.min(width).min(height);
+    let mut draw = |x: usize, y: usize| {
+        let Some(pixel) = y
+            .checked_mul(width)
+            .and_then(|row| row.checked_add(x))
+            .and_then(|index| index.checked_mul(BYTES_PER_PIXEL))
+        else {
+            return;
+        };
+        if pixel.checked_add(3).is_some_and(|end| end < canvas.len()) {
+            write_bgra_color(canvas, pixel, color, alpha);
+        }
+    };
+
+    for y in 0..thickness {
+        for x in 0..width {
+            if x % cycle < dash_length {
+                draw(x, y);
+                draw(x, height - 1 - y);
+            }
+        }
+    }
+
+    for y in thickness..height.saturating_sub(thickness) {
+        if y % cycle < dash_length {
+            for x in 0..thickness {
+                draw(x, y);
+                draw(width - 1 - x, y);
+            }
+        }
+    }
+}
+
 /// Verifies that a known color is correctly mapped to BGRA8888 format.
 ///
 /// Returns `true` if the blue channel is at index 0, green at index 1,
@@ -181,5 +230,20 @@ mod tests {
         // Verify: blue should be at index 0 in BGRA
         assert_eq!(canvas[0], 255, "Blue channel at BGRA index 0");
         assert_eq!(canvas[2], 0, "Red channel at BGRA index 2");
+    }
+
+    #[test]
+    fn dashed_border_draws_only_edges_and_handles_zero_cycle() {
+        let (width, height) = (8, 6);
+        let mut canvas = vec![0; width * height * BYTES_PER_PIXEL];
+        draw_dashed_border(&mut canvas, width, height, 2, 1, 1, (1, 2, 3), 255);
+
+        assert_eq!(&canvas[..4], &[3, 2, 1, 255]);
+        let center = (2 * width + 3) * BYTES_PER_PIXEL;
+        assert_eq!(&canvas[center..center + 4], &[0; 4]);
+
+        let before = canvas.clone();
+        draw_dashed_border(&mut canvas, width, height, 0, 0, 1, (9, 9, 9), 255);
+        assert_eq!(canvas, before);
     }
 }

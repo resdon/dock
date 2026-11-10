@@ -91,19 +91,60 @@ impl Easing {
                 if t == 0.0 || t == 1.0 {
                     t
                 } else {
-                    t * t * t * ((1.70158 + 1.0) * t - 1.70158)
+                    2.0_f32.powf(-10.0 * t)
+                        * ((t * 10.0 - 0.75) * (2.0 * std::f32::consts::PI / 3.0)).sin()
+                        + 1.0
                 }
             }
-            Self::CubicBezier(_x1, y1, _x2, y2) => {
-                // Approximate cubic bezier using de Casteljau's algorithm
-                let one_minus_t = 1.0 - t;
-                one_minus_t * one_minus_t * one_minus_t * y1
-                    + 3.0 * one_minus_t * one_minus_t * t * y2
-                    + 3.0 * one_minus_t * t * t * y2
-                    + t * t * t
+            Self::CubicBezier(x1, y1, x2, y2) => {
+                let x1 = x1.clamp(0.0, 1.0);
+                let x2 = x2.clamp(0.0, 1.0);
+                let mut parameter = t;
+                let mut lower = 0.0;
+                let mut upper = 1.0;
+
+                for _ in 0..8 {
+                    let x = cubic_bezier_component(parameter, x1, x2);
+                    let error = x - t;
+                    if error.abs() < 1e-5 {
+                        break;
+                    }
+
+                    if error < 0.0 {
+                        lower = parameter;
+                    } else {
+                        upper = parameter;
+                    }
+
+                    let slope = cubic_bezier_slope(parameter, x1, x2);
+                    let next = if slope.abs() > 1e-6 {
+                        parameter - error / slope
+                    } else {
+                        f32::NAN
+                    };
+                    parameter = if next.is_finite() && next > lower && next < upper {
+                        next
+                    } else {
+                        (lower + upper) * 0.5
+                    };
+                }
+
+                cubic_bezier_component(parameter, *y1, *y2)
             }
         }
     }
+}
+
+fn cubic_bezier_component(t: f32, p1: f32, p2: f32) -> f32 {
+    let one_minus_t = 1.0 - t;
+    3.0 * one_minus_t * one_minus_t * t * p1 + 3.0 * one_minus_t * t * t * p2 + t * t * t
+}
+
+fn cubic_bezier_slope(t: f32, p1: f32, p2: f32) -> f32 {
+    let one_minus_t = 1.0 - t;
+    3.0 * one_minus_t * one_minus_t * p1
+        + 6.0 * one_minus_t * t * (p2 - p1)
+        + 3.0 * t * t * (1.0 - p2)
 }
 
 /// Type of animation property.
@@ -830,34 +871,24 @@ impl ContinuousAnimation {
 
     /// Update the animation by a time delta and return the current value.
     pub fn update(&mut self, dt: f32) -> f32 {
-        if !self.active {
-            return 0.0;
+        if self.active {
+            match &mut self.animation {
+                ContinuousAnimationType::Pulse(p) => p.update(dt),
+                ContinuousAnimationType::Rotate(r) => r.update(dt),
+                ContinuousAnimationType::Fade(f) => f.update(dt),
+                ContinuousAnimationType::Bounce(b) => b.update(dt),
+                ContinuousAnimationType::Spring(s) => s.update(dt),
+                ContinuousAnimationType::Keyframe(k) => k.update(dt),
+            }
         }
-        match &mut self.animation {
-            ContinuousAnimationType::Pulse(p) => {
-                p.update(dt);
-                p.evaluate()
-            }
-            ContinuousAnimationType::Rotate(r) => {
-                r.update(dt);
-                r.evaluate()
-            }
-            ContinuousAnimationType::Fade(f) => {
-                f.update(dt);
-                f.evaluate()
-            }
-            ContinuousAnimationType::Bounce(b) => {
-                b.update(dt);
-                b.evaluate()
-            }
-            ContinuousAnimationType::Spring(s) => {
-                s.update(dt);
-                s.evaluate()
-            }
-            ContinuousAnimationType::Keyframe(k) => {
-                k.update(dt);
-                k.evaluate()
-            }
+
+        match &self.animation {
+            ContinuousAnimationType::Pulse(p) => p.evaluate(),
+            ContinuousAnimationType::Rotate(r) => r.evaluate(),
+            ContinuousAnimationType::Fade(f) => f.evaluate(),
+            ContinuousAnimationType::Bounce(b) => b.evaluate(),
+            ContinuousAnimationType::Spring(s) => s.evaluate(),
+            ContinuousAnimationType::Keyframe(k) => k.evaluate(),
         }
     }
 
@@ -1560,6 +1591,7 @@ pub struct ParticleSystem {
     pub particles: Vec<Particle>,
     /// Accumulated time for emission.
     pub emission_accumulator: f32,
+    emission_count: u64,
 }
 
 impl ParticleSystem {
@@ -1569,27 +1601,32 @@ impl ParticleSystem {
             config,
             particles: Vec::new(),
             emission_accumulator: 0.0,
+            emission_count: 0,
         }
     }
 
     /// Emit a single particle with random properties.
-    fn emit_particle(&mut self, _seed: u64) {
-        // Simple emission — in production, use a proper RNG
+    fn emit_particle(&mut self, seed: u64) {
+        let mut random_state = seed.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut sample = || {
+            random_state = random_state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+            let mut value = random_state;
+            value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            value = (value ^ (value >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            value ^= value >> 31;
+            (value >> 40) as f32 / (1u32 << 24) as f32
+        };
         let lifetime = self.config.lifetime_range.0
-            + (self.config.lifetime_range.1 - self.config.lifetime_range.0)
-                * (self.particles.len() as f32 % 1.0);
+            + (self.config.lifetime_range.1 - self.config.lifetime_range.0) * sample();
 
         let size = self.config.size_range.0
-            + (self.config.size_range.1 - self.config.size_range.0)
-                * (self.particles.len() as f32 % 1.0);
+            + (self.config.size_range.1 - self.config.size_range.0) * sample();
 
         let velocity = Vector2D::new(
             self.config.velocity_range.0.x
-                + (self.config.velocity_range.1.x - self.config.velocity_range.0.x)
-                    * (self.particles.len() as f32 % 1.0),
+                + (self.config.velocity_range.1.x - self.config.velocity_range.0.x) * sample(),
             self.config.velocity_range.0.y
-                + (self.config.velocity_range.1.y - self.config.velocity_range.0.y)
-                    * (self.particles.len() as f32 % 1.0),
+                + (self.config.velocity_range.1.y - self.config.velocity_range.0.y) * sample(),
         );
 
         self.particles.push(Particle::new(
@@ -1606,7 +1643,8 @@ impl ParticleSystem {
         // Emit new particles
         self.emission_accumulator += dt * self.config.emission_rate;
         while self.emission_accumulator >= 1.0 && self.particles.len() < self.config.max_particles {
-            self.emit_particle(self.particles.len() as u64);
+            self.emit_particle(self.emission_count);
+            self.emission_count = self.emission_count.wrapping_add(1);
             self.emission_accumulator -= 1.0;
         }
 
@@ -1657,6 +1695,22 @@ mod tests {
     fn test_easing_bounds() {
         assert!((Easing::EaseOut.compute(0.0) - 0.0).abs() < f32::EPSILON);
         assert!((Easing::EaseOut.compute(1.0) - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_cubic_bezier_uses_x_control_points() {
+        let standard = Easing::CubicBezier(0.25, 0.1, 0.25, 1.0).compute(0.5);
+        let different_x = Easing::CubicBezier(0.8, 0.1, 0.9, 1.0).compute(0.5);
+        assert!((standard - 0.8024).abs() < 0.002);
+        assert!((standard - different_x).abs() > 0.1);
+    }
+
+    #[test]
+    fn test_elastic_easing_oscillates_and_differs_from_back() {
+        assert_eq!(Easing::Elastic.compute(0.0), 0.0);
+        assert_eq!(Easing::Elastic.compute(1.0), 1.0);
+        assert_ne!(Easing::Elastic.compute(0.5), Easing::Back.compute(0.5));
+        assert!(Easing::Elastic.compute(0.5) > 1.0);
     }
 
     #[test]
@@ -1775,6 +1829,14 @@ mod tests {
 
         let value = ca.update(0.25);
         assert!(value > 0.0);
+    }
+
+    #[test]
+    fn test_paused_continuous_animation_preserves_value() {
+        let mut animation = ContinuousAnimation::rotate(2.0);
+        let value = animation.update(0.5);
+        animation.pause();
+        assert_eq!(animation.update(1.0), value);
     }
 
     #[test]
@@ -1916,5 +1978,26 @@ mod tests {
         system.update(0.1);
         assert!(system.particle_count() > 0);
         assert!(system.particle_count() <= 10);
+    }
+
+    #[test]
+    fn test_particle_system_varies_emitted_properties() {
+        let mut system = ParticleSystem::new(ParticleSystemConfig {
+            velocity_range: (Vector2D::ZERO, Vector2D::new(100.0, 100.0)),
+            lifetime_range: (1.0, 10.0),
+            size_range: (1.0, 10.0),
+            emission_rate: 10.0,
+            max_particles: 10,
+            gravity: Vector2D::ZERO,
+            ..ParticleSystemConfig::default()
+        });
+
+        system.update(1.0);
+        let first = &system.particles()[0];
+        assert!(system.particles().iter().any(|particle| {
+            particle.velocity != first.velocity
+                || particle.lifetime != first.lifetime
+                || particle.size != first.size
+        }));
     }
 }

@@ -20,6 +20,60 @@ const BTN_LEFT: u32 = 272;
 const BTN_RIGHT: u32 = 273;
 const BTN_MIDDLE: u32 = 274;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StatusPanel {
+    Audio,
+    Bluetooth,
+    Rclone,
+    Process,
+}
+
+fn close_other_status_panels(state: &mut AppState, keep_open: Option<StatusPanel>) -> bool {
+    let mut changed = false;
+
+    for (panel_flag, panel) in [
+        (&mut state.audio_panel_open, StatusPanel::Audio),
+        (&mut state.bluetooth_panel_open, StatusPanel::Bluetooth),
+        (&mut state.rclone_panel_open, StatusPanel::Rclone),
+        (&mut state.process_panel_open, StatusPanel::Process),
+    ] {
+        if keep_open == Some(panel) {
+            continue;
+        }
+        if *panel_flag {
+            *panel_flag = false;
+            changed = true;
+        }
+    }
+
+    if changed {
+        state.needs_redraw = true;
+    }
+
+    changed
+}
+
+fn close_status_panels(state: &mut AppState) -> bool {
+    let any_open = state.audio_panel_open
+        || state.bluetooth_panel_open
+        || state.rclone_panel_open
+        || state.process_panel_open;
+
+    if !any_open {
+        return false;
+    }
+
+    state.audio_panel_open = false;
+    state.bluetooth_panel_open = false;
+    state.rclone_panel_open = false;
+    state.process_panel_open = false;
+    state.audio_slider_drag = None;
+    state.set_rclone_monitor_enabled(false);
+    state.set_process_monitor_enabled(false);
+    state.needs_redraw = true;
+    true
+}
+
 /// Processes all pointer click events (press and release).
 ///
 /// Handles clicks on dock icons, popup rows, context menu items,
@@ -126,16 +180,16 @@ pub fn handle_click_events(
                             .send_audio_action(crate::models::AudioAction::MediaControl(control));
                         continue;
                     }
-                    state.audio_panel_open = !state.audio_panel_open;
-                    if state.audio_panel_open {
-                        state.bluetooth_panel_open = false;
-                        state.rclone_panel_open = false;
-                        state.process_panel_open = false;
+                    let should_open_audio_panel = !state.audio_panel_open;
+                    if should_open_audio_panel {
+                        close_other_status_panels(state, Some(StatusPanel::Audio));
+                        state.audio_panel_open = true;
                         state.set_rclone_monitor_enabled(false);
                         state.set_process_monitor_enabled(false);
                         state.close_context_menu_now();
                         state.close_window_list_now();
                     } else {
+                        state.audio_panel_open = false;
                         state.audio_slider_drag = None;
                     }
                     state.needs_redraw = true;
@@ -175,24 +229,39 @@ pub fn handle_click_events(
                             .status();
                         state.bluetooth_widget_pid = None;
                     } else {
-                        // Spawn a new widget process and track its PID
+                        // Spawn a new widget process and track its PID.
+                        // Allow override for development/custom installs; fall back to common command names.
                         let (bt_x, bt_y) = state.bluetooth_widget_position();
-                        if let Ok(child) = std::process::Command::new("sh")
-                            .args(&[
-                                "-c",
-                                "~/m.2/Rust/bluetooth-widget-complete/target/release/widget-test",
-                            ])
-                            .env("BT_WIDGET_X", bt_x.to_string())
-                            .env("BT_WIDGET_Y", bt_y.to_string())
-                            .spawn()
-                        {
+                        let widget_cmd = std::env::var("DOCK_BLUETOOTH_WIDGET_CMD")
+                            .ok()
+                            .filter(|s| !s.trim().is_empty());
+                        let spawn_result = if let Some(cmd) = widget_cmd {
+                            std::process::Command::new(cmd)
+                                .env("BT_WIDGET_X", bt_x.to_string())
+                                .env("BT_WIDGET_Y", bt_y.to_string())
+                                .spawn()
+                        } else {
+                            std::process::Command::new("bluetooth-widget")
+                                .env("BT_WIDGET_X", bt_x.to_string())
+                                .env("BT_WIDGET_Y", bt_y.to_string())
+                                .spawn()
+                                .or_else(|_| {
+                                    std::process::Command::new("bluetooth-widget-complete")
+                                        .env("BT_WIDGET_X", bt_x.to_string())
+                                        .env("BT_WIDGET_Y", bt_y.to_string())
+                                        .spawn()
+                                })
+                        };
+                        if let Ok(child) = spawn_result {
                             state.bluetooth_widget_pid = Some(child.id());
+                        } else {
+                            eprintln!(
+                                "Failed to launch Bluetooth widget. Set DOCK_BLUETOOTH_WIDGET_CMD to the widget executable path."
+                            );
                         }
                     }
+                    close_other_status_panels(state, Some(StatusPanel::Bluetooth));
                     state.bluetooth_panel_open = false;
-                    state.audio_panel_open = false;
-                    state.rclone_panel_open = false;
-                    state.process_panel_open = false;
                     state.needs_redraw = true;
                     layer_changed = true;
                     continue;
@@ -206,11 +275,10 @@ pub fn handle_click_events(
                         event.position.1,
                     )
                 {
-                    state.rclone_panel_open = !state.rclone_panel_open;
-                    if state.rclone_panel_open {
-                        state.audio_panel_open = false;
-                        state.bluetooth_panel_open = false;
-                        state.process_panel_open = false;
+                    let should_open_rclone_panel = !state.rclone_panel_open;
+                    if should_open_rclone_panel {
+                        close_other_status_panels(state, Some(StatusPanel::Rclone));
+                        state.rclone_panel_open = true;
                         state.audio_slider_drag = None;
                         state.set_process_monitor_enabled(false);
                         state.set_rclone_monitor_enabled(true);
@@ -218,6 +286,7 @@ pub fn handle_click_events(
                         state.close_context_menu_now();
                         state.close_window_list_now();
                     } else {
+                        state.rclone_panel_open = false;
                         state.set_rclone_monitor_enabled(false);
                     }
                     state.needs_redraw = true;
@@ -233,11 +302,10 @@ pub fn handle_click_events(
                         event.position.1,
                     )
                 {
-                    state.process_panel_open = !state.process_panel_open;
-                    if state.process_panel_open {
-                        state.audio_panel_open = false;
-                        state.bluetooth_panel_open = false;
-                        state.rclone_panel_open = false;
+                    let should_open_process_panel = !state.process_panel_open;
+                    if should_open_process_panel {
+                        close_other_status_panels(state, Some(StatusPanel::Process));
+                        state.process_panel_open = true;
                         state.audio_slider_drag = None;
                         state.set_rclone_monitor_enabled(false);
                         state.set_process_monitor_enabled(true);
@@ -245,6 +313,7 @@ pub fn handle_click_events(
                         state.close_context_menu_now();
                         state.close_window_list_now();
                     } else {
+                        state.process_panel_open = false;
                         state.set_process_monitor_enabled(false);
                     }
                     state.needs_redraw = true;
@@ -603,19 +672,7 @@ pub fn handle_click_events(
                 {
                     continue;
                 }
-                if state.audio_panel_open
-                    || state.bluetooth_panel_open
-                    || state.rclone_panel_open
-                    || state.process_panel_open
-                {
-                    state.audio_panel_open = false;
-                    state.bluetooth_panel_open = false;
-                    state.rclone_panel_open = false;
-                    state.process_panel_open = false;
-                    state.audio_slider_drag = None;
-                    state.set_rclone_monitor_enabled(false);
-                    state.set_process_monitor_enabled(false);
-                    state.needs_redraw = true;
+                if close_status_panels(state) {
                     layer_changed = true;
                     continue;
                 }

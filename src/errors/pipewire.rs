@@ -66,7 +66,9 @@ impl PipeWireAppError {
             PipeWireAppError::NodeNotFound { .. } => "List available nodes and select alternative",
             PipeWireAppError::MainLoopError(_) => "Restart PipeWire main loop",
             PipeWireAppError::DmaBufFallback => "Continue with CPU upload path",
-            PipeWireAppError::StreamUnderrun => "Reduce frame rate or increase buffer size",
+            PipeWireAppError::StreamUnderrun => {
+                "Wait for the next buffer/frame, skip underrun frames, or adjust stream buffering/latency if configured"
+            }
         }
     }
 }

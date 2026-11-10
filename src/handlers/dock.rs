@@ -266,7 +266,10 @@ pub fn launch_app_with_files(app_id: &str, files: &[std::path::PathBuf]) {
         "FLTK_SCALING",
     ];
 
-    let launcher_path = crate::handlers::get_launcher_path();
+    let Some(launcher_path) = crate::handlers::get_launcher_path() else {
+        tracing::error!("Launcher script not found; cannot launch app '{}'", app_id);
+        return;
+    };
     let normalized = normalize_app_id(app_id);
     let mut command = std::process::Command::new("bash");
     command.arg(&launcher_path).arg(&normalized);

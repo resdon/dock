@@ -137,10 +137,10 @@ impl Color {
             Some(Self::from_u8_rgb(r as u8, g as u8, b as u8))
         } else if hex.len() == 8 {
             // #RRGGBBAA
-            let a = (bytes >> 24) & 0xFF;
-            let r = (bytes >> 16) & 0xFF;
-            let g = (bytes >> 8) & 0xFF;
-            let b = bytes & 0xFF;
+            let r = (bytes >> 24) & 0xFF;
+            let g = (bytes >> 16) & 0xFF;
+            let b = (bytes >> 8) & 0xFF;
+            let a = bytes & 0xFF;
             Some(Self::from_u8_rgba(r as u8, g as u8, b as u8, a as u8))
         } else {
             None
@@ -386,7 +386,11 @@ impl Gradient {
 
     /// Add a color stop to the gradient.
     pub fn add_stop(&mut self, offset: f32, color: Color) {
-        self.stops.push(ColorStop::new(offset, color));
+        let stop = ColorStop::new(offset, color);
+        let index = self
+            .stops
+            .partition_point(|existing| existing.offset <= stop.offset);
+        self.stops.insert(index, stop);
     }
 
     /// Set the spread mode.
@@ -504,6 +508,14 @@ mod tests {
     }
 
     #[test]
+    fn test_color_from_hex_with_alpha() {
+        assert_eq!(
+            Color::from_hex("#FF000080").unwrap().to_u8_rgba(),
+            [255, 0, 0, 128]
+        );
+    }
+
+    #[test]
     fn test_color_lerp() {
         let a = Color::RED;
         let b = Color::BLUE;
@@ -518,6 +530,16 @@ mod tests {
         let mut grad = Gradient::linear(0.0, 0.0, 100.0, 0.0);
         grad.add_stop(0.0, Color::RED);
         grad.add_stop(1.0, Color::BLUE);
+        let mid = grad.sample(0.5);
+        assert!((mid.r - 0.5).abs() < f32::EPSILON);
+        assert!((mid.b - 0.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_gradient_sample_with_unsorted_stops() {
+        let mut grad = Gradient::linear(0.0, 0.0, 100.0, 0.0);
+        grad.add_stop(1.0, Color::BLUE);
+        grad.add_stop(0.0, Color::RED);
         let mid = grad.sample(0.5);
         assert!((mid.r - 0.5).abs() < f32::EPSILON);
         assert!((mid.b - 0.5).abs() < f32::EPSILON);

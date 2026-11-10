@@ -816,17 +816,21 @@ impl AlignmentConstraint {
             return;
         }
 
-        match self.axis {
-            AlignmentAxis::Horizontal | AlignmentAxis::Both => {
-                let mid_x = (a.position.x * b_inv + b.position.x * a_inv) / total;
-                a.position.x += (mid_x - a.position.x) * self.stiffness;
-                b.position.x += (mid_x - b.position.x) * self.stiffness;
-            }
-            AlignmentAxis::Vertical | AlignmentAxis::Both => {
-                let mid_y = (a.position.y * b_inv + b.position.y * a_inv) / total;
-                a.position.y += (mid_y - a.position.y) * self.stiffness;
-                b.position.y += (mid_y - b.position.y) * self.stiffness;
-            }
+        let align_x = matches!(
+            self.axis,
+            AlignmentAxis::Horizontal | AlignmentAxis::Both
+        );
+        let align_y = matches!(self.axis, AlignmentAxis::Vertical | AlignmentAxis::Both);
+
+        if align_x {
+            let mid_x = (a.position.x * b_inv + b.position.x * a_inv) / total;
+            a.position.x += (mid_x - a.position.x) * self.stiffness;
+            b.position.x += (mid_x - b.position.x) * self.stiffness;
+        }
+        if align_y {
+            let mid_y = (a.position.y * b_inv + b.position.y * a_inv) / total;
+            a.position.y += (mid_y - a.position.y) * self.stiffness;
+            b.position.y += (mid_y - b.position.y) * self.stiffness;
         }
     }
 }

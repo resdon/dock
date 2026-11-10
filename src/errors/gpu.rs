@@ -49,6 +49,7 @@ impl GpuAppError {
         matches!(
             self,
             GpuAppError::MemoryPressure { .. }
+                | GpuAppError::FrameTimeout
                 | GpuAppError::PresentationFailed(_)
                 | GpuAppError::DmaBufExportFailed(_)
         )

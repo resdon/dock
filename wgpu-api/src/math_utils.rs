@@ -299,8 +299,8 @@ impl Mat2DExt for Mat3 {
 
     fn extract_scale(&self) -> Vec2 {
         Vec2::new(
-            self.x_axis.x.abs() + self.x_axis.y.abs(),
-            self.y_axis.x.abs() + self.y_axis.y.abs(),
+            self.x_axis.truncate().length(),
+            self.y_axis.truncate().length(),
         )
     }
 
@@ -333,8 +333,8 @@ impl Mat2DExt for Mat3A {
 
     fn extract_scale(&self) -> Vec2 {
         Vec2::new(
-            self.x_axis.x.abs() + self.x_axis.y.abs(),
-            self.y_axis.x.abs() + self.y_axis.y.abs(),
+            self.x_axis.truncate().length(),
+            self.y_axis.truncate().length(),
         )
     }
 
@@ -489,12 +489,14 @@ pub fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
 
 /// Smooth damping (lerp with delta time).
 pub fn damp(current: f32, target: f32, speed: f32, dt: f32) -> f32 {
-    current + (target - current) * (1.0 - (-speed * dt).exp())
+    let t = (speed * dt).clamp(0.0, 80.0);
+    current + (target - current) * (1.0 - (-t).exp())
 }
 
 /// Smooth damping for vectors.
 pub fn damp_vec2(current: Vec2, target: Vec2, speed: f32, dt: f32) -> Vec2 {
-    let factor = 1.0 - (-speed * dt).exp();
+    let t = (speed * dt).clamp(0.0, 80.0);
+    let factor = 1.0 - (-t).exp();
     current + (target - current) * factor
 }
 
@@ -523,8 +525,7 @@ pub fn hash_f32(x: u32, y: u32) -> f32 {
             .wrapping_add(n)
             .wrapping_add(3344567289u32),
     );
-    let frac = ((n >> 16) as f32 / 32768.0).fract();
-    frac.abs()
+    (n as f64 / (u32::MAX as f64 + 1.0)) as f32
 }
 
 /// Value noise at a 2D point.

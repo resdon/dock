@@ -41,10 +41,23 @@ pub enum PopupBorderStyle {
     None,
 }
 
-/// Dock configuration settings
+/// Dock configuration settings.
+///
+/// Organized into logical sections:
+/// - **Dock**: layout, appearance, hover, activity dashes
+/// - **Animations**: click, bounce, minimize
+/// - **Window List Popup**: sizes, colors, borders, PipeWire capture
+/// - **Context Menu**: sizes, action colors
+/// - **Timing**: fade-in durations, auto-close timeouts
+/// - **Icon Badge**: notification indicators
+/// - **Time Box**: date/time display (right side of dock)
+/// - **Tray Box**: status icons and keyboard layout (left side of dock)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DockConfig {
-    // === Dock layout ===
+    // ═══════════════════════════════════════════════════════════
+    // DOCK — Main dock layout and appearance
+    // ═══════════════════════════════════════════════════════════
+
     /// The anchor point for the dock on the screen
     #[serde(default)]
     pub anchor: DockAnchor,
@@ -60,8 +73,6 @@ pub struct DockConfig {
     /// Margin from the anchored edge in pixels (floating dock)
     #[serde(default = "default_margin")]
     pub margin: i32,
-
-    // === Dock appearance ===
     /// Dock background color in hex format (e.g., "#1D1C22")
     #[serde(default = "default_background_color")]
     pub background_color: String,
@@ -78,7 +89,7 @@ pub struct DockConfig {
     #[serde(default = "default_border_radius")]
     pub border_radius: u32,
 
-    // === Dock hover ===
+    // ── Dock hover ──
     /// Enable hover highlight outline on icons
     #[serde(default = "default_hover_highlight")]
     pub hover_highlight: bool,
@@ -89,8 +100,9 @@ pub struct DockConfig {
     #[serde(default = "default_hover_border_thickness")]
     pub hover_border_thickness: u32,
 
-    // === Dock activity dashes ===
-    /// Dash color for focused/active apps in hex format
+    // ── Dock activity dashes (running indicators) ──
+    /// Dash color for focused/active apps in hex format.
+    /// Default: #DC2626 (red) — matches the Minimize button color.
     #[serde(default = "default_dash_focused_color")]
     pub dash_focused_color: String,
     /// Dash color for inactive apps in hex format
@@ -106,7 +118,11 @@ pub struct DockConfig {
     #[serde(default = "default_dash_gap_length")]
     pub dash_gap_length: u32,
 
-    // === Click animation ===
+    // ═══════════════════════════════════════════════════════════
+    // ANIMATIONS — Icon click, bounce, and minimize effects
+    // ═══════════════════════════════════════════════════════════
+
+    // ── Click animation ──
     /// Enable click animation (scale up and back)
     #[serde(default = "default_click_animation")]
     pub click_animation: bool,
@@ -120,7 +136,7 @@ pub struct DockConfig {
     #[serde(default = "default_click_animation_down_duration")]
     pub click_animation_down_duration: f32,
 
-    // === Bounce (launch) animation ===
+    // ── Bounce (launch) animation ──
     /// Enable bounce animation when launching apps
     #[serde(default = "default_bounce_animation")]
     pub bounce_animation: bool,
@@ -131,6 +147,7 @@ pub struct DockConfig {
     #[serde(default = "default_bounce_animation_duration")]
     pub bounce_animation_duration: f32,
 
+    // ── Minimize animation ──
     /// Minimize animation: scale factor (1.0 = no change, 0.7 = shrink to 70%)
     #[serde(default = "default_minimize_animation_scale")]
     pub minimize_animation_scale: f32,
@@ -138,7 +155,11 @@ pub struct DockConfig {
     #[serde(default = "default_minimize_animation_duration")]
     pub minimize_animation_duration: f32,
 
-    // === Popup window list ===
+    // ═══════════════════════════════════════════════════════════
+    // WINDOW LIST POPUP — Window list popup sizes and styling
+    // ═══════════════════════════════════════════════════════════
+
+    // ── Window list sizes ──
     /// Popup window list width in pixels
     #[serde(default = "default_popup_width")]
     pub popup_width: u32,
@@ -169,8 +190,47 @@ pub struct DockConfig {
     /// Popup close button margin from right edge in pixels
     #[serde(default = "default_popup_close_button_margin")]
     pub popup_close_button_margin: u32,
+
+    // ── Window list colors ──
+    /// Popup background color in hex format (e.g., "#1D1C22")
+    #[serde(default = "default_popup_bg_color")]
+    pub popup_bg_color: String,
+    /// Popup window list text color in hex format.
+    /// Default: #007AFF (blue) — matches the dashed block text color.
+    #[serde(default = "default_popup_text_color")]
+    pub popup_text_color: String,
+    /// Popup row hover border color in hex format
+    #[serde(default = "default_popup_hover_border_color")]
+    pub popup_hover_border_color: String,
+    /// Popup close button hover row highlight color in hex format
+    #[serde(default = "default_popup_close_hover_color")]
+    pub popup_close_hover_color: String,
+    /// Popup close button default color in hex format (e.g., "#DC2626")
+    #[serde(default = "default_popup_close_button_color")]
+    pub popup_close_button_color: String,
+    /// Popup close button hover color in hex format
+    #[serde(default = "default_popup_close_button_hover_color")]
+    pub popup_close_button_hover_color: String,
+    /// Popup close button cross mark color in hex format
+    #[serde(default = "default_popup_close_cross_color")]
+    pub popup_close_cross_color: String,
+    /// Popup frame background color in hex format (e.g., "#000000")
+    #[serde(default = "default_popup_frame_bg_color")]
+    pub popup_frame_bg_color: String,
+
+    // ── Window list borders ──
+    /// Popup border style: "full", "dashes", or "none"
+    #[serde(default)]
+    pub popup_border_style: PopupBorderStyle,
+    /// Popup border color in hex format
+    #[serde(default = "default_popup_border_color")]
+    pub popup_border_color: String,
+    /// Popup border dash gap size in pixels
+    #[serde(default = "default_popup_dash_gap")]
+    pub popup_dash_gap: u32,
+
+    // ── PipeWire capture ──
     /// PipeWire capture frame maximum quality cap (0.01–1.0).
-    ///
     /// The frame is automatically downscaled to match the popup's display area.
     /// This value acts as an upper bound: even if the display area is large, the
     /// frame won't exceed `source × pipewire_scale_factor`. Set to 1.0 for full
@@ -179,66 +239,54 @@ pub struct DockConfig {
     #[serde(default = "default_pipewire_scale_factor")]
     pub pipewire_scale_factor: f32,
 
-    // === Popup colors ===
-    /// Popup row hover border color in hex format (e.g., "#6495E6")
-    #[serde(default = "default_popup_hover_border_color")]
-    pub popup_hover_border_color: String,
-    /// Popup close button hover row highlight color in hex format (e.g., "#DC3232")
-    #[serde(default = "default_popup_close_hover_color")]
-    pub popup_close_hover_color: String,
-    /// Popup close button default color in hex format (e.g., "#DC2626")
-    #[serde(default = "default_popup_close_button_color")]
-    pub popup_close_button_color: String,
-    /// Popup close button hover color in hex format (e.g., "#1919AE")
-    #[serde(default = "default_popup_close_button_hover_color")]
-    pub popup_close_button_hover_color: String,
-    /// Popup close button cross mark color in hex format (e.g., "#FFE6F6")
-    #[serde(default = "default_popup_close_cross_color")]
-    pub popup_close_cross_color: String,
-    /// Popup frame background color in hex format (e.g., "#000000")
-    #[serde(default = "default_popup_frame_bg_color")]
-    pub popup_frame_bg_color: String,
-    /// Popup window list text color in hex format.
-    /// Default: #00FF00 (green) — used for window titles in the popup grid.
-    /// Green provides high contrast against the dark popup background.
-    #[serde(default = "default_popup_text_color")]
-    pub popup_text_color: String,
-    /// Popup border style: "full", "dashes", or "none"
-    #[serde(default)]
-    pub popup_border_style: PopupBorderStyle,
-    /// Popup border color in hex format (e.g., "#6495E6")
-    #[serde(default = "default_popup_border_color")]
-    pub popup_border_color: String,
-    /// Popup border dash gap size in pixels
-    #[serde(default = "default_popup_dash_gap")]
-    pub popup_dash_gap: u32,
+    /// Optional app ID aliases used during dock canonicalization.
+    /// Keys are matched case-insensitively against normalized/raw window app IDs.
+    /// Values should be canonical pinned app IDs.
+    #[serde(default = "default_app_id_aliases")]
+    pub app_id_aliases: std::collections::HashMap<String, String>,
 
-    // === Context menu ===
+    // ═══════════════════════════════════════════════════════════
+    // CONTEXT MENU — Right-click menu sizes and action colors
+    // ═══════════════════════════════════════════════════════════
+
     /// Context menu width in pixels
     #[serde(default = "default_context_menu_width")]
     pub context_menu_width: u32,
     /// Context menu row height in pixels
     #[serde(default = "default_context_menu_row_height")]
     pub context_menu_row_height: u32,
+    /// Additional vertical shift for context-menu labels, in logical pixels.
+    /// Positive values move labels down; both render paths scale this value for the output scale.
+    /// Keep the default at 6px to preserve the established label alignment.
+    #[serde(default = "default_context_menu_text_offset_y")]
+    pub context_menu_text_offset_y: i32,
+    /// Context menu background color in hex format
+    #[serde(default = "default_context_menu_bg_color")]
+    pub context_menu_bg_color: String,
+    /// Context menu text color in hex format (default action text)
+    #[serde(default = "default_context_menu_text_color")]
+    pub context_menu_text_color: String,
     /// Context menu Focus action text color in hex format.
-    /// Default: #00FF00 (green) — used for the "Focus" menu item to bring a window to front.
+    /// Default: #00E5FF (cyan) — brings a window to front.
     #[serde(default = "default_popup_focus_color")]
     pub popup_focus_color: String,
     /// Context menu Unpin/TogglePin action text color in hex format.
-    /// Default: #00FF00 (green) — used for the pin/unpin toggle menu item.
+    /// Default: #E6E664 (yellow) — toggles pin state.
     #[serde(default = "default_popup_unpin_color")]
     pub popup_unpin_color: String,
     /// Context menu Launch action text color in hex format.
-    /// Default: #00FF00 (green) — used for the "Launch" menu item to start a new instance.
+    /// Default: #6495E6 (blue) — starts a new instance.
     #[serde(default = "default_popup_launch_color")]
     pub popup_launch_color: String,
     /// Context menu Quit/CloseApp action text color in hex format.
-    /// Default: #00FF00 (green) — used for the "Quit" menu item to close the application.
-    /// Previously red (#E66464), changed to green for consistent text color scheme.
+    /// Default: #E66464 (red) — closes the application.
     #[serde(default = "default_popup_quit_color")]
     pub popup_quit_color: String,
 
-    // === Fade/timing ===
+    // ═══════════════════════════════════════════════════════════
+    // TIMING — Fade-in durations and auto-close timeouts
+    // ═══════════════════════════════════════════════════════════
+
     /// Window list popup fade-in duration in seconds
     #[serde(default = "default_popup_fade_in")]
     pub popup_fade_in: f32,
@@ -255,10 +303,12 @@ pub struct DockConfig {
     #[serde(default = "default_hard_timeout")]
     pub hard_timeout: u64,
 
-    // === Icon badge ===
+    // ═══════════════════════════════════════════════════════════
+    // ICON BADGE — Notification indicators on dock icons
+    // ═══════════════════════════════════════════════════════════
+
     /// Badge notification number text color in hex format.
     /// Default: #00FF00 (green) — displayed on the red badge circle (#DC2626).
-    /// Green provides high contrast against the red background for visibility.
     #[serde(default = "default_badge_text_color")]
     pub badge_text_color: String,
     /// Badge background color in hex format
@@ -268,127 +318,115 @@ pub struct DockConfig {
     #[serde(default = "default_badge_font_size")]
     pub badge_font_size: u32,
 
-    // === Date/time block widget (right side of dock) ===
+    // ═══════════════════════════════════════════════════════════
+    // TIME BOX — Date/time display (right side of dock)
+    // ═══════════════════════════════════════════════════════════
+
     /// Enable the date/time block widget floating to the right of the dock.
     /// The block displays time (HH:MM), day+month, and year.
     #[serde(default = "default_date_time_block_enabled")]
     pub date_time_block_enabled: bool,
-    /// Date/time block width in pixels (logical).
-    /// Default: 104px — wide enough for time and date text.
+    /// Date/time block width in pixels (logical)
     #[serde(default = "default_date_time_block_width")]
     pub date_time_block_width: u32,
-    /// Date/time block height in pixels (logical).
-    /// Default: 62px — accommodates time, day+month, and year.
+    /// Date/time block height in pixels (logical)
     #[serde(default = "default_date_time_block_height")]
     pub date_time_block_height: u32,
-    /// Date/time block border color in hex format (e.g., "#00FF00").
-    /// Default: #00FF00 (green) — matches the dock's text color scheme.
+    /// Date/time block border color in hex format
     #[serde(default = "default_date_time_block_border_color")]
     pub date_time_block_border_color: String,
-    /// Date/time block border thickness in pixels.
-    /// Default: 2px — visible but not overwhelming.
+    /// Date/time block border thickness in pixels
     #[serde(default = "default_date_time_block_border_thickness")]
     pub date_time_block_border_thickness: u32,
-    /// Date/time block dash segment length in pixels.
-    /// Default: 6px — each dash line is 6 pixels long.
+    /// Date/time block dash segment length in pixels
     #[serde(default = "default_date_time_block_dash_length")]
     pub date_time_block_dash_length: u32,
-    /// Date/time block dash gap length in pixels.
-    /// Default: 4px — gap between each dash segment.
+    /// Date/time block dash gap length in pixels
     #[serde(default = "default_date_time_block_gap_length")]
     pub date_time_block_gap_length: u32,
-    /// Date/time block text color in hex format (e.g., "#007AFF").
-    /// Default: #007AFF (blue) — used for time, date, and year text.
+    /// Date/time block text color in hex format
     #[serde(default = "default_date_time_block_text_color")]
     pub date_time_block_text_color: String,
-    /// Date/time block time font size in points.
-    /// Default: 32pt — large, prominent time display (HH:MM).
+    /// Date/time block time font size in points
     #[serde(default = "default_date_time_block_time_font_size")]
     pub date_time_block_time_font_size: u32,
-    /// Date/time block time text y-position in pixels (from top).
-    /// Default: 25px — time text below the dashed border.
+    /// Date/time block time text y-position in pixels (from top)
     #[serde(default = "default_date_time_block_time_text_y")]
     pub date_time_block_time_text_y: u32,
-    /// Date/time block date font size in points.
-    /// Default: 16pt — half the time font size for date lines.
+    /// Additional vertical shift for the time label, in logical pixels.
+    /// Positive values move it down; this is separate from the configured base y-position.
+    /// Keep the default at 7px to preserve the established GPU and CPU alignment.
+    #[serde(default = "default_date_time_block_time_offset_y")]
+    pub date_time_block_time_offset_y: i32,
+    /// Date/time block date font size in points
     #[serde(default = "default_date_time_block_date_font_size")]
     pub date_time_block_date_font_size: u32,
-    /// Date/time block day+month text y-position in pixels (from top).
-    /// Default: 43px — day+month text below the time.
+    /// Date/time block day+month text y-position in pixels (from top)
     #[serde(default = "default_date_time_block_day_month_y")]
     pub date_time_block_day_month_y: u32,
-    /// Date/time block year text y-position in pixels (from top).
-    /// Default: 59px — year text below the day+month.
+    /// Date/time block year text y-position in pixels (from top)
     #[serde(default = "default_date_time_block_year_y")]
     pub date_time_block_year_y: u32,
-    /// Date/time block gap from the dock's right edge in pixels.
-    /// Default: 4px — positions the block next to the dock.
+    /// Date/time block gap from the dock's right edge in pixels
     #[serde(default = "default_date_time_block_gap_from_dock")]
     pub date_time_block_gap_from_dock: u32,
 
-    // === Dashed block widget (icons and keyboard layout, left side of dock) ===
+    // ═══════════════════════════════════════════════════════════
+    // TRAY BOX — Status icons and keyboard layout (left side)
+    // ═══════════════════════════════════════════════════════════
+
     /// Enable the dashed block widget floating to the left of the dock.
     /// The block displays status icons and keyboard layout indicator.
     #[serde(default = "default_dashed_block_enabled")]
     pub dashed_block_enabled: bool,
-    /// Dashed block width in pixels (logical).
-    /// Default: 74px — wide enough for 2×2 icon grid and ENG text.
+    /// Dashed block width in pixels (logical)
     #[serde(default = "default_dashed_block_width")]
     pub dashed_block_width: u32,
-    /// Dashed block height in pixels (logical).
-    /// Default: 48px — accommodates 2×2 icon grid and keyboard layout text.
+    /// Dashed block height in pixels (logical)
     #[serde(default = "default_dashed_block_height")]
     pub dashed_block_height: u32,
-    /// Dashed block border color in hex format (e.g., "#00FF00").
-    /// Default: #00FF00 (green) — matches the dock's text color scheme.
+    /// Dashed block border color in hex format
     #[serde(default = "default_dashed_block_border_color")]
     pub dashed_block_border_color: String,
-    /// Dashed block border thickness in pixels.
-    /// Default: 2px — visible but not overwhelming.
+    /// Dashed block border thickness in pixels
     #[serde(default = "default_dashed_block_border_thickness")]
     pub dashed_block_border_thickness: u32,
-    /// Dashed block dash segment length in pixels.
-    /// Default: 6px — each dash line is 6 pixels long.
+    /// Dashed block dash segment length in pixels
     #[serde(default = "default_dashed_block_dash_length")]
     pub dashed_block_dash_length: u32,
-    /// Dashed block dash gap length in pixels.
-    /// Default: 4px — gap between each dash segment.
+    /// Dashed block dash gap length in pixels
     #[serde(default = "default_dashed_block_gap_length")]
     pub dashed_block_gap_length: u32,
-    /// Dashed block text color in hex format (e.g., "#007AFF").
-    /// Default: #007AFF (blue) — used for keyboard layout text.
+    /// Dashed block text color in hex format
     #[serde(default = "default_dashed_block_text_color")]
     pub dashed_block_text_color: String,
-    /// Dashed block icon size in pixels.
-    /// Default: 16px — each status icon (rclonetray, bluetooth, speaker, pac) is 16×16.
+    /// Dashed block icon size in pixels
     #[serde(default = "default_dashed_block_icon_size")]
     pub dashed_block_icon_size: u32,
-    /// Dashed block icon gap in pixels.
-    /// Default: 4px — space between adjacent icons in a row.
+    /// Dashed block icon gap in pixels
     #[serde(default = "default_dashed_block_icon_gap")]
     pub dashed_block_icon_gap: u32,
-    /// Dashed block icon row gap in pixels.
-    /// Default: 4px — vertical space between the top and bottom icon rows.
+    /// Dashed block icon row gap in pixels
     #[serde(default = "default_dashed_block_row_gap")]
     pub dashed_block_row_gap: u32,
-    /// Dashed block top icon row y-position in pixels (from top).
-    /// Default: 4px — near the top of the block.
+    /// Dashed block top icon row y-position in pixels (from top)
     #[serde(default = "default_dashed_block_top_row_y")]
     pub dashed_block_top_row_y: u32,
-    /// Dashed block row x-offset in pixels.
-    /// Default: 6px — icon rows offset 6px to the right from center.
+    /// Dashed block row x-offset in pixels
     #[serde(default = "default_dashed_block_row_offset")]
     pub dashed_block_row_offset: u32,
-    /// Dashed block keyboard layout font size in points.
-    /// Default: 12pt — smaller font for the "ENG" indicator.
+    /// Dashed block keyboard layout font size in points
     #[serde(default = "default_dashed_block_kb_font_size")]
     pub dashed_block_kb_font_size: u32,
-    /// Dashed block keyboard layout text (e.g., "ENG").
-    /// Default: "ENG" — hardcoded placeholder; making it dynamic requires system integration.
+    /// Dashed block keyboard layout text (e.g., "ENG")
     #[serde(default = "default_dashed_block_kb_layout")]
     pub dashed_block_kb_layout: String,
-    /// Dashed block gap from the dock's left edge in pixels.
-    /// Default: 4px — positions the block next to the dock.
+    /// Additional vertical shift for the keyboard-layout label, in logical pixels.
+    /// Positive values move it down; the CPU renderer scales this value for the output scale.
+    /// Keep the default at 6px to preserve the established alignment with the icon row.
+    #[serde(default = "default_dashed_block_kb_text_offset_y")]
+    pub dashed_block_kb_text_offset_y: i32,
+    /// Dashed block gap from the dock's left edge in pixels
     #[serde(default = "default_dashed_block_gap_from_dock")]
     pub dashed_block_gap_from_dock: u32,
 }
@@ -422,7 +460,8 @@ fn default_hover_color() -> String {
 }
 
 fn default_dash_focused_color() -> String {
-    "#00E5FF".to_string()
+    // Match Minimize button color for visual consistency
+    "#DC2626".to_string()
 }
 
 fn default_dash_inactive_color() -> String {
@@ -522,9 +561,9 @@ fn default_popup_frame_bg_color() -> String {
 }
 
 /// Default color for popup window list text labels.
-/// Green (#00FF00) provides high contrast against dark backgrounds.
+/// Blue (#007AFF) matches the dashed block text color.
 fn default_popup_text_color() -> String {
-    "#00FF00".to_string()
+    "#007AFF".to_string()
 }
 
 fn default_popup_border_color() -> String {
@@ -532,27 +571,27 @@ fn default_popup_border_color() -> String {
 }
 
 /// Default text color for context menu Focus action item.
-/// Green (#00FF00) provides high contrast against dark backgrounds.
+/// Cyan (#00E5FF) distinguishes the Focus action.
 fn default_popup_focus_color() -> String {
-    "#00FF00".to_string()
+    "#00E5FF".to_string()
 }
 
 /// Default text color for context menu Unpin/TogglePin action item.
-/// Green (#00FF00) provides high contrast against dark backgrounds.
+/// Yellow (#E6E664) distinguishes the Unpin action.
 fn default_popup_unpin_color() -> String {
-    "#00FF00".to_string()
+    "#E6E664".to_string()
 }
 
 /// Default text color for context menu Launch action item.
-/// Green (#00FF00) provides high contrast against dark backgrounds.
+/// Blue (#6495E6) distinguishes the Launch action.
 fn default_popup_launch_color() -> String {
-    "#00FF00".to_string()
+    "#6495E6".to_string()
 }
 
 /// Default text color for context menu Quit/CloseApp action item.
-/// Green (#00FF00) provides high contrast against dark backgrounds.
+/// Red (#E66464) distinguishes the Quit action.
 fn default_popup_quit_color() -> String {
-    "#00FF00".to_string()
+    "#E66464".to_string()
 }
 
 fn default_border_radius() -> u32 {
@@ -588,11 +627,26 @@ fn default_popup_close_button_margin() -> u32 {
 fn default_popup_dash_gap() -> u32 {
     4
 }
+
+fn default_popup_bg_color() -> String {
+    "#1D1C22".to_string()
+}
+
 fn default_context_menu_width() -> u32 {
     144
 }
 fn default_context_menu_row_height() -> u32 {
     29
+}
+/// Default: +6 logical px — shifts context-menu labels down to the established visual baseline.
+fn default_context_menu_text_offset_y() -> i32 {
+    6
+}
+fn default_context_menu_bg_color() -> String {
+    "#1D1C22".to_string()
+}
+fn default_context_menu_text_color() -> String {
+    "#CCCCCC".to_string()
 }
 pub fn default_popup_fade_in() -> f32 {
     0.15
@@ -622,6 +676,10 @@ fn default_badge_font_size() -> u32 {
 }
 fn default_pipewire_scale_factor() -> f32 {
     0.5
+}
+
+fn default_app_id_aliases() -> std::collections::HashMap<String, String> {
+    std::collections::HashMap::new()
 }
 
 // === Date/time block widget defaults (right side of dock) ===
@@ -665,6 +723,10 @@ fn default_date_time_block_time_font_size() -> u32 {
 /// Default: 25px — time text below the dashed border.
 fn default_date_time_block_time_text_y() -> u32 {
     25
+}
+/// Default: +7 logical px — alignment correction applied after the configured time y-position.
+fn default_date_time_block_time_offset_y() -> i32 {
+    7
 }
 /// Default: 16pt — half the time font size for date lines.
 fn default_date_time_block_date_font_size() -> u32 {
@@ -745,6 +807,10 @@ fn default_dashed_block_kb_font_size() -> u32 {
 fn default_dashed_block_kb_layout() -> String {
     "ENG".to_string()
 }
+/// Default: +6 logical px — aligns the keyboard-layout label with the bottom icon row.
+fn default_dashed_block_kb_text_offset_y() -> i32 {
+    6
+}
 /// Default: 4px — gap from the dock's left edge to the block.
 fn default_dashed_block_gap_from_dock() -> u32 {
     4
@@ -775,8 +841,6 @@ impl Default for DockConfig {
             dash_thickness: default_dash_thickness(),
             dash_segment_length: default_dash_segment_length(),
             dash_gap_length: default_dash_gap_length(),
-            // PipeWire capture
-            pipewire_scale_factor: default_pipewire_scale_factor(),
             // Click animation
             click_animation: default_click_animation(),
             click_animation_scale: default_click_animation_scale(),
@@ -799,20 +863,28 @@ impl Default for DockConfig {
             popup_text_truncate: default_popup_text_truncate(),
             popup_frame_border: default_popup_frame_border(),
             popup_close_button_margin: default_popup_close_button_margin(),
-            // Popup colors
+            // Window list colors
+            popup_bg_color: default_popup_bg_color(),
+            popup_text_color: default_popup_text_color(),
             popup_hover_border_color: default_popup_hover_border_color(),
             popup_close_hover_color: default_popup_close_hover_color(),
             popup_close_button_color: default_popup_close_button_color(),
             popup_close_button_hover_color: default_popup_close_button_hover_color(),
             popup_close_cross_color: default_popup_close_cross_color(),
             popup_frame_bg_color: default_popup_frame_bg_color(),
-            popup_text_color: default_popup_text_color(),
+            // Window list borders
             popup_border_style: PopupBorderStyle::default(),
             popup_border_color: default_popup_border_color(),
             popup_dash_gap: default_popup_dash_gap(),
+            // PipeWire capture
+            pipewire_scale_factor: default_pipewire_scale_factor(),
+            app_id_aliases: default_app_id_aliases(),
             // Context menu
             context_menu_width: default_context_menu_width(),
             context_menu_row_height: default_context_menu_row_height(),
+            context_menu_text_offset_y: default_context_menu_text_offset_y(),
+            context_menu_bg_color: default_context_menu_bg_color(),
+            context_menu_text_color: default_context_menu_text_color(),
             popup_focus_color: default_popup_focus_color(),
             popup_unpin_color: default_popup_unpin_color(),
             popup_launch_color: default_popup_launch_color(),
@@ -838,6 +910,7 @@ impl Default for DockConfig {
             date_time_block_text_color: default_date_time_block_text_color(),
             date_time_block_time_font_size: default_date_time_block_time_font_size(),
             date_time_block_time_text_y: default_date_time_block_time_text_y(),
+            date_time_block_time_offset_y: default_date_time_block_time_offset_y(),
             date_time_block_date_font_size: default_date_time_block_date_font_size(),
             date_time_block_day_month_y: default_date_time_block_day_month_y(),
             date_time_block_year_y: default_date_time_block_year_y(),
@@ -858,6 +931,7 @@ impl Default for DockConfig {
             dashed_block_row_offset: default_dashed_block_row_offset(),
             dashed_block_kb_font_size: default_dashed_block_kb_font_size(),
             dashed_block_kb_layout: default_dashed_block_kb_layout(),
+            dashed_block_kb_text_offset_y: default_dashed_block_kb_text_offset_y(),
             dashed_block_gap_from_dock: default_dashed_block_gap_from_dock(),
         }
     }
@@ -877,6 +951,7 @@ impl DockConfig {
                 ));
             }
         }
+
         None
     }
 
@@ -896,10 +971,6 @@ impl DockConfig {
         if Self::parse_hex_color_opt(value).is_some() {
             value.to_string()
         } else {
-            eprintln!(
-                "[CONFIG] Invalid color \"{}\" for \"{}\", using default \"{}\"",
-                value, field, default
-            );
             default.to_string()
         }
     }
@@ -907,17 +978,9 @@ impl DockConfig {
     /// Validate a size field, clamping to reasonable bounds
     fn validate_size(value: u32, field: &str, min: u32, max: u32, default: u32) -> u32 {
         if value == 0 && min > 0 {
-            eprintln!(
-                "[CONFIG] Zero value for \"{}\", using default {}",
-                field, default
-            );
             return default;
         }
         if value > max {
-            eprintln!(
-                "[CONFIG] \"{}\" value {} exceeds max {}, clamping",
-                field, value, max
-            );
             max
         } else {
             value
@@ -927,22 +990,10 @@ impl DockConfig {
     /// Validate an alpha value, clamping to [0.0, 1.0]
     fn validate_alpha(value: f32, field: &str, default: f32) -> f32 {
         if value.is_nan() || value.is_infinite() {
-            eprintln!(
-                "[CONFIG] Invalid alpha for \"{}\", using default {}",
-                field, default
-            );
             default
         } else if value < 0.0 {
-            eprintln!(
-                "[CONFIG] \"{}\" alpha {} < 0.0, clamping to 0.0",
-                field, value
-            );
             0.0
         } else if value > 1.0 {
-            eprintln!(
-                "[CONFIG] \"{}\" alpha {} > 1.0, clamping to 1.0",
-                field, value
-            );
             1.0
         } else {
             value
@@ -952,10 +1003,6 @@ impl DockConfig {
     /// Validate a float duration/scale value
     fn validate_positive_float(value: f32, field: &str, default: f32) -> f32 {
         if value.is_nan() || value.is_infinite() || value <= 0.0 {
-            eprintln!(
-                "[CONFIG] Invalid \"{}\" value {}, using default {}",
-                field, value, default
-            );
             default
         } else {
             value
@@ -1145,9 +1192,18 @@ impl DockConfig {
             ),
             popup_frame_border: self.popup_frame_border,
             popup_close_button_margin: self.popup_close_button_margin,
-            pipewire_scale_factor: self.pipewire_scale_factor.clamp(0.01, 1.0),
 
-            // Popup colors
+            // Window list colors
+            popup_bg_color: Self::validate_color(
+                &self.popup_bg_color,
+                "popup_bg_color",
+                &default_cfg.popup_bg_color,
+            ),
+            popup_text_color: Self::validate_color(
+                &self.popup_text_color,
+                "popup_text_color",
+                &default_cfg.popup_text_color,
+            ),
             popup_hover_border_color: Self::validate_color(
                 &self.popup_hover_border_color,
                 "popup_hover_border_color",
@@ -1178,11 +1234,6 @@ impl DockConfig {
                 "popup_frame_bg_color",
                 &default_cfg.popup_frame_bg_color,
             ),
-            popup_text_color: Self::validate_color(
-                &self.popup_text_color,
-                "popup_text_color",
-                &default_cfg.popup_text_color,
-            ),
             popup_border_style: self.popup_border_style,
             popup_border_color: Self::validate_color(
                 &self.popup_border_color,
@@ -1190,6 +1241,10 @@ impl DockConfig {
                 &default_cfg.popup_border_color,
             ),
             popup_dash_gap: self.popup_dash_gap,
+
+            // PipeWire capture
+            pipewire_scale_factor: self.pipewire_scale_factor.clamp(0.01, 1.0),
+            app_id_aliases: self.app_id_aliases.clone(),
 
             // Context menu
             context_menu_width: Self::validate_size(
@@ -1205,6 +1260,17 @@ impl DockConfig {
                 16,
                 60,
                 default_cfg.context_menu_row_height,
+            ),
+            context_menu_text_offset_y: self.context_menu_text_offset_y,
+            context_menu_bg_color: Self::validate_color(
+                &self.context_menu_bg_color,
+                "context_menu_bg_color",
+                &default_cfg.context_menu_bg_color,
+            ),
+            context_menu_text_color: Self::validate_color(
+                &self.context_menu_text_color,
+                "context_menu_text_color",
+                &default_cfg.context_menu_text_color,
             ),
             popup_focus_color: Self::validate_color(
                 &self.popup_focus_color,
@@ -1239,28 +1305,16 @@ impl DockConfig {
                 default_cfg.context_menu_fade_in,
             ),
             popup_timeout: if self.popup_timeout == 0 {
-                eprintln!(
-                    "[CONFIG] Zero popup_timeout, using default {}",
-                    default_cfg.popup_timeout
-                );
                 default_cfg.popup_timeout
             } else {
                 self.popup_timeout
             },
             context_menu_timeout: if self.context_menu_timeout == 0 {
-                eprintln!(
-                    "[CONFIG] Zero context_menu_timeout, using default {}",
-                    default_cfg.context_menu_timeout
-                );
                 default_cfg.context_menu_timeout
             } else {
                 self.context_menu_timeout
             },
             hard_timeout: if self.hard_timeout == 0 {
-                eprintln!(
-                    "[CONFIG] Zero hard_timeout, using default {}",
-                    default_cfg.hard_timeout
-                );
                 default_cfg.hard_timeout
             } else {
                 self.hard_timeout
@@ -1340,6 +1394,7 @@ impl DockConfig {
                 default_cfg.date_time_block_time_font_size,
             ),
             date_time_block_time_text_y: self.date_time_block_time_text_y,
+            date_time_block_time_offset_y: self.date_time_block_time_offset_y,
             date_time_block_date_font_size: Self::validate_size(
                 self.date_time_block_date_font_size,
                 "date_time_block_date_font_size",
@@ -1417,6 +1472,7 @@ impl DockConfig {
                 default_cfg.dashed_block_kb_font_size,
             ),
             dashed_block_kb_layout: self.dashed_block_kb_layout,
+            dashed_block_kb_text_offset_y: self.dashed_block_kb_text_offset_y,
             dashed_block_gap_from_dock: self.dashed_block_gap_from_dock,
         }
     }
@@ -1427,9 +1483,7 @@ impl DockConfig {
         if let Ok(data) = fs::read_to_string(&path) {
             match serde_json::from_str::<DockConfig>(&data) {
                 Ok(config) => config.validate(),
-                Err(e) => {
-                    eprintln!("[CONFIG] Failed to parse config.json: {}", e);
-                    eprintln!("[CONFIG] Using default configuration");
+                Err(_e) => {
                     Self::default()
                 }
             }
@@ -1447,5 +1501,32 @@ impl DockConfig {
             let _ = fs::write(path, data);
         } else {
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DockConfig;
+
+    #[test]
+    fn text_alignment_offsets_default_and_load_from_older_config() {
+        let defaults = DockConfig::default();
+        assert_eq!(defaults.context_menu_text_offset_y, 6);
+        assert_eq!(defaults.date_time_block_time_offset_y, 7);
+        assert_eq!(defaults.dashed_block_kb_text_offset_y, 6);
+
+        let mut serialized = serde_json::to_value(defaults).expect("serialize default config");
+        let fields = serialized
+            .as_object_mut()
+            .expect("serialized config should be an object");
+        fields.remove("context_menu_text_offset_y");
+        fields.remove("date_time_block_time_offset_y");
+        fields.remove("dashed_block_kb_text_offset_y");
+
+        let loaded: DockConfig =
+            serde_json::from_value(serialized).expect("load config without new optional fields");
+        assert_eq!(loaded.context_menu_text_offset_y, 6);
+        assert_eq!(loaded.date_time_block_time_offset_y, 7);
+        assert_eq!(loaded.dashed_block_kb_text_offset_y, 6);
     }
 }

@@ -271,6 +271,7 @@ impl GifDecoder {
             composite_frame(
                 &mut canvas,
                 width as usize,
+                height as usize,
                 &frame_data,
                 frame_info.left as usize,
                 frame_info.top as usize,
@@ -288,6 +289,7 @@ impl GifDecoder {
                     clear_rect(
                         &mut canvas,
                         width as usize,
+                        height as usize,
                         frame_info.left as usize,
                         frame_info.top as usize,
                         frame_info.width as usize,
@@ -628,6 +630,7 @@ impl GifAnimation {
 fn composite_frame(
     canvas: &mut Vec<u8>,
     canvas_width: usize,
+    canvas_height: usize,
     frame: &ImageData,
     dest_x: usize,
     dest_y: usize,
@@ -637,7 +640,7 @@ fn composite_frame(
 
     for y in 0..frame_height {
         let dst_y = dest_y + y;
-        if dst_y >= canvas_width {
+        if dst_y >= canvas_height {
             break;
         }
 
@@ -666,6 +669,7 @@ fn composite_frame(
 fn clear_rect(
     canvas: &mut Vec<u8>,
     canvas_width: usize,
+    canvas_height: usize,
     x: usize,
     y: usize,
     width: usize,
@@ -673,7 +677,7 @@ fn clear_rect(
 ) {
     for dy in 0..height {
         let dst_y = y + dy;
-        if dst_y >= canvas_width {
+        if dst_y >= canvas_height {
             break;
         }
         for dx in 0..width {
@@ -844,7 +848,7 @@ mod tests {
             ],
         );
 
-        composite_frame(&mut canvas, canvas_width, &frame, 1, 1);
+        composite_frame(&mut canvas, canvas_width, canvas_width, &frame, 1, 1);
         // Check that the composite area has non-zero values (red pixel at position 1,1)
         let idx = (1 * canvas_width + 1) * 4;
         assert_eq!(canvas[idx], 255); // Red channel
@@ -855,7 +859,7 @@ mod tests {
         let canvas_width = 4;
         let mut canvas = vec![255u8; canvas_width * canvas_width * 4];
 
-        clear_rect(&mut canvas, canvas_width, 1, 1, 2, 2);
+        clear_rect(&mut canvas, canvas_width, canvas_width, 1, 1, 2, 2);
 
         for y in 1..3 {
             for x in 1..3 {
@@ -864,6 +868,25 @@ mod tests {
                 assert_eq!(canvas[idx + 3], 0);
             }
         }
+    }
+
+    #[test]
+    fn test_composite_frame_clips_to_canvas_height() {
+        let mut canvas = vec![0; 3 * 2 * 4];
+        let frame = ImageData::solid_color(2, 2, crate::color::Color::RED);
+
+        composite_frame(&mut canvas, 3, 2, &frame, 0, 1);
+
+        assert_eq!(&canvas[12..20], &[255, 0, 0, 255, 255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn test_clear_rect_clips_to_canvas_height() {
+        let mut canvas = vec![255; 3 * 2 * 4];
+
+        clear_rect(&mut canvas, 3, 2, 0, 1, 3, 2);
+
+        assert!(canvas[12..].iter().all(|value| *value == 0));
     }
 
     #[test]

@@ -62,7 +62,7 @@ pub fn handle_scroll_events(
                         index,
                         crate::models::TrayActionKind::Scroll {
                             delta,
-                            orientation: orientation.to_string(),
+                            orientation,
                         },
                         mapped_x.round() as i32,
                         mapped_y.round() as i32,

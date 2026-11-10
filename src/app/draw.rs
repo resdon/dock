@@ -10,6 +10,7 @@ use wayland_client::Proxy;
 use wayland_client::QueueHandle;
 
 use crate::config::DockConfig;
+use crate::models::system::WindowId;
 use crate::state::AppState;
 use crate::state::WindowState;
 
@@ -19,7 +20,8 @@ use super::window_list;
 
 pub struct DrawFrameData<'a> {
     pub apps_in_dock: &'a [String],
-    pub running_by_app: &'a HashMap<String, Vec<&'a WindowState>>,
+    pub running_by_app: &'a HashMap<String, Vec<ObjectId>>,
+    pub windows: &'a HashMap<WindowId, WindowState>,
     pub phys_width: u32,
     pub phys_height: u32,
     pub surface_height: u32,
@@ -34,8 +36,8 @@ pub struct DrawFrameData<'a> {
 
 impl AppState {
     pub fn draw(&mut self, qh: &QueueHandle<Self>, render_dock: bool) {
-        let box_size = 48;
-        let spacing = 8;
+        let box_size = self.config.icon_size as i32;
+        let spacing = self.config.spacing as i32;
 
         let apps_in_dock = self.get_apps_in_dock();
         for app_id in &apps_in_dock {
@@ -51,116 +53,60 @@ impl AppState {
             self.needs_redraw = true;
             return;
         }
-        // Dynamic rendering disabled — always redraw every frame
-        self.needs_redraw = true;
+        // Consume this invalidation before drawing. Any state changes discovered
+        // below may set it again to schedule a follow-up frame.
+        self.needs_redraw = false;
 
-        // Update the shared window title-to-ID map so the PipeWire monitor task
-        // can bind new streams to stable Wayland window IDs. This is called every
-        // frame so the monitor always has the latest mapping. The IDs are
-        // `protocol_id` values from `foreign_toplevel`.
-        //
-        // Windows with empty `output_ids` are included — some compositors don't
-        // fire `OutputEntered` events for all windows, but they still have open
-        // windows that should appear in the popup.
-        if let Some(ref pw) = self.pipewire_capture {
-            // Build the window-to-ID map sorted by title so that when multiple windows
-            // share the same title, they are bound to PipeWire streams in a deterministic
-            // order that matches the popup's title-sorted display order. Without this sort,
-            // HashMap iteration order is arbitrary, causing stream 0 to bind to a random
-            // window among those with the same title, breaking the popup grid mapping.
-            let mut window_ids: Vec<(String, u32)> = self
-                .windows
-                .iter()
-                .filter_map(|(id, win)| {
-                    if win.title.is_empty() {
-                        None
-                    } else {
-                        Some((win.title.clone(), id.0.protocol_id()))
-                    }
-                })
-                .collect();
-            window_ids.sort_by(|(a_title, a_id), (b_title, b_id)| {
-                a_title.cmp(b_title).then(a_id.cmp(b_id))
-            });
-            pw.update_window_ids(&window_ids);
+        // Refresh PipeWire's title-to-ID lookup only after window state changes.
+        if let Some(pw) = self.pipewire_capture.as_ref() {
+            if self.cached_pipewire_window_ids.is_none() {
+                // Build the window-to-ID map sorted by title so that when multiple windows
+                // share the same title, they are bound to PipeWire streams in a deterministic
+                // order that matches the popup's title-sorted display order. Without this sort,
+                // HashMap iteration order is arbitrary, causing stream 0 to bind to a random
+                // window among those with the same title, breaking the popup grid mapping.
+                let mut window_ids: Vec<(String, u32)> = self
+                    .windows
+                    .iter()
+                    .filter_map(|(id, win)| {
+                        if win.title.is_empty() {
+                            None
+                        } else {
+                            Some((win.title.clone(), id.0.protocol_id()))
+                        }
+                    })
+                    .collect();
+                window_ids.sort_by(|(a_title, a_id), (b_title, b_id)| {
+                    a_title.cmp(b_title).then(a_id.cmp(b_id))
+                });
+                pw.update_window_ids(&window_ids);
+                self.cached_pipewire_window_ids = Some(window_ids);
+            }
         }
 
-        // Build the canonical app-id mapping before mutably borrowing dock
-        // instances. `canonical_running_app_id` reads pinned_apps, so calling
-        // it while iterating `&mut self.docks` would create an immutable/mutable
-        // borrow conflict. Keep the resolved values local for the draw pass.
-        let canonical_app_ids: HashMap<String, String> = self
-            .windows
-            .values()
-            .map(|win| {
-                let raw_id = win
-                    .app_id
-                    .as_ref()
-                    .map(|id| id.to_string())
-                    .filter(|id| !id.is_empty())
-                    .unwrap_or_else(|| {
-                        if !win.title.is_empty() {
-                            win.title.clone()
-                        } else {
-                            "Unknown".to_string()
-                        }
-                    });
-                let canonical = self.canonical_running_app_id(&raw_id);
-                (raw_id, canonical)
-            })
-            .collect();
+        let computed_running_by_app;
+        let running_by_app = if let Some(cached) = self.cached_running_by_app.as_ref() {
+            cached
+        } else {
+            computed_running_by_app = self.compute_running_by_app_uncached();
+            &computed_running_by_app
+        };
 
-        let first_frame_status_pending = false;
         for dock_instance in &mut self.docks {
             if !dock_instance.configured {
                 continue;
             }
 
-            // All animations disabled — is_animating always false
-            let is_animating = false;
+            let is_animating = self.bounce_app_id.is_some()
+                || self.click_app_id.is_some()
+                || self.minimize_app_id.is_some()
+                || self
+                    .slint_renderer
+                    .as_ref()
+                    .is_some_and(|renderer| renderer.has_active_animation())
+                || dock::has_active_gpu_animation();
 
             let dock_output_id = dock_instance.output.id();
-
-            let mut ordered_windows: Vec<&WindowState> = self
-                .windows
-                .values()
-                .filter(|win| {
-                    // Include windows on this output, plus windows with no output_ids
-                    // (some compositors don't fire OutputEntered for all windows).
-                    // Excluding them would make the popup show no windows even though
-                    // the app has open windows.
-                    win.output_ids.is_empty()
-                        || win
-                            .output_ids
-                            .iter()
-                            .any(|id| id.0 == dock_output_id.clone())
-                })
-                .collect();
-            ordered_windows.sort_by_key(|win| win.order_index);
-
-            let mut running_by_app: HashMap<String, Vec<&WindowState>> = HashMap::new();
-            for win in &ordered_windows {
-                let raw_id = win
-                    .app_id
-                    .as_ref()
-                    .map(|id| id.to_string())
-                    .filter(|id| !id.is_empty())
-                    .unwrap_or_else(|| {
-                        if !win.title.is_empty() {
-                            win.title.clone()
-                        } else {
-                            "Unknown".to_string()
-                        }
-                    });
-                let id = canonical_app_ids.get(&raw_id).cloned().unwrap_or(raw_id);
-                running_by_app.entry(id).or_default().push(*win);
-            }
-            for windows in running_by_app.values_mut() {
-                // Sort by title for consistent, predictable popup row order.
-                // This ensures the same window always appears in the same row,
-                // making PipeWire stream title matching reliable across frames.
-                windows.sort_by(|a, b| a.title.cmp(&b.title));
-            }
 
             let dock_height: u32 = self.config.dock_height;
             // Width and surface height are negotiated once during initialization
@@ -185,6 +131,7 @@ impl AppState {
             let frame = DrawFrameData {
                 apps_in_dock: &apps_in_dock,
                 running_by_app: &running_by_app,
+                windows: &self.windows,
                 phys_width,
                 phys_height,
                 surface_height,
@@ -209,6 +156,8 @@ impl AppState {
                 &self.interaction,
                 &self.window_list_state,
                 self.pipewire_capture.as_ref(),
+                self.gpu_context.as_mut(),
+                &self.dmabuf_state,
             );
             context_menu::draw_context_menu_popup(
                 dock_instance,
@@ -233,7 +182,6 @@ impl AppState {
             // lower system strip are independent visual regions. Only the app
             // row is rendered into the top-level layer-surface buffer.
             let first_buffer = dock_instance.current_buffer.is_none();
-            let _status_frame_due = !dock_instance.status_strip_rendered;
             if render_dock || first_buffer {
                 dock::draw_main_dock(
                     dock_instance,
@@ -278,36 +226,50 @@ impl AppState {
                 self.pending_focus_app_id = None;
             }
 
-            // Side bars: all disabled
-            // side_bars::draw_left_tray_bar(...);
+            // Render tray icons on their sibling surface alongside the app row.
+            super::side_bars::draw_left_tray_bar(
+                dock_instance,
+                qh,
+                &mut self.pool,
+                &self.compositor_state,
+                self.subcompositor.as_ref(),
+                &self.tray_items,
+                true,
+                self.hide_state.current_alpha,
+                &mut self.font_manager,
+                self.gpu_context.as_mut(),
+                &self.dmabuf_state,
+            );
+
+            // Side bars: remaining widgets are disabled.
             // super::widget_bar::draw_status_widget_bar(...);
             // side_bars::draw_bottom_system_bar(...);
 
             // Dashed block — separate layer surface to the left of the dock
             super::dashed_block::draw_dashed_block(
                 dock_instance,
+                qh,
                 &mut self.pool,
                 self.hide_state.current_alpha,
                 &mut self.font_manager,
                 &self.config,
+                self.gpu_context.as_mut(),
+                &self.dmabuf_state,
             );
 
             // Date/time block — separate layer surface to the right of the dock
             super::date_time_block::draw_date_time_block(
                 dock_instance,
+                qh,
                 &mut self.pool,
                 self.hide_state.current_alpha,
                 &mut self.font_manager,
                 &self.config,
+                self.gpu_context.as_mut(),
+                &self.dmabuf_state,
             );
 
             dock_instance.status_strip_rendered = true;
-        }
-
-        // The first app-row buffer is committed on its own. Schedule one follow-up
-        // pass to attach the sibling tray/widget/status surfaces.
-        if first_frame_status_pending {
-            self.needs_redraw = true;
         }
 
         self.hide_state.just_became_visible = false;

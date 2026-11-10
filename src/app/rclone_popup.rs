@@ -54,10 +54,12 @@ pub fn draw_rclone_popup(
     let logical_y = (y as f64 / scale).round() as i32;
 
     if dock.rclone_popup.is_none() {
+        let Some(sc) = subcompositor else {
+            tracing::warn!("Subcompositor not available; rclone popup rendering degraded");
+            return;
+        };
         let surface = compositor_state.create_surface(qh);
-        let subsurface = subcompositor
-            .expect("Subcompositor global not bound")
-            .get_subsurface(&surface, dock.surface.wl_surface(), qh, ());
+        let subsurface = sc.get_subsurface(&surface, dock.surface.wl_surface(), qh, ());
         subsurface.set_desync();
         dock.rclone_popup = Some(PopupSurface {
             subsurface,
@@ -73,7 +75,10 @@ pub fn draw_rclone_popup(
             input_region_key: 0,
         });
     }
-    let popup = dock.rclone_popup.as_mut().expect("rclone popup created");
+    let Some(popup) = dock.rclone_popup.as_mut() else {
+        tracing::warn!("Rclone popup not initialized");
+        return;
+    };
     popup.position = (logical_x, logical_y);
     popup.subsurface.set_position(logical_x, logical_y);
     popup.width = RCLONE_POPUP_WIDTH as u32;
@@ -95,23 +100,26 @@ pub fn draw_rclone_popup(
 
     // GPU rendering via wgpu-api not yet integrated — using CPU rendering
     // CPU rendering path
-    let (buffer, canvas) = pool
-        .create_buffer(
-            phys_width,
-            phys_height,
-            phys_width * 4,
-            wl_shm::Format::Argb8888,
-        )
-        .expect("Failed to allocate rclone popup buffer");
+    let (buffer, canvas) = match pool.create_buffer(
+        phys_width,
+        phys_height,
+        phys_width * 4,
+        wl_shm::Format::Argb8888,
+    ) {
+        Ok(bc) => bc,
+        Err(e) => {
+            tracing::warn!("Failed to allocate rclone popup buffer: {}", e);
+            return;
+        }
+    };
     if !super::copy_popup_content(canvas, &popup.cached_content) {
         return;
     }
-    popup
-        .surface
-        .set_buffer_scale(scale.round().max(1.0) as i32);
-    buffer
-        .attach_to(&popup.surface)
-        .expect("Failed to attach rclone popup buffer");
+    popup.surface.set_buffer_scale(scale.round().max(1.0) as i32);
+    if let Err(e) = buffer.attach_to(&popup.surface) {
+        tracing::warn!("Failed to attach rclone popup buffer: {}", e);
+        return;
+    }
     popup.surface.damage_buffer(0, 0, phys_width, phys_height);
     let region = compositor_state.wl_compositor().create_region(qh, ());
     region.add(0, 0, RCLONE_POPUP_WIDTH, RCLONE_POPUP_HEIGHT);

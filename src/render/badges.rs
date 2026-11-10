@@ -3,19 +3,42 @@
 //! Renders notification badge counts on dock icons.
 
 use crate::models::{BadgeUpdate, DockItem};
+use std::path::PathBuf;
 use std::sync::OnceLock;
 
-// dbus_unity notifications badge asset
+// dbus_unity notifications badge asset (embedded fallback)
 static BADGE_ICON_BYTES: &[u8] = include_bytes!("../../assets/dialog-warning.png");
 static BADGE_ICON_CACHE: OnceLock<Option<(u32, u32, Vec<u8>)>> = OnceLock::new();
 
+fn badge_icon_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join("assets/dialog-warning.png"));
+        candidates.push(cwd.join("dock/assets/dialog-warning.png"));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join("assets/dialog-warning.png"));
+            candidates.push(dir.join("../share/dock/assets/dialog-warning.png"));
+        }
+    }
+    candidates
+}
+
+fn load_badge_icon_runtime() -> Option<(u32, u32, Vec<u8>)> {
+    for path in badge_icon_candidates() {
+        if let Ok(img) = image::open(&path) {
+            return Some((img.width(), img.height(), img.to_rgba8().into_raw()));
+        }
+    }
+    image::load_from_memory(BADGE_ICON_BYTES)
+        .ok()
+        .map(|img| (img.width(), img.height(), img.to_rgba8().into_raw()))
+}
+
 fn get_badge_icon() -> Option<&'static (u32, u32, Vec<u8>)> {
     BADGE_ICON_CACHE
-        .get_or_init(|| {
-            image::load_from_memory(BADGE_ICON_BYTES)
-                .ok()
-                .map(|img| (img.width(), img.height(), img.to_rgba8().into_raw()))
-        })
+        .get_or_init(load_badge_icon_runtime)
         .as_ref()
 }
 
@@ -72,9 +95,9 @@ pub fn draw_canvas_badge(
                 let dst_g = canvas[dst_idx + 1] as u32;
                 let dst_b = canvas[dst_idx + 2] as u32;
 
-                canvas[dst_idx] = ((src_r * alpha + dst_r * inv_alpha) / 255) as u8;
-                canvas[dst_idx + 1] = ((src_g * alpha + dst_g * inv_alpha) / 255) as u8;
-                canvas[dst_idx + 2] = ((src_b * alpha + dst_b * inv_alpha) / 255) as u8;
+                canvas[dst_idx] = ((src_r * alpha + dst_r * inv_alpha + 127) / 255) as u8;
+                canvas[dst_idx + 1] = ((src_g * alpha + dst_g * inv_alpha + 127) / 255) as u8;
+                canvas[dst_idx + 2] = ((src_b * alpha + dst_b * inv_alpha + 127) / 255) as u8;
                 canvas[dst_idx + 3] = 255;
             }
         }

@@ -29,7 +29,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } else if let Some(msg) = info.payload().downcast_ref::<String>() {
             eprintln!("[PANIC] Message: {}", msg);
         }
-        eprintln!("[PANIC] Full info: {:?}", info);
     }));
 
     // Initialize application state and event queue via init.rs
@@ -62,10 +61,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(renderer) => {
             state.gpu_context = Some(renderer);
             state.gpu_available = true;
-            eprintln!("[GPU] Renderer initialized successfully");
         }
         Err(e) => {
-            eprintln!("[GPU] Init failed: {}, falling back to CPU rendering", e);
+            eprintln!("[main] GPU renderer unavailable, falling back to CPU path: {e}");
             state.gpu_available = false;
         }
     }
@@ -135,14 +133,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // Resource monitor: prints CPU, RAM, VRAM usage every 2 seconds
+    // Resource monitor: prints CPU, RAM, VRAM, FPS usage every 2 seconds
     library::services::resource_monitor::start_resource_monitor();
+
+    let window_list_refresh_interval = std::time::Duration::from_millis(33);
+    let mut last_window_list_refresh = std::time::Instant::now();
 
     // --- MAIN EVENT LOOP ---
     loop {
         // 1. INPUT: Dispatch Wayland socket events from event queue
         if let Err(_e) = event_queue.dispatch_pending(&mut state) {
             break;
+        }
+        if state.window_list_state.is_open
+            && last_window_list_refresh.elapsed() >= window_list_refresh_interval
+        {
+            state.needs_redraw = true;
         }
 
         // 2. DOMAIN EVENTS: consume the queued listener events through the
@@ -310,24 +316,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // --- HOVER & MENU STATE / TARGET UPDATE --- Re-enabled for clicks
-        let apps_in_dock = state.get_apps_in_dock();
+        let apps_in_dock = state.get_apps_in_dock_cached();
         if state.sync_dock_surface_width(apps_in_dock.len()) {
             status_sidebars_only = false;
         }
-        let running_by_app = state.get_running_by_app();
+        let running_by_app = state.get_running_by_app_cached();
 
-        // Hide/show animations disabled
-        // state.update_animations(&qh);
+        // Advance hide/show and popup lifecycle state transitions.
+        state.update_animations(&qh);
+        if state.finalize_popup_closures() {
+            state.needs_redraw = true;
+            status_sidebars_only = false;
+        }
 
-        // Animation flags all false — animations disabled
-        let _hover_anim_active = false;
-        let _menu_anim_active = false;
-        let _window_list_anim_active = false;
-        // state.finalize_popup_closures(); // disabled
-
-        let _hide_animating = false;
-        let _menu_fade_animating = false;
-        let _window_list_fade_animating = false;
+        let menu_fade_animating = state.docks.iter().any(|dock| {
+            (dock.menu_fade.current_alpha - dock.menu_fade.target_alpha).abs() > f32::EPSILON
+                && !dock.menu_fade.is_fully_hidden()
+                || (dock.menu_fade.current_alpha - dock.menu_fade.target_alpha).abs() > f32::EPSILON
+        });
+        let window_list_fade_animating = state.docks.iter().any(|dock| {
+            (dock.window_list_fade.current_alpha - dock.window_list_fade.target_alpha).abs()
+                > f32::EPSILON
+        });
 
         // Interaction for click handling — re-enabled
         let scale_factor = state.scale_factor as f32;
@@ -337,9 +347,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map(|dock| dock.width as i32)
             .unwrap_or(state.width);
 
-        let dock_height = 60;
-        let box_size = 48;
-        let spacing = 8;
+        let dock_height = state.config.dock_height as i32;
+        let box_size = state.config.icon_size as i32;
+        let spacing = state.config.spacing as i32;
         let total_items = apps_in_dock.len() as i32;
 
         let calculated_width = (total_items * box_size + (total_items + 1) * spacing).min(800);
@@ -380,31 +390,54 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .docks
             .iter()
             .any(|dock| dock.configured && dock.current_buffer.is_none());
-        if frame_advanced || state.needs_redraw || initial_dock_frame_due {
+        if frame_advanced
+            || state.needs_redraw
+            || initial_dock_frame_due
+            || menu_fade_animating
+            || window_list_fade_animating
+        {
             // Popup fades are independent subsurfaces. Once a main-dock buffer
             // exists, menu/window-list fades can present independently. Before
             // that first buffer, always render the complete dock surface.
-            // All animations disabled — popup_only_animation always false
-            let popup_only_animation = false;
-            if initial_dock_frame_due {}
+            let popup_only_animation = !initial_dock_frame_due
+                && !frame_advanced
+                && !full_redraw_was_already_pending
+                && !proximity_changed
+                && !slint_animations_active
+                && !animated_apps_changed
+                && (menu_fade_animating || window_list_fade_animating);
             state.draw(&qh, !popup_only_animation && !status_sidebars_only);
-            // AppState::draw owns redraw invalidation. Do not clear the flag
-            // here: a surface can still be awaiting its first layer configure.
+            if state.window_list_state.is_open {
+                last_window_list_refresh = std::time::Instant::now();
+            }
+            library::services::resource_monitor::increment_frame_counter();
             let _ = state.connection.flush();
         }
 
         // 6. POLL: sleep until Wayland input, a timer, or the next actual
-        // animation frame.  Fixed 60 FPS target for smooth rendering.
-        let mut timeout_ms: i32 = 16;
-
+        // animation frame.  When idle, sleep longer to reduce CPU usage.
         let waiting_for_layer_configure =
             state.docks.is_empty() || state.docks.iter().any(|dock| !dock.configured);
-        if state.needs_redraw && !waiting_for_layer_configure {
-            timeout_ms = 0;
-        }
+        let mut timeout_ms: i32 = if state.needs_redraw && !waiting_for_layer_configure {
+            // Cap redraw-driven wakeups to avoid 100% CPU spin when state remains dirty.
+            // 8ms targets ~120 FPS max while keeping responsiveness high.
+            8
+        } else if state.window_list_state.is_open && !waiting_for_layer_configure {
+            let mut ms = window_list_refresh_interval
+                .saturating_sub(last_window_list_refresh.elapsed())
+                .as_millis()
+                .min(i32::MAX as u128) as i32;
+            ms = ms.clamp(1, 16);
+            ms
+        } else {
+            // When idle (no redraw needed), sleep longer to reduce CPU usage
+            1000 // 1 second sleep when idle
+        };
 
-        // Animation-based timeout adjustment disabled
-        // hide_animating, menu_fade_animating, etc. are all false
+        // Keep wakeups responsive while popup fades are in progress.
+        if menu_fade_animating || window_list_fade_animating {
+            timeout_ms = timeout_ms.min(16);
+        }
 
         for anim in state.animations.values() {
             if anim.is_active {
@@ -425,10 +458,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 revents: 0,
             };
 
-            let poll_res = unsafe { libc::poll(&mut pfd, 1, timeout_ms) };
-
-            if poll_res > 0 && (pfd.revents & libc::POLLIN) != 0 {
-                let _ = guard.read();
+            // Safe wrapper around libc::poll with proper EINTR handling.
+            // Retries on EINTR to avoid missing Wayland events.
+            loop {
+                let poll_res = unsafe { libc::poll(&mut pfd, 1, timeout_ms) };
+                if poll_res == -1 {
+                    let err = std::io::Error::last_os_error();
+                    if err.kind() == std::io::ErrorKind::Interrupted {
+                        // EINTR: retry the poll
+                        continue;
+                    }
+                    // Other errors: log and skip this iteration
+                    tracing::warn!("poll failed: {}", err);
+                    break;
+                }
+                if poll_res > 0 && (pfd.revents & libc::POLLIN) != 0 {
+                    let _ = guard.read();
+                }
+                break;
             }
         }
     }

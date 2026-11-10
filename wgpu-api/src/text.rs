@@ -259,7 +259,7 @@ impl Text {
     pub fn estimate_width(&self) -> f32 {
         let char_count = self.content.chars().count() as f32;
         let avg_char_width = self.style.font_size * 0.6;
-        let letter_spacing = self.style.letter_spacing * char_count.max(0.0);
+        let letter_spacing = self.style.letter_spacing * char_count;
         char_count * avg_char_width + letter_spacing
     }
 
@@ -281,34 +281,40 @@ impl Text {
                 let mut lines = Vec::new();
                 for paragraph in self.content.split('\n') {
                     let mut current_line = String::new();
+                    let mut current_width = 0.0;
                     for word in paragraph.split_whitespace() {
-                        let test_line = if current_line.is_empty() {
-                            word.to_string()
+                        let word_chars = word.chars().count() as f32;
+                        let word_width = self.estimated_width_for_char_count(word_chars);
+                        let separator_width = if current_line.is_empty() {
+                            0.0
                         } else {
-                            format!("{} {}", current_line, word)
+                            self.estimated_width_for_char_count(1.0)
                         };
-                        let test_style = self.style.clone();
-                        let test_text = Text {
-                            content: test_line.clone(),
-                            style: test_style,
-                            ..self.clone()
-                        };
-                        if test_text.estimate_width() <= max_w {
-                            current_line = test_line;
+                        if current_width + separator_width + word_width <= max_w {
+                            if !current_line.is_empty() {
+                                current_line.push(' ');
+                            }
+                            current_line.push_str(word);
+                            current_width += separator_width + word_width;
                         } else {
                             if !current_line.is_empty() {
-                                lines.push(current_line.clone());
+                                lines.push(std::mem::take(&mut current_line));
                             }
-                            current_line = word.to_string();
+                            current_line.push_str(word);
+                            current_width = word_width;
                         }
                     }
                     if !current_line.is_empty() {
-                        lines.push(current_line);
+                        lines.push(std::mem::take(&mut current_line));
                     }
                 }
                 lines
             }
         }
+    }
+
+    fn estimated_width_for_char_count(&self, char_count: f32) -> f32 {
+        char_count * (self.style.font_size * 0.6 + self.style.letter_spacing)
     }
 }
 

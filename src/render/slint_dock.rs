@@ -279,6 +279,13 @@ impl SlintDockRenderer {
         // Build dock items from state, using pre-loaded RGBA icon pixels
         let mut icon_cache_hits = 0u32;
         let mut icon_cache_misses = 0u32;
+
+        // Evict stale icon cache entries not present in current dock state to
+        // bound memory growth when apps are unpinned/removed.
+        let active_ids: std::collections::HashSet<&str> =
+            dock_state.pins.iter().map(|p| p.app_id.as_str()).collect();
+        self.icon_cache.retain(|app_id, _| active_ids.contains(app_id.as_str()));
+
         // Track which app_ids have icons in the cache so the state hash detects
         // when a newly loaded icon should update the Slint model.
         let mut icon_cache_keys: Vec<&str> = icon_cache.keys().map(|s| s.as_str()).collect();

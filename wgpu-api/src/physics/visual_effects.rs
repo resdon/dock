@@ -46,6 +46,8 @@
 //! Derive from collision intensity and use a short decay function.
 
 use super::body::{BodyId, PhysicsBody};
+use std::collections::HashMap;
+
 use crate::geometry::{Point, Size, Vector2D};
 
 // ---------------------------------------------------------------------------
@@ -110,8 +112,8 @@ impl MotionState {
 
     /// Check if the body is approximately at rest.
     pub fn is_at_rest(&self, threshold: f32) -> bool {
-        self.velocity.length_squared() < threshold
-            && self.acceleration.length_squared() < threshold
+        self.velocity.length() < threshold
+            && self.acceleration.length() < threshold
             && self.angular_velocity.abs() < threshold
     }
 }
@@ -143,18 +145,28 @@ impl VisualTransform {
 
     /// Apply this transform to a base position.
     pub fn apply_position(&self, base: Point) -> Point {
+        let scaled_x = base.x * self.scale.width;
+        let scaled_y = base.y * self.scale.height;
+        let (sin, cos) = self.rotation.sin_cos();
         Point::new(
-            base.x * self.scale.width + self.translation.x,
-            base.y * self.scale.height + self.translation.y,
+            scaled_x * cos - scaled_y * sin + self.translation.x,
+            scaled_x * sin + scaled_y * cos + self.translation.y,
         )
     }
 
-    /// Compose with another transform.
+    /// Apply `self` followed by `other`.
+    ///
+    /// Translation composition includes rotation. The compact transform
+    /// representation cannot encode shear, so composing rotated non-uniform
+    /// scales is an approximation.
     pub fn compose(&self, other: &VisualTransform) -> Self {
+        let scaled_x = self.translation.x * other.scale.width;
+        let scaled_y = self.translation.y * other.scale.height;
+        let (sin, cos) = other.rotation.sin_cos();
         Self {
             translation: Point::new(
-                self.translation.x * other.scale.width + other.translation.x,
-                self.translation.y * other.scale.height + other.translation.y,
+                scaled_x * cos - scaled_y * sin + other.translation.x,
+                scaled_x * sin + scaled_y * cos + other.translation.y,
             ),
             scale: Size::new(
                 self.scale.width * other.scale.width,
@@ -255,7 +267,7 @@ impl CollisionEffect {
         if !self.active {
             return;
         }
-        self.intensity *= (1.0 - decay_rate * dt).max(0.0);
+        self.intensity *= (-decay_rate.max(0.0) * dt.max(0.0)).exp();
         if self.intensity < 0.01 {
             self.active = false;
             self.intensity = 0.0;
@@ -332,9 +344,9 @@ pub struct VisualEffects {
     /// Configuration parameters.
     pub config: VisualEffectsConfig,
     /// Per-body collision effects.
-    collision_effects: Vec<(BodyId, CollisionEffect)>,
+    collision_effects: HashMap<BodyId, CollisionEffect>,
     /// Per-body drag visual state.
-    drag_states: Vec<(BodyId, DragVisualState)>,
+    drag_states: HashMap<BodyId, DragVisualState>,
 }
 
 impl VisualEffects {
@@ -342,8 +354,8 @@ impl VisualEffects {
     pub fn new() -> Self {
         Self {
             config: VisualEffectsConfig::default(),
-            collision_effects: Vec::new(),
-            drag_states: Vec::new(),
+            collision_effects: HashMap::new(),
+            drag_states: HashMap::new(),
         }
     }
 
@@ -351,8 +363,8 @@ impl VisualEffects {
     pub fn with_config(config: VisualEffectsConfig) -> Self {
         Self {
             config,
-            collision_effects: Vec::new(),
-            drag_states: Vec::new(),
+            collision_effects: HashMap::new(),
+            drag_states: HashMap::new(),
         }
     }
 
@@ -443,23 +455,14 @@ impl VisualEffects {
 
     /// Register a collision event for visual effects.
     pub fn register_collision(&mut self, body: BodyId, intensity: f32, direction: Vector2D) {
-        let effect = CollisionEffect::new(intensity, direction);
-        if let Some((_, existing)) = self
-            .collision_effects
-            .iter_mut()
-            .find(|(id, _)| *id == body)
-        {
-            *existing = effect;
-        } else {
-            self.collision_effects.push((body, effect));
-        }
+        self.collision_effects
+            .insert(body, CollisionEffect::new(intensity, direction));
     }
 
     /// Compute the collision squash transform for a body.
     pub fn compute_collision_squash(&self, body: BodyId, dt: f32) -> VisualTransform {
-        let effect = match self.collision_effects.iter().find(|(id, _)| *id == body) {
-            Some((_, e)) => e,
-            None => return VisualTransform::identity(),
+        let Some(effect) = self.collision_effects.get(&body) else {
+            return VisualTransform::identity();
         };
 
         if !effect.active || effect.intensity < 0.01 {
@@ -495,9 +498,8 @@ impl VisualEffects {
 
     /// Get the glow alpha for a body based on collision intensity.
     pub fn get_collision_glow(&self, body: BodyId) -> f32 {
-        let effect = match self.collision_effects.iter().find(|(id, _)| *id == body) {
-            Some((_, e)) => e,
-            None => return 0.0,
+        let Some(effect) = self.collision_effects.get(&body) else {
+            return 0.0;
         };
 
         if !effect.active {
@@ -509,10 +511,10 @@ impl VisualEffects {
 
     /// Decay all collision effects.
     pub fn decay_collision_effects(&mut self, dt: f32) {
-        for (_, effect) in &mut self.collision_effects {
+        for effect in self.collision_effects.values_mut() {
             effect.decay(dt, self.config.collision_decay);
         }
-        self.collision_effects.retain(|(_, e)| e.active);
+        self.collision_effects.retain(|_, effect| effect.active);
     }
 
     // ---------------------------------------------------------------------
@@ -567,25 +569,25 @@ impl VisualEffects {
     /// Set a body as being dragged.
     pub fn set_dragging(&mut self, body: BodyId, is_dragging: bool) {
         if is_dragging {
-            if let Some((_, state)) = self.drag_states.iter_mut().find(|(id, _)| *id == body) {
+            if let Some(state) = self.drag_states.get_mut(&body) {
                 state.start_dragging();
             } else {
                 let mut state = DragVisualState::new();
                 state.start_dragging();
-                self.drag_states.push((body, state));
+                self.drag_states.insert(body, state);
             }
         } else {
-            if let Some((_, state)) = self.drag_states.iter_mut().find(|(id, _)| *id == body) {
+            if let Some(state) = self.drag_states.get_mut(&body) {
                 state.stop_dragging();
             }
-            self.drag_states.retain(|(id, _)| *id != body);
+            self.drag_states.remove(&body);
         }
     }
 
     /// Update drag visual effects for all bodies.
     pub fn update_drag_effects(&mut self, bodies: &[(BodyId, MotionState)]) {
         for (body, motion) in bodies {
-            if let Some((_, state)) = self.drag_states.iter_mut().find(|(id, _)| *id == *body) {
+            if let Some(state) = self.drag_states.get_mut(body) {
                 state.update(motion.velocity, &self.config);
             }
         }
@@ -593,10 +595,7 @@ impl VisualEffects {
 
     /// Get the drag visual state for a body.
     pub fn get_drag_state(&self, body: BodyId) -> Option<DragVisualState> {
-        self.drag_states
-            .iter()
-            .find(|(id, _)| *id == body)
-            .map(|(_, s)| *s)
+        self.drag_states.get(&body).copied()
     }
 
     // ---------------------------------------------------------------------
@@ -900,6 +899,32 @@ mod tests {
         let composed = t1.compose(&t2);
         assert!((composed.scale.width - 3.0).abs() < f32::EPSILON);
         assert!((composed.rotation - 0.8).abs() < f32::EPSILON);
+        assert!(
+            (composed.translation.x
+                - (10.0 * 1.5 * 0.3_f32.cos() - 20.0 * 1.5 * 0.3_f32.sin() + 5.0))
+                .abs()
+                < f32::EPSILON
+        );
+    }
+
+    #[test]
+    fn test_apply_position_applies_rotation_and_scale_about_origin() {
+        let transform = VisualTransform {
+            translation: Point::new(5.0, 7.0),
+            scale: Size::new(2.0, 1.0),
+            rotation: std::f32::consts::FRAC_PI_2,
+        };
+        let result = transform.apply_position(Point::new(3.0, 4.0));
+        assert!((result.x - 1.0).abs() < 0.0001);
+        assert!((result.y - 13.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn test_motion_rest_threshold_uses_magnitude() {
+        let mut motion = MotionState::default();
+        motion.velocity = Vector2D::new(0.08, 0.0);
+        motion.angular_velocity = 0.08;
+        assert!(motion.is_at_rest(0.1));
     }
 
     #[test]

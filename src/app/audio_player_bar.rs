@@ -29,9 +29,11 @@ pub fn draw_audio_player_bar(
 ) {
     if dock.audio_player_bar.is_none() {
         let surface = compositor.create_surface(qh);
-        let subsurface = subcompositor
-            .expect("Subcompositor global not bound")
-            .get_subsurface(&surface, dock.surface.wl_surface(), qh, ());
+        let Some(sc) = subcompositor else {
+            tracing::warn!("Subcompositor not available; audio player bar rendering degraded");
+            return;
+        };
+        let subsurface = sc.get_subsurface(&surface, dock.surface.wl_surface(), qh, ());
         subsurface.set_desync();
         dock.audio_player_bar = Some(PopupSurface {
             subsurface,
@@ -55,10 +57,10 @@ pub fn draw_audio_player_bar(
         .round()
         .max(1.0) as i32;
     let expanded = dock.audio_player_expanded;
-    let bar = dock
-        .audio_player_bar
-        .as_mut()
-        .expect("audio player surface initialized");
+    let Some(bar) = dock.audio_player_bar.as_mut() else {
+        tracing::warn!("Audio player bar not initialized");
+        return;
+    };
     bar.position = (x, y);
     bar.subsurface.set_position(x, y);
     bar.width = audio_player::PLAYER_WIDTH as u32;
@@ -81,16 +83,21 @@ pub fn draw_audio_player_bar(
     bar.cached_phys_width = pw;
     bar.cached_phys_height = ph;
 
-    let (buffer, canvas) = pool
-        .create_buffer(pw, ph, pw * 4, wl_shm::Format::Argb8888)
-        .expect("Failed to allocate audio player buffer");
+    let (buffer, canvas) = match pool.create_buffer(pw, ph, pw * 4, wl_shm::Format::Argb8888) {
+        Ok(bc) => bc,
+        Err(e) => {
+            tracing::warn!("Failed to allocate audio player buffer: {}", e);
+            return;
+        }
+    };
     if !super::copy_popup_content(canvas, &bar.cached_content) {
         return;
     }
     bar.surface.set_buffer_scale(scale.round().max(1.0) as i32);
-    buffer
-        .attach_to(&bar.surface)
-        .expect("Failed to attach audio player buffer");
+    if let Err(e) = buffer.attach_to(&bar.surface) {
+        tracing::warn!("Failed to attach audio player buffer: {}", e);
+        return;
+    }
     bar.surface.damage_buffer(0, 0, pw, ph);
     let region_key = if !visible {
         0

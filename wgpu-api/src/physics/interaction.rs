@@ -61,12 +61,12 @@
 //! - **System B (Rigid bodies)** — insert, cut, merge modify collision topology
 //! - **System C (Fields)** — attract, repel, concentrate, disperse use force fields
 
-use super::body::{
-    BodyId, BodyType, CollisionShape, PhysicalProperties, PhysicsBody, PhysicsObject,
-};
-use super::fields::{FieldSource, ForceField};
+use std::collections::HashMap;
+
+use super::body::{BodyId, BodyType, CollisionShape, PhysicsBody};
+use super::fields::FieldSource;
 use super::groups::GroupId;
-use super::world::PhysicsWorld;
+use super::world::{DragTracking, PhysicsWorld};
 use crate::geometry::{NodeId, Point, Rect, Vector2D};
 
 /// State of a physics drag operation.
@@ -261,26 +261,67 @@ impl InteractionApi for PhysicsWorld {
 
         body.wake_up();
         body.rest_position = Some(pointer_position);
-        self.spring_stiffness = 1000.0;
-        self.spring_damping = 0.8;
+        self.drag_tracking.insert(
+            body_id,
+            DragTracking {
+                last_position: pointer_position,
+                last_timestamp: std::time::Instant::now(),
+                velocity: Vector2D::ZERO,
+            },
+        );
 
         Some(PhysicsDragState::Dragging)
     }
 
     fn drag_move(&mut self, body_id: BodyId, pointer_position: Point) -> bool {
-        let dt = self.config.timestep;
-        let body = match self.get_body_mut(body_id) {
-            Some(b) => b,
-            None => return false,
+        let now = std::time::Instant::now();
+        let timestep = self.config.timestep;
+        let max_vel = self.config.max_velocity;
+
+        let initial_position = self.get_body_position(body_id).unwrap_or(pointer_position);
+
+        let velocity = {
+            let tracking = self.drag_tracking.entry(body_id).or_insert(DragTracking {
+                last_position: initial_position,
+                last_timestamp: now,
+                velocity: Vector2D::ZERO,
+            });
+
+            let dt = now
+                .duration_since(tracking.last_timestamp)
+                .max(std::time::Duration::from_millis(1))
+                .as_secs_f32()
+                .max(timestep);
+
+            let dx = pointer_position.x - tracking.last_position.x;
+            let dy = pointer_position.y - tracking.last_position.y;
+            let mut velocity = Vector2D::new(dx / dt, dy / dt);
+
+            let vel_sq = velocity.length_squared();
+            if vel_sq > max_vel * max_vel {
+                let scale = max_vel / vel_sq.sqrt();
+                velocity.x *= scale;
+                velocity.y *= scale;
+            }
+
+            velocity
         };
 
-        body.rest_position = Some(pointer_position);
-        let prev = body.position;
-        body.position = pointer_position;
+        {
+            let body = match self.get_body_mut(body_id) {
+                Some(b) => b,
+                None => return false,
+            };
+            body.rest_position = Some(pointer_position);
+            body.position = pointer_position;
+            body.velocity = velocity;
+        }
 
-        if dt > 0.0 {
-            body.velocity.x = (body.position.x - prev.x) / dt;
-            body.velocity.y = (body.position.y - prev.y) / dt;
+        {
+            let tracking = self.drag_tracking.get_mut(&body_id).unwrap();
+            tracking.last_position = pointer_position;
+            tracking.last_timestamp = now;
+            tracking.velocity = velocity;
         }
 
         true
@@ -288,35 +329,32 @@ impl InteractionApi for PhysicsWorld {
 
     fn drag_release(&mut self, body_id: BodyId) -> bool {
         let max_vel = self.config.max_velocity;
+        let release_velocity = self
+            .drag_tracking
+            .remove(&body_id)
+            .map(|tracking| tracking.velocity)
+            .unwrap_or(Vector2D::ZERO);
 
-        // Clamp velocity first while we have mutable access
-        {
-            let body = match self.get_body_mut(body_id) {
-                Some(b) => b,
-                None => return false,
-            };
-            let vel_sq = body.velocity.length_squared();
-            if vel_sq > max_vel * max_vel {
-                let scale = max_vel / vel_sq.sqrt();
-                body.velocity.x *= scale;
-                body.velocity.y *= scale;
-            }
-            // body dropped here
+        let body = match self.get_body_mut(body_id) {
+            Some(b) => b,
+            None => return false,
         };
 
-        // Now safe to modify spring params
-        self.spring_stiffness = 500.0;
-        self.spring_damping = 0.8;
+        let mut velocity = release_velocity;
+        let vel_sq = velocity.length_squared();
+        if vel_sq > max_vel * max_vel {
+            let scale = max_vel / vel_sq.sqrt();
+            velocity.x *= scale;
+            velocity.y *= scale;
+        }
+        body.velocity = velocity;
+        body.rest_position = Some(body.position);
 
         true
     }
 
     fn is_dragging(&self, body_id: BodyId) -> bool {
-        if let Some(body) = self.get_body(body_id) {
-            body.rest_position.is_some() && self.spring_stiffness > 500.0
-        } else {
-            false
-        }
+        self.drag_tracking.contains_key(&body_id)
     }
 
     // ---------------------------------------------------------------------
@@ -502,7 +540,12 @@ impl InteractionApi for PhysicsWorld {
     }
 
     fn remove(&mut self, body_id: BodyId) -> bool {
-        self.remove_body(body_id).is_some()
+        let was_dragged = self.drag_tracking.contains_key(&body_id);
+        let removed = self.remove_body(body_id).is_some();
+        if removed && was_dragged {
+            self.drag_tracking.remove(&body_id);
+        }
+        removed
     }
 
     fn cut(&mut self, group: GroupId, position: Point) -> Option<CutResult> {
@@ -606,6 +649,11 @@ impl InteractionApi for PhysicsWorld {
 
     fn disperse(&mut self, region: &Rect, strength: f32) {
         let ids: Vec<BodyId> = self.query_overlap(region);
+        if ids.len() < 2 {
+            return;
+        }
+
+        let mut impulses: HashMap<BodyId, Vector2D> = HashMap::with_capacity(ids.len());
 
         for i in 0..ids.len() {
             for j in (i + 1)..ids.len() {
@@ -625,14 +673,27 @@ impl InteractionApi for PhysicsWorld {
                 let fx = dx / dist * force_mag;
                 let fy = dy / dist * force_mag;
 
-                if let Some(mut_a) = self.get_body_mut(id_a) {
-                    mut_a.wake_up();
-                    mut_a.apply_impulse(Vector2D::new(-fx, -fy));
-                }
-                if let Some(mut_b) = self.get_body_mut(id_b) {
-                    mut_b.wake_up();
-                    mut_b.apply_impulse(Vector2D::new(fx, fy));
-                }
+                impulses
+                    .entry(id_a)
+                    .and_modify(|v| {
+                        v.x -= fx;
+                        v.y -= fy;
+                    })
+                    .or_insert(Vector2D::new(-fx, -fy));
+                impulses
+                    .entry(id_b)
+                    .and_modify(|v| {
+                        v.x += fx;
+                        v.y += fy;
+                    })
+                    .or_insert(Vector2D::new(fx, fy));
+            }
+        }
+
+        for (id, impulse) in impulses {
+            if let Some(body) = self.get_body_mut(id) {
+                body.wake_up();
+                body.apply_impulse(impulse);
             }
         }
     }
@@ -688,6 +749,7 @@ impl InteractionApi for PhysicsWorld {
 
 #[cfg(test)]
 mod tests {
+    use super::super::body::{PhysicalProperties, PhysicsObject};
     use super::*;
 
     #[test]
@@ -740,7 +802,8 @@ mod tests {
         world.drag_move(BodyId::new(1), Point::new(200.0, 200.0));
         world.drag_release(BodyId::new(1));
 
-        // After release, spring stiffness should be restored
+        assert_eq!(world.drag_state(BodyId::new(1)), PhysicsDragState::Released);
+        assert!(!world.is_dragging(BodyId::new(1)));
         assert!((world.spring_stiffness - 500.0).abs() < f32::EPSILON);
     }
 

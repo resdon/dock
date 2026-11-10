@@ -29,23 +29,29 @@ pub use service_recovery::*;
 /// Result of a recovery attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RecoveryResult {
-    /// Recovery succeeded.
+    /// Recovery action completed successfully.
     Recovered,
-    /// Recovery failed but can be retried.
+    /// Recovery can be retried after the given delay.
+    RetryAfter(std::time::Duration),
+    /// Recovery failed but may be retried (caller decides timing/backoff).
     Retryable,
-    /// Recovery failed permanently; requires manual intervention.
+    /// Recovery failed permanently or attempts are exhausted.
     Failed,
-    /// Recovery was not attempted (error not recoverable).
+    /// Recovery was intentionally not attempted for this error/state.
     NotAttempted,
+    /// Recovery path is not implemented/integrated for this subsystem.
+    NotImplemented,
 }
 
 impl std::fmt::Display for RecoveryResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             RecoveryResult::Recovered => write!(f, "recovered"),
+            RecoveryResult::RetryAfter(delay) => write!(f, "retry after {:?}", delay),
             RecoveryResult::Retryable => write!(f, "retryable"),
             RecoveryResult::Failed => write!(f, "failed"),
             RecoveryResult::NotAttempted => write!(f, "not attempted"),
+            RecoveryResult::NotImplemented => write!(f, "not implemented"),
         }
     }
 }
@@ -53,18 +59,26 @@ impl std::fmt::Display for RecoveryResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn test_recovery_result_display() {
         assert_eq!(format!("{}", RecoveryResult::Recovered), "recovered");
+        assert_eq!(format!("{}", RecoveryResult::RetryAfter(Duration::from_millis(250))), "retry after 250ms");
         assert_eq!(format!("{}", RecoveryResult::Retryable), "retryable");
         assert_eq!(format!("{}", RecoveryResult::Failed), "failed");
         assert_eq!(format!("{}", RecoveryResult::NotAttempted), "not attempted");
+        assert_eq!(format!("{}", RecoveryResult::NotImplemented), "not implemented");
     }
 
     #[test]
     fn test_recovery_result_equality() {
         assert_eq!(RecoveryResult::Recovered, RecoveryResult::Recovered);
+        assert_eq!(
+            RecoveryResult::RetryAfter(Duration::from_secs(1)),
+            RecoveryResult::RetryAfter(Duration::from_secs(1))
+        );
         assert_ne!(RecoveryResult::Recovered, RecoveryResult::Failed);
+        assert_ne!(RecoveryResult::Retryable, RecoveryResult::NotImplemented);
     }
 }

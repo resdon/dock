@@ -56,7 +56,19 @@ The dock uses a **hybrid rendering approach**:
 
 **Slint Integration**: The main dock uses Slint's `MinimalSoftwareWindow` for headless rendering. This is the correct pattern for Slint on Wayland without a windowing system. Slint renders to CPU pixel buffers which are then presented via Wayland SHM.
 
-**wgpu-api Backend**: Provides a complete GPU rendering backend (device/queue, pipelines, shaders, frame submission) ready for use by popups and future GPU features. The backend is fully implemented but the main dock does not use it due to Slint architecture constraints.
+**wgpu-api Backend**: Owns the GPU device, pipelines, texture resources, and frame submission. The application uses it for the dock and selected popup/widget surfaces through DMA-BUF when available; these paths retain their CPU/SHM fallback. GPU draw commands describe logical-pixel geometry where documented, and DMA-BUF rendering applies the supplied logical-to-physical scale.
+
+### Rendering Fixes and Integration Notes
+
+- Text draw commands are prepared in batches of at most eight items through the renderer-owned glyphon text manager and rendered in the same pass as shapes and images. The atlas's in-use set is reset once per frame so stale, changing window-title glyphs can be evicted instead of accumulating until text preparation fails.
+- The textured and solid pipelines, uniform bindings, and sampled-texture bindings share a compatible bind-group layout. Sampled texture bind groups are cached with their textures.
+- Static dock, tray, and dashed-widget icons use stable texture keys so redraws do not recreate GPU textures. Dynamic window-capture frames replace their cached texture.
+- DMA-BUF widget rendering converts logical geometry and text to physical pixels before drawing. The scale-aware API takes physical target dimensions and a logical-to-physical scale factor.
+- Window-list rows have dashed separators; only the row under the pointer receives a dashed perimeter. When the pointer leaves, the list closes after the configured popup timeout, capped at two seconds.
+- Context-menu hover highlights use a dashed perimeter.
+- DMA-BUF `wl_buffer` objects are destroyed after the compositor releases them. Redraw invalidation is consumed after drawing rather than forcing an unbounded render loop; an open window-list popup refreshes its live capture at 30 Hz.
+- Date/time, keyboard-layout, and context-menu text offsets are configurable. Defaults are +7, +6, and +6 logical pixels respectively; window-list title text is twice the configured popup font size and shifted down six logical pixels.
+- Tray surfaces are rendered alongside the dock rather than being left disabled.
 
 **FemtoVG**: Removed. All FemtoVG rendering has been eliminated from the codebase.
 

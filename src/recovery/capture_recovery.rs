@@ -62,10 +62,8 @@ impl CaptureRecovery {
 
     /// Attempt to recover from a stream disconnection.
     ///
-    /// # Returns
-    /// - `Recovered` if the stream was reconnected.
-    /// - `Retryable` if reconnection should be retried.
-    /// - `Failed` if max attempts exceeded.
+    /// Returns `RetryAfter(delay)` to communicate retry timing intent, but no
+    /// actual reconnect/recreate action is performed by this module yet.
     pub fn recover_stream_disconnected(&self) -> RecoveryResult {
         let attempts = self.reconnect_count.fetch_add(1, Ordering::SeqCst) + 1;
 
@@ -74,7 +72,7 @@ impl CaptureRecovery {
                 subsystem = "pipewire",
                 attempts = attempts,
                 max_attempts = self.config.max_reconnect_attempts,
-                "Capture reconnection attempts exhausted"
+                "Capture reconnection attempts exhausted (no integrated recovery action)"
             );
             return RecoveryResult::Failed;
         }
@@ -83,38 +81,27 @@ impl CaptureRecovery {
             subsystem = "pipewire",
             attempt = attempts,
             delay_ms = ?self.config.reconnect_delay,
-            "Attempting capture stream reconnection"
+            "Capture stream recovery requested but not implemented/integrated"
         );
-
-        // In a real implementation, this would:
-        // 1. Wait for the reconnect delay
-        // 2. Reconnect to PipeWire
-        // 3. Recreate the capture stream
-        RecoveryResult::Retryable
+        RecoveryResult::RetryAfter(self.config.reconnect_delay)
     }
 
     /// Attempt to recover from buffer unavailability.
     ///
-    /// # Returns
-    /// - `Recovered` if a frame was acquired.
-    /// - `Retryable` if the buffer is still unavailable.
+    /// Returns `RetryAfter(0)` to indicate the caller may try on the next
+    /// frame/cycle, but no buffer acquisition is performed here.
     pub fn recover_buffer_unavailable(&self) -> RecoveryResult {
         tracing::debug!(
             subsystem = "pipewire",
-            "Buffer unavailable, will wait for next frame"
+            "Buffer unavailable; caller may retry later (no integrated recovery action)"
         );
-
-        // In a real implementation, this would skip the current frame
-        // and wait for the next one.
-        RecoveryResult::Retryable
+        RecoveryResult::RetryAfter(Duration::from_millis(0))
     }
 
     /// Attempt to recover from format negotiation failure.
     ///
-    /// # Returns
-    /// - `Recovered` if an alternative format was negotiated.
-    /// - `Retryable` if format negotiation should be retried.
-    /// - `Failed` if no alternative formats are available.
+    /// Returns `NotImplemented` when alternative-format recovery is enabled but
+    /// not integrated; `NotAttempted` when disabled.
     pub fn recover_format_negotiation(&self) -> RecoveryResult {
         if !self.config.try_alternative_formats {
             return RecoveryResult::NotAttempted;
@@ -122,12 +109,9 @@ impl CaptureRecovery {
 
         tracing::warn!(
             subsystem = "pipewire",
-            "Attempting alternative format negotiation"
+            "Alternative format negotiation requested but not implemented/integrated"
         );
-
-        // In a real implementation, this would try alternative formats
-        // in order of preference.
-        RecoveryResult::Retryable
+        RecoveryResult::NotImplemented
     }
 
     /// Reset the reconnection attempt counter.
@@ -158,10 +142,10 @@ mod tests {
     }
 
     #[test]
-    fn test_stream_disconnected_recovery() {
+    fn test_stream_disconnected_recovery_returns_retry_after() {
         let recovery = CaptureRecovery::default_config();
         let result = recovery.recover_stream_disconnected();
-        assert_eq!(result, RecoveryResult::Retryable);
+        assert_eq!(result, RecoveryResult::RetryAfter(Duration::from_millis(500)));
         assert_eq!(recovery.reconnect_count(), 1);
     }
 
@@ -179,17 +163,17 @@ mod tests {
     }
 
     #[test]
-    fn test_buffer_unavailable_recovery() {
+    fn test_buffer_unavailable_recovery_returns_retry_after() {
         let recovery = CaptureRecovery::default_config();
         let result = recovery.recover_buffer_unavailable();
-        assert_eq!(result, RecoveryResult::Retryable);
+        assert_eq!(result, RecoveryResult::RetryAfter(Duration::from_millis(0)));
     }
 
     #[test]
-    fn test_format_negotiation_recovery() {
+    fn test_format_negotiation_recovery_not_implemented() {
         let recovery = CaptureRecovery::default_config();
         let result = recovery.recover_format_negotiation();
-        assert_eq!(result, RecoveryResult::Retryable);
+        assert_eq!(result, RecoveryResult::NotImplemented);
     }
 
     #[test]

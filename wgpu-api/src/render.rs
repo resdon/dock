@@ -166,6 +166,9 @@ pub enum DrawCommand {
         font_size: f32,
         /// Text color.
         color: Color,
+        /// Horizontal alignment within the max_width (0.0=left, 0.5=center, 1.0=right).
+        /// When centering, `position.x` is ignored and text is centered within `max_width`.
+        align: f32,
     },
     /// Begin a clipped region.
     PushClip {

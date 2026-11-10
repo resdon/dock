@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 /// Fade presentation cadence. State may be sampled more often by input, but
 /// actual fade frames are emitted at most 24 times per second.
 pub const FADE_FRAME_INTERVAL: Duration = Duration::from_nanos(41_666_667);
+const ALPHA_EPSILON: f32 = 1e-3;
 
 #[derive(Debug, Clone)]
 pub struct FadeAnimation {
@@ -48,8 +49,8 @@ impl FadeAnimation {
     }
 
     pub fn show(&mut self) {
-        if self.target_alpha != self.max_alpha
-            || (self.current_alpha - self.max_alpha).abs() > f32::EPSILON
+        if (self.target_alpha - self.max_alpha).abs() > ALPHA_EPSILON
+            || (self.current_alpha - self.max_alpha).abs() > ALPHA_EPSILON
         {
             self.target_alpha = self.max_alpha;
             self.last_update = Instant::now() - FADE_FRAME_INTERVAL;
@@ -62,8 +63,8 @@ impl FadeAnimation {
     }
 
     pub fn hide(&mut self) {
-        if self.target_alpha != self.min_alpha
-            || (self.current_alpha - self.min_alpha).abs() > f32::EPSILON
+        if (self.target_alpha - self.min_alpha).abs() > ALPHA_EPSILON
+            || (self.current_alpha - self.min_alpha).abs() > ALPHA_EPSILON
         {
             self.target_alpha = self.min_alpha;
             self.last_update = Instant::now() - FADE_FRAME_INTERVAL;
@@ -94,7 +95,8 @@ impl FadeAnimation {
         self.just_became_hidden = false;
         self.just_became_visible = false;
 
-        if (self.current_alpha - self.target_alpha).abs() < f32::EPSILON {
+        if (self.current_alpha - self.target_alpha).abs() <= ALPHA_EPSILON {
+            self.current_alpha = self.target_alpha;
             return false;
         }
 
@@ -119,13 +121,17 @@ impl FadeAnimation {
             }
         }
 
+        if (self.current_alpha - self.target_alpha).abs() <= ALPHA_EPSILON {
+            self.current_alpha = self.target_alpha;
+        }
+
         // Trigger edge-state transitions
-        if (self.current_alpha - self.min_alpha).abs() < f32::EPSILON
-            && self.target_alpha == self.min_alpha
+        if (self.current_alpha - self.min_alpha).abs() <= ALPHA_EPSILON
+            && (self.target_alpha - self.min_alpha).abs() <= ALPHA_EPSILON
         {
             self.just_became_hidden = true;
-        } else if (self.current_alpha - self.max_alpha).abs() < f32::EPSILON
-            && self.target_alpha == self.max_alpha
+        } else if (self.current_alpha - self.max_alpha).abs() <= ALPHA_EPSILON
+            && (self.target_alpha - self.max_alpha).abs() <= ALPHA_EPSILON
         {
             self.just_became_visible = true;
         }
@@ -134,11 +140,13 @@ impl FadeAnimation {
     }
 
     pub fn is_fully_hidden(&self) -> bool {
-        (self.target_alpha - self.min_alpha).abs() < f32::EPSILON
+        (self.target_alpha - self.min_alpha).abs() <= ALPHA_EPSILON
+            && (self.current_alpha - self.min_alpha).abs() <= ALPHA_EPSILON
     }
 
     pub fn is_fully_visible(&self) -> bool {
-        (self.current_alpha - self.max_alpha).abs() < f32::EPSILON
+        (self.current_alpha - self.max_alpha).abs() <= ALPHA_EPSILON
+            && (self.target_alpha - self.max_alpha).abs() <= ALPHA_EPSILON
     }
 
     /// Applies popup opacity without invoking floating-point math for every pixel.

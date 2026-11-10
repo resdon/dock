@@ -2,15 +2,19 @@
 //!
 //! Left tray (system tray icons) and bottom system bar (clock, keyboard, network).
 
+use std::os::fd::AsFd;
+
 use smithay_client_toolkit::{
     compositor::CompositorState, dmabuf::DmabufState, shell::WaylandSurface, shm::slot::SlotPool,
 };
 use wayland_client::{protocol::wl_shm, QueueHandle};
 
+use crate::config::DockConfig;
 use crate::models::SystemBarSnapshot;
 use crate::render::tray::{
     render_system_status_into_canvas, render_tray_icons_into_canvas, system_bar_logical_width,
-    system_bar_position, tray_bar_position, tray_logical_size, SYSTEM_BAR_HEIGHT,
+    system_bar_position, tray_bar_position, tray_icon_position, tray_logical_size,
+    TRAY_ICON_SIZE, SYSTEM_BAR_HEIGHT,
 };
 use crate::state::AppState;
 use crate::types::{DockInstance, PopupSurface};
@@ -22,14 +26,16 @@ fn ensure_surface(
     compositor: &CompositorState,
     subcompositor: Option<&wayland_client::protocol::wl_subcompositor::WlSubcompositor>,
     app_id: &'static str,
-) {
+) -> bool {
     if slot.is_some() {
-        return;
+        return true;
     }
+    let Some(sc) = subcompositor else {
+        tracing::warn!("Subcompositor not available; {} rendering degraded", app_id);
+        return false;
+    };
     let surface = compositor.create_surface(qh);
-    let subsurface = subcompositor
-        .expect("Subcompositor global not bound")
-        .get_subsurface(&surface, parent_surface, qh, ());
+    let subsurface = sc.get_subsurface(&surface, parent_surface, qh, ());
     subsurface.set_desync();
     *slot = Some(PopupSurface {
         subsurface,
@@ -44,6 +50,7 @@ fn ensure_surface(
         cached_phys_height: 0,
         input_region_key: u64::MAX,
     });
+    true
 }
 
 fn set_interactive_region(
@@ -79,18 +86,20 @@ pub fn draw_left_tray_bar(
     visible: bool,
     alpha: f32,
     font_manager: &mut crate::render::font::FontManager,
-    _gpu_context: Option<&mut wgpu_api::Renderer>,
-    _dmabuf_state: &DmabufState,
+    mut gpu_context: Option<&mut wgpu_api::Renderer>,
+    dmabuf_state: &DmabufState,
 ) {
     let parent_surface = dock.surface.wl_surface().clone();
-    ensure_surface(
+    if !ensure_surface(
         &mut dock.tray_bar,
         &parent_surface,
         qh,
         compositor,
         subcompositor,
         "left-status-tray",
-    );
+    ) {
+        return;
+    }
     let (logical_width, logical_height) = tray_logical_size(items.len());
     let buffer_width = logical_width.max(1) as u32;
     let (x, y) = tray_bar_position(dock.width as i32, items.len());
@@ -99,50 +108,178 @@ pub fn draw_left_tray_bar(
     let phys_height = (logical_height as f64 * scale).round().max(1.0) as i32;
     let expected = phys_width as usize * phys_height as usize * 4;
 
-    let bar = dock.tray_bar.as_mut().expect("tray bar initialized");
+    let bar = match dock.tray_bar.as_mut() {
+        Some(bar) => bar,
+        None => {
+            tracing::warn!("Tray bar not initialized");
+            return;
+        }
+    };
     bar.position = (x, y);
     bar.subsurface.set_position(x, y);
     bar.width = buffer_width;
     bar.height = logical_height as u32;
     bar.cached_content.resize(expected, 0);
     bar.cached_content.fill(0);
-
-    // GPU rendering via wgpu-api not yet integrated — using CPU rendering
-    if !items.is_empty() {
-        render_tray_icons_into_canvas(
-            &mut bar.cached_content,
-            phys_width as u32,
-            phys_height as u32,
-            scale,
-            items,
-            1.0,
-            font_manager,
-            std::env::var_os("DOCK_RENDER_DEBUG").is_some(),
-        );
-        apply_surface_alpha(&mut bar.cached_content, alpha);
-    }
     bar.cached_phys_width = phys_width;
     bar.cached_phys_height = phys_height;
 
-    let (buffer, canvas) = pool
-        .create_buffer(
+    // GPU rendering path via wgpu-api DMA-BUF
+    let gpu_success = if !items.is_empty() {
+        let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::new();
+        let scale_f32 = scale as f32;
+        let width = phys_width as f32;
+        let height = phys_height as f32;
+
+        // Background rounded panel
+        draw_commands.push(wgpu_api::DrawCommand::Rectangle {
+            rect: wgpu_api::Rect {
+                x: 0.0,
+                y: 0.0,
+                width,
+                height,
+            },
+            color: wgpu_api::Color {
+                r: 28.0 / 255.0,
+                g: 27.0 / 255.0,
+                b: 33.0 / 255.0,
+                a: alpha * 0.96,
+            },
+            radius: 7.0 * scale_f32,
+            stroke: None,
+            stroke_width: 0.0,
+        });
+
+        // Tray icons as textured quads
+        for (index, item) in items.iter().enumerate() {
+            let (logical_x, logical_y) = tray_icon_position(index, items.len()).unwrap_or((0, 0));
+            let phys_x = (logical_x as f64 * scale).round() as f32;
+            let phys_y = (logical_y as f64 * scale).round() as f32;
+            let icon_size = (TRAY_ICON_SIZE as f64 * scale).round().max(1.0) as f32;
+
+            if let Some(icon) = &item.icon {
+                if let Some(ref mut renderer) = gpu_context {
+                    let cache_key = format!("tray-icon:{}", item.key);
+                    if let Some(texture_id) = renderer.upload_texture_from_pixels_cached(
+                        &cache_key,
+                        &icon.rgba,
+                        icon.width,
+                        icon.height,
+                    ) {
+                        draw_commands.push(wgpu_api::DrawCommand::Image {
+                            dest_rect: wgpu_api::Rect {
+                                x: phys_x,
+                                y: phys_y,
+                                width: icon_size,
+                                height: icon_size,
+                            },
+                            texture: texture_id,
+                            source_uv: wgpu_api::Rect {
+                                x: 0.0,
+                                y: 0.0,
+                                width: 1.0,
+                                height: 1.0,
+                            },
+                            tint: wgpu_api::Color {
+                                r: 1.0,
+                                g: 1.0,
+                                b: 1.0,
+                                a: alpha,
+                            },
+                        });
+                    }
+                }
+            }
+        }
+
+        // Render via DMA-BUF
+        if let Some(ref mut renderer) = gpu_context {
+            match renderer.render_to_dmabuf(
+                phys_width as u32,
+                phys_height as u32,
+                &draw_commands,
+            ) {
+                Ok(export_info) => {
+                    match dmabuf_state.create_params(qh) {
+                        Ok(params) => {
+                            for (i, plane) in export_info.planes.iter().enumerate() {
+                                params.add(
+                                    plane.fd.as_fd(),
+                                    i as u32,
+                                    plane.offset,
+                                    plane.stride,
+                                    export_info.modifier,
+                                );
+                            }
+                            let (wl_buffer, _params) = params.create_immed(
+                                phys_width,
+                                phys_height,
+                                export_info.fourcc as u32,
+                                wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_buffer_params_v1::Flags::empty(),
+                                qh,
+                            );
+                            let scale_i32 = scale.round().max(1.0) as i32;
+                            bar.surface.set_buffer_scale(scale_i32);
+                            bar.surface.attach(Some(&wl_buffer), 0, 0);
+                            bar.surface.damage_buffer(0, 0, phys_width, phys_height);
+                            set_interactive_region(bar, visible && !items.is_empty(), compositor, qh);
+                            bar.surface.commit();
+                            bar.current_buffer = None;
+                            true
+                        }
+                        Err(_) => false,
+                    }
+                }
+                Err(_) => false,
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    // Fallback: CPU rendering if GPU failed
+    if !gpu_success {
+        if !items.is_empty() {
+            render_tray_icons_into_canvas(
+                &mut bar.cached_content,
+                phys_width as u32,
+                phys_height as u32,
+                scale,
+                items,
+                1.0,
+                font_manager,
+                std::env::var_os("DOCK_RENDER_DEBUG").is_some(),
+            );
+            apply_surface_alpha(&mut bar.cached_content, alpha);
+        }
+
+        let (buffer, canvas) = match pool.create_buffer(
             phys_width,
             phys_height,
             phys_width * 4,
             wl_shm::Format::Argb8888,
-        )
-        .expect("Failed to allocate left tray buffer");
-    if !super::copy_popup_content(canvas, &bar.cached_content) {
-        return;
+        ) {
+            Ok(bc) => bc,
+            Err(e) => {
+                tracing::warn!("Failed to allocate left tray buffer: {}", e);
+                return;
+            }
+        };
+        if !super::copy_popup_content(canvas, &bar.cached_content) {
+            return;
+        }
+        bar.surface.set_buffer_scale(scale.round().max(1.0) as i32);
+        if let Err(e) = buffer.attach_to(&bar.surface) {
+            tracing::warn!("Failed to attach left tray buffer: {}", e);
+            return;
+        }
+        bar.surface.damage_buffer(0, 0, phys_width, phys_height);
+        set_interactive_region(bar, visible && !items.is_empty(), compositor, qh);
+        bar.surface.commit();
+        bar.current_buffer = Some(buffer);
     }
-    bar.surface.set_buffer_scale(scale.round().max(1.0) as i32);
-    buffer
-        .attach_to(&bar.surface)
-        .expect("Failed to attach left tray buffer");
-    bar.surface.damage_buffer(0, 0, phys_width, phys_height);
-    set_interactive_region(bar, visible && !items.is_empty(), compositor, qh);
-    bar.surface.commit();
-    bar.current_buffer = Some(buffer);
 }
 
 /// Keyboard layout, network rates and clock in a passive, always-opaque strip
@@ -158,18 +295,20 @@ pub fn draw_bottom_system_bar(
     visible: bool,
     alpha: f32,
     font_manager: &mut crate::render::font::FontManager,
-    _gpu_context: Option<&mut wgpu_api::Renderer>,
-    _dmabuf_state: &DmabufState,
+    mut gpu_context: Option<&mut wgpu_api::Renderer>,
+    dmabuf_state: &DmabufState,
 ) {
     let parent_surface = dock.surface.wl_surface().clone();
-    ensure_surface(
+    if !ensure_surface(
         &mut dock.system_status_bar,
         &parent_surface,
         qh,
         compositor,
         subcompositor,
         "bottom-system-status",
-    );
+    ) {
+        return;
+    }
     let scale = dock.scale_factor.max(0.25);
     let logical_width = system_bar_logical_width(dock.width as i32).max(1) as u32;
     let phys_width = (logical_width as f64 * scale).round().max(1.0) as i32;
@@ -177,53 +316,284 @@ pub fn draw_bottom_system_bar(
     let expected = phys_width as usize * phys_height as usize * 4;
     let (x, y) = system_bar_position(dock.width as i32);
 
-    let bar = dock
-        .system_status_bar
-        .as_mut()
-        .expect("system status bar initialized");
+    let bar = match dock.system_status_bar.as_mut() {
+        Some(bar) => bar,
+        None => {
+            tracing::warn!("System status bar not initialized");
+            return;
+        }
+    };
     bar.position = (x, y);
     bar.subsurface.set_position(x, y);
     bar.width = logical_width;
     bar.height = SYSTEM_BAR_HEIGHT as u32;
     bar.cached_content.resize(expected, 0);
     bar.cached_content.fill(0);
-
-    // GPU rendering via wgpu-api not yet integrated — using CPU rendering
-    if visible {
-        render_system_status_into_canvas(
-            &mut bar.cached_content,
-            phys_width as u32,
-            phys_height as u32,
-            scale,
-            snapshot,
-            1.0,
-            font_manager,
-            std::env::var_os("DOCK_RENDER_DEBUG").is_some(),
-        );
-        apply_surface_alpha(&mut bar.cached_content, alpha);
-    }
     bar.cached_phys_width = phys_width;
     bar.cached_phys_height = phys_height;
 
-    let (buffer, canvas) = pool
-        .create_buffer(
+    // GPU rendering path via wgpu-api DMA-BUF
+    let gpu_success = if !visible {
+        false
+    } else {
+        let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::new();
+        let scale_f32 = scale as f32;
+        let width = phys_width as f32;
+        let height = phys_height as f32;
+
+        // Background panel
+        draw_commands.push(wgpu_api::DrawCommand::Rectangle {
+            rect: wgpu_api::Rect {
+                x: 0.0,
+                y: 0.0,
+                width,
+                height,
+            },
+            color: wgpu_api::Color {
+                r: 28.0 / 255.0,
+                g: 27.0 / 255.0,
+                b: 33.0 / 255.0,
+                a: alpha * 0.92,
+            },
+            radius: 10.0 * scale_f32,
+            stroke: None,
+            stroke_width: 0.0,
+        });
+
+        // Keyboard layout badge
+        let keyboard = if snapshot.keyboard_layout.is_empty() {
+            "--"
+        } else {
+            &snapshot.keyboard_layout
+        };
+        let badge_x = (8.0 * scale_f32);
+        let badge_y = ((SYSTEM_BAR_HEIGHT as f32 - 20.0) / 2.0 * scale_f32);
+        let badge_w = 34.0 * scale_f32;
+        let badge_h = 20.0 * scale_f32;
+        draw_commands.push(wgpu_api::DrawCommand::Rectangle {
+            rect: wgpu_api::Rect {
+                x: badge_x,
+                y: badge_y,
+                width: badge_w,
+                height: badge_h,
+            },
+            color: wgpu_api::Color {
+                r: 48.0 / 255.0,
+                g: 46.0 / 255.0,
+                b: 55.0 / 255.0,
+                a: alpha,
+            },
+            radius: 4.0 * scale_f32,
+            stroke: None,
+            stroke_width: 0.0,
+        });
+        // Keyboard text
+        let keyboard_text_x = badge_x + (badge_w - keyboard.len() as f32 * 6.0 * scale_f32) / 2.0;
+        let baseline = (SYSTEM_BAR_HEIGHT as f32 / 2.0 + 4.0) * scale_f32;
+        draw_commands.push(wgpu_api::DrawCommand::Text {
+            position: wgpu_api::Point::new(keyboard_text_x, baseline),
+            content: keyboard.to_string(),
+            font_size: 11.0 * scale_f32,
+            color: wgpu_api::Color {
+                r: 250.0 / 255.0,
+                g: 204.0 / 255.0,
+                b: 21.0 / 255.0,
+                a: alpha,
+            },
+            align: 0.0,
+        });
+
+        // Network download text
+        let download = if snapshot.download_rate.is_empty() {
+            "0 B/s"
+        } else {
+            &snapshot.download_rate
+        };
+        let network_x = 58.0 * scale_f32;
+        draw_commands.push(wgpu_api::DrawCommand::Text {
+            position: wgpu_api::Point::new(network_x + 12.0 * scale_f32, baseline),
+            content: download.to_string(),
+            font_size: 11.0 * scale_f32,
+            color: wgpu_api::Color {
+                r: 224.0 / 255.0,
+                g: 219.0 / 255.0,
+                b: 201.0 / 255.0,
+                a: alpha,
+            },
+            align: 0.0,
+        });
+
+        // Network upload text
+        let upload = if snapshot.upload_rate.is_empty() {
+            "0 B/s"
+        } else {
+            &snapshot.upload_rate
+        };
+        let upload_x = (58.0 + 76.0) * scale_f32;
+        draw_commands.push(wgpu_api::DrawCommand::Text {
+            position: wgpu_api::Point::new(upload_x + 12.0 * scale_f32, baseline),
+            content: upload.to_string(),
+            font_size: 11.0 * scale_f32,
+            color: wgpu_api::Color {
+                r: 224.0 / 255.0,
+                g: 219.0 / 255.0,
+                b: 201.0 / 255.0,
+                a: alpha,
+            },
+            align: 0.0,
+        });
+
+        // Date and time text (right-aligned)
+        let date = if snapshot.date.is_empty() { "--" } else { &snapshot.date };
+        let time = if snapshot.time.is_empty() {
+            "--:--"
+        } else {
+            &snapshot.time
+        };
+        let right_margin = 12.0 * scale_f32;
+        let pair_gap = 8.0 * scale_f32;
+        let time_est_width = time.len() as f32 * 8.0 * scale_f32;
+        let date_est_width = date.len() as f32 * 7.0 * scale_f32;
+        let time_x = width - right_margin - time_est_width;
+        let date_x = time_x - pair_gap - date_est_width;
+
+        // Date/time background panel
+        let panel_x = (date_x - 7.0 * scale_f32).max(0.0);
+        let panel_w = width - panel_x - right_margin;
+        let panel_y = (SYSTEM_BAR_HEIGHT as f32 / 2.0 - 13.0) * scale_f32;
+        let panel_h = 26.0 * scale_f32;
+        draw_commands.push(wgpu_api::DrawCommand::Rectangle {
+            rect: wgpu_api::Rect {
+                x: panel_x,
+                y: panel_y,
+                width: panel_w,
+                height: panel_h,
+            },
+            color: wgpu_api::Color {
+                r: 250.0 / 255.0,
+                g: 204.0 / 255.0,
+                b: 21.0 / 255.0,
+                a: alpha,
+            },
+            radius: 7.0 * scale_f32,
+            stroke: None,
+            stroke_width: 0.0,
+        });
+
+        // Date text
+        draw_commands.push(wgpu_api::DrawCommand::Text {
+            position: wgpu_api::Point::new(date_x, baseline),
+            content: date.to_string(),
+            font_size: 12.0 * scale_f32,
+            color: wgpu_api::Color {
+                r: 77.0 / 255.0,
+                g: 57.0 / 255.0,
+                b: 17.0 / 255.0,
+                a: alpha,
+            },
+            align: 0.0,
+        });
+
+        // Time text
+        draw_commands.push(wgpu_api::DrawCommand::Text {
+            position: wgpu_api::Point::new(time_x, baseline),
+            content: time.to_string(),
+            font_size: 14.0 * scale_f32,
+            color: wgpu_api::Color {
+                r: 34.0 / 255.0,
+                g: 30.0 / 255.0,
+                b: 24.0 / 255.0,
+                a: alpha,
+            },
+            align: 0.0,
+        });
+
+        // GPU rendering via DMA-BUF with glyphon text rendering
+        if let Some(ref mut renderer) = gpu_context {
+            match renderer.render_to_dmabuf(
+                phys_width as u32,
+                phys_height as u32,
+                &draw_commands,
+            ) {
+                Ok(export_info) => {
+                    match dmabuf_state.create_params(qh) {
+                        Ok(params) => {
+                            for (i, plane) in export_info.planes.iter().enumerate() {
+                                params.add(
+                                    plane.fd.as_fd(),
+                                    i as u32,
+                                    plane.offset,
+                                    plane.stride,
+                                    export_info.modifier,
+                                );
+                            }
+                            let (wl_buffer, _params) = params.create_immed(
+                                phys_width,
+                                phys_height,
+                                export_info.fourcc as u32,
+                                wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_buffer_params_v1::Flags::empty(),
+                                qh,
+                            );
+                            let scale_i32 = scale.round().max(1.0) as i32;
+                            bar.surface.set_buffer_scale(scale_i32);
+                            bar.surface.attach(Some(&wl_buffer), 0, 0);
+                            bar.surface.damage_buffer(0, 0, phys_width, phys_height);
+                            set_interactive_region(bar, false, compositor, qh);
+                            bar.surface.commit();
+                            bar.current_buffer = None;
+                            true
+                        }
+                        Err(_) => false,
+                    }
+                }
+                Err(_) => false,
+            }
+        } else {
+            false
+        }
+    };
+
+    // Fallback: CPU rendering if GPU failed
+    if !gpu_success {
+        if visible {
+            render_system_status_into_canvas(
+                &mut bar.cached_content,
+                phys_width as u32,
+                phys_height as u32,
+                scale,
+                snapshot,
+                1.0,
+                font_manager,
+                std::env::var_os("DOCK_RENDER_DEBUG").is_some(),
+            );
+            apply_surface_alpha(&mut bar.cached_content, alpha);
+        }
+
+        let (buffer, canvas) = match pool.create_buffer(
             phys_width,
             phys_height,
             phys_width * 4,
             wl_shm::Format::Argb8888,
-        )
-        .expect("Failed to allocate bottom system status buffer");
-    if !super::copy_popup_content(canvas, &bar.cached_content) {
-        return;
+        ) {
+            Ok(bc) => bc,
+            Err(e) => {
+                tracing::warn!("Failed to allocate bottom system status buffer: {}", e);
+                return;
+            }
+        };
+        if !super::copy_popup_content(canvas, &bar.cached_content) {
+            return;
+        }
+        bar.surface.set_buffer_scale(scale.round().max(1.0) as i32);
+        if let Err(e) = buffer.attach_to(&bar.surface) {
+            tracing::warn!("Failed to attach bottom system status buffer: {}", e);
+            return;
+        }
+        bar.surface.damage_buffer(0, 0, phys_width, phys_height);
+        set_interactive_region(bar, false, compositor, qh);
+        bar.surface.commit();
+        bar.current_buffer = Some(buffer);
     }
-    bar.surface.set_buffer_scale(scale.round().max(1.0) as i32);
-    buffer
-        .attach_to(&bar.surface)
-        .expect("Failed to attach bottom system status buffer");
-    bar.surface.damage_buffer(0, 0, phys_width, phys_height);
-    set_interactive_region(bar, false, compositor, qh);
-    bar.surface.commit();
-    bar.current_buffer = Some(buffer);
 }
 
 fn apply_surface_alpha(pixels: &mut [u8], alpha: f32) {

@@ -65,6 +65,11 @@ pub struct SlintBluetoothRenderer {
     window: Rc<MinimalSoftwareWindow>,
     /// Reusable render buffer to avoid per-frame allocation
     render_buffer: Vec<PremultipliedRgbaColor>,
+    /// Cache key for last rendered snapshot.
+    last_snapshot: Option<BluetoothSnapshot>,
+    /// Cached BGRA output for the last rendered snapshot/canvas size.
+    last_bgra: Vec<u8>,
+    last_size: (u32, u32),
 }
 
 impl SlintBluetoothRenderer {
@@ -85,6 +90,9 @@ impl SlintBluetoothRenderer {
             widget,
             window,
             render_buffer: Vec::new(),
+            last_snapshot: None,
+            last_bgra: Vec::new(),
+            last_size: (0, 0),
         })
     }
 
@@ -100,6 +108,19 @@ impl SlintBluetoothRenderer {
         phys_height: u32,
         snapshot: &BluetoothSnapshot,
     ) {
+        let required = (phys_width as usize) * (phys_height as usize) * 4;
+        if canvas.len() < required {
+            return;
+        }
+
+        if self.last_snapshot.as_ref() == Some(snapshot)
+            && self.last_size == (phys_width, phys_height)
+            && self.last_bgra.len() == required
+        {
+            canvas[..required].copy_from_slice(&self.last_bgra[..required]);
+            return;
+        }
+
         let slint_width = BLUETOOTH_POPUP_WIDTH as usize;
         let slint_height = BLUETOOTH_POPUP_HEIGHT as usize;
         let total_pixels = slint_width * slint_height;
@@ -116,7 +137,9 @@ impl SlintBluetoothRenderer {
                 },
             );
         }
-        let slint_buffer = &mut self.render_buffer[..total_pixels];
+        // Split borrows so we can mutate widget/window while borrowing render_buffer.
+        let render_buffer = &mut self.render_buffer;
+        let slint_buffer = &mut render_buffer[..total_pixels];
 
         // Set the Slint window size
         self.window.set_size(PhysicalSize::new(
@@ -184,14 +207,12 @@ impl SlintBluetoothRenderer {
             .set_pairedModel(ModelRc::from(paired.as_slice()));
 
         // Clear the Slint render buffer to transparent
-        for pixel in slint_buffer.iter_mut() {
-            *pixel = PremultipliedRgbaColor {
-                red: 0,
-                green: 0,
-                blue: 0,
-                alpha: 0,
-            };
-        }
+        slint_buffer.fill(PremultipliedRgbaColor {
+            red: 0,
+            green: 0,
+            blue: 0,
+            alpha: 0,
+        });
 
         // Render via Slint
         self.window.request_redraw();
@@ -201,20 +222,24 @@ impl SlintBluetoothRenderer {
         });
 
         // Convert Slint's RGBA buffer to BGRA for Wayland SHM
+        canvas[..required].fill(0);
         let copy_width = slint_width.min(phys_width as usize);
         let copy_height = slint_height.min(phys_height as usize);
         let copy_pixels = copy_width * copy_height;
+        let max_pixels = copy_pixels.min(slint_buffer.len()).min(canvas.len() / 4);
 
-        for idx in 0..copy_pixels {
-            if idx < slint_buffer.len() && idx * 4 + 3 < canvas.len() {
-                let pixel = &slint_buffer[idx];
-                let offset = idx * 4;
-                canvas[offset] = pixel.blue;
-                canvas[offset + 1] = pixel.green;
-                canvas[offset + 2] = pixel.red;
-                canvas[offset + 3] = pixel.alpha;
-            }
+        for (idx, pixel) in slint_buffer.iter().take(max_pixels).enumerate() {
+            let offset = idx * 4;
+            canvas[offset] = pixel.blue;
+            canvas[offset + 1] = pixel.green;
+            canvas[offset + 2] = pixel.red;
+            canvas[offset + 3] = pixel.alpha;
         }
+
+        self.last_snapshot = Some(snapshot.clone());
+        self.last_size = (phys_width, phys_height);
+        self.last_bgra.clear();
+        self.last_bgra.extend_from_slice(&canvas[..required]);
     }
 }
 

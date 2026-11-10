@@ -450,10 +450,11 @@ impl Dock {
     fn reorder_slots(&mut self) {
         let spacing = self.config.spacing;
         let padding = self.config.padding;
-        let item_size = self.items.first().map_or(48.0, |i| i.size);
+        let mut pos = padding;
         for (i, item) in self.items.iter_mut().enumerate() {
             item.slot = i;
-            item.target_position = padding + i as f32 * (item_size + spacing);
+            item.target_position = pos + item.size * 0.5;
+            pos += item.size + spacing;
         }
     }
 
@@ -463,17 +464,27 @@ impl Dock {
 
     /// Compute the target 1D position for a given slot.
     pub fn compute_target_position(&self, slot: usize) -> f32 {
-        self.config.padding
-            + slot as f32 * (self.items.first().map_or(48.0, |i| i.size) + self.config.spacing)
+        let spacing = self.config.spacing;
+        let mut pos = self.config.padding;
+        for (i, item) in self.items.iter().enumerate().take(slot) {
+            pos += item.size + spacing;
+            let _ = i;
+        }
+        if slot < self.items.len() {
+            pos + self.items[slot].size * 0.5
+        } else {
+            pos
+        }
     }
 
     /// Recalculate all target positions based on current ordering.
     pub fn recalculate_targets(&mut self) {
         let spacing = self.config.spacing;
         let padding = self.config.padding;
-        let item_size = self.items.first().map_or(48.0, |i| i.size);
-        for (i, item) in self.items.iter_mut().enumerate() {
-            item.target_position = padding + i as f32 * (item_size + spacing);
+        let mut pos = padding;
+        for item in self.items.iter_mut() {
+            item.target_position = pos + item.size * 0.5;
+            pos += item.size + spacing;
         }
     }
 
@@ -482,16 +493,10 @@ impl Dock {
     // ---------------------------------------------------------------------
 
     /// Apply spring forces to all non-dragged items.
+    ///
+    /// Uses the engine's fixed timestep (120 Hz) by default.
     pub fn apply_springs(&mut self) {
-        for item in self.items.iter_mut() {
-            if !item.is_dragged {
-                item.integrate(
-                    self.config.spring_stiffness,
-                    self.config.spring_damping,
-                    0.016, // ~60 FPS timestep
-                );
-            }
-        }
+        self.apply_springs_dt(1.0 / 120.0);
     }
 
     /// Apply spring forces with a custom timestep.
@@ -556,30 +561,7 @@ impl Dock {
     ///
     /// Returns the new slot if the item was reordered, or None.
     pub fn continue_drag(&mut self, pointer: Point) -> Option<usize> {
-        let drag = match &mut self.drag {
-            Some(d) => d,
-            None => return None,
-        };
-
-        // Update spring follower
-        drag.update(
-            pointer,
-            self.config.drag_stiffness,
-            self.config.drag_damping,
-            0.016,
-        );
-
-        // Update dragged item's position to follow the spring
-        if let Some(item) = self
-            .items
-            .iter_mut()
-            .find(|item| item.body_id == drag.body_id)
-        {
-            item.set_position(drag.spring_position, self.config.axis);
-        }
-
-        // Check for reordering
-        self.reorder_by_pointer(pointer)
+        self.continue_drag_dt(pointer, 1.0 / 120.0)
     }
 
     /// Continue dragging with custom timestep.
@@ -773,17 +755,23 @@ impl Dock {
             max_1d = max_1d.max(item.current_position + half);
         }
 
+        let cross_size = self
+            .items
+            .iter()
+            .map(|item| item.size)
+            .fold(0.0_f32, f32::max);
+
         match self.config.axis {
             DockAxis::Horizontal => crate::geometry::Rect::new(
                 min_1d,
-                self.config.perpendicular_center - self.items[0].size / 2.0,
+                self.config.perpendicular_center - cross_size / 2.0,
                 max_1d - min_1d,
-                self.items[0].size,
+                cross_size,
             ),
             DockAxis::Vertical => crate::geometry::Rect::new(
-                self.config.perpendicular_center - self.items[0].size / 2.0,
+                self.config.perpendicular_center - cross_size / 2.0,
                 min_1d,
-                self.items[0].size,
+                cross_size,
                 max_1d - min_1d,
             ),
         }

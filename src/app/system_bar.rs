@@ -84,7 +84,7 @@ pub fn spawn_system_bar_monitor(tx: Sender<SystemBarSnapshot>) {
                 }
             }
         })
-        .expect("failed to start system-bar sampler");
+        .ok();
 }
 
 fn read_network_totals() -> (u64, u64) {
@@ -290,34 +290,43 @@ fn known_layout_code(value: &str) -> Option<&'static str> {
     }
 }
 
+/// Format a libc::tm using strftime.
+///
+/// # Safety
+/// Calls libc::strftime which requires a valid tm struct and format string.
+fn format_tm(local: &libc::tm, format: &'static [u8]) -> String {
+    let mut output = [0i8; 64];
+    let written = unsafe {
+        libc::strftime(
+            output.as_mut_ptr(),
+            output.len(),
+            format.as_ptr() as *const libc::c_char,
+            local as *const libc::tm,
+        )
+    };
+    if written == 0 {
+        return String::new();
+    }
+    let bytes = output[..written as usize]
+        .iter()
+        .map(|c| *c as u8)
+        .collect::<Vec<_>>();
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+/// Get the current local date and time as formatted strings.
+///
+/// # Safety
+/// Calls libc::time and libc::localtime_r which require proper initialization.
 fn local_date_and_time() -> (String, String) {
     let now = unsafe { libc::time(std::ptr::null_mut()) };
-    let mut local: libc::tm = unsafe { std::mem::zeroed() };
-    let local_ptr = unsafe { libc::localtime_r(&now, &mut local) };
-    if local_ptr.is_null() {
+    if now == libc::time_t::MAX {
         return (String::new(), String::new());
     }
-
-    fn format_tm(local: &libc::tm, format: &'static [u8]) -> String {
-        let mut output = [0i8; 64];
-        let written = unsafe {
-            libc::strftime(
-                output.as_mut_ptr(),
-                output.len(),
-                format.as_ptr() as *const libc::c_char,
-                local as *const libc::tm,
-            )
-        };
-        if written == 0 {
-            return String::new();
-        }
-        let bytes = output[..written]
-            .iter()
-            .map(|c| *c as u8)
-            .collect::<Vec<_>>();
-        String::from_utf8_lossy(&bytes).into_owned()
+    let mut local: libc::tm = unsafe { std::mem::zeroed() };
+    if unsafe { libc::localtime_r(&now, &mut local) }.is_null() {
+        return (String::new(), String::new());
     }
-
     (format_tm(&local, b"%d %b\0"), format_tm(&local, b"%H:%M\0"))
 }
 

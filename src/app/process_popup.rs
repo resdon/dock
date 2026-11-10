@@ -55,10 +55,12 @@ pub fn draw_process_popup(
     let logical_y = (y as f64 / scale).round() as i32;
 
     if dock.process_popup.is_none() {
+        let Some(sc) = subcompositor else {
+            tracing::warn!("Subcompositor not available; process popup rendering degraded");
+            return;
+        };
         let surface = compositor_state.create_surface(qh);
-        let subsurface = subcompositor
-            .expect("Subcompositor global not bound")
-            .get_subsurface(&surface, dock.surface.wl_surface(), qh, ());
+        let subsurface = sc.get_subsurface(&surface, dock.surface.wl_surface(), qh, ());
         subsurface.set_desync();
         dock.process_popup = Some(PopupSurface {
             subsurface,
@@ -74,7 +76,10 @@ pub fn draw_process_popup(
             input_region_key: 0,
         });
     }
-    let popup = dock.process_popup.as_mut().expect("process popup created");
+    let Some(popup) = dock.process_popup.as_mut() else {
+        tracing::warn!("Process popup not initialized");
+        return;
+    };
     popup.position = (logical_x, logical_y);
     popup.subsurface.set_position(logical_x, logical_y);
     popup.width = PROCESS_POPUP_WIDTH as u32;
@@ -97,23 +102,26 @@ pub fn draw_process_popup(
 
     // GPU rendering via wgpu-api not yet integrated — using CPU rendering
     // CPU rendering path
-    let (buffer, canvas) = pool
-        .create_buffer(
-            phys_width,
-            phys_height,
-            phys_width * 4,
-            wl_shm::Format::Argb8888,
-        )
-        .expect("Failed to allocate process popup buffer");
+    let (buffer, canvas) = match pool.create_buffer(
+        phys_width,
+        phys_height,
+        phys_width * 4,
+        wl_shm::Format::Argb8888,
+    ) {
+        Ok(bc) => bc,
+        Err(e) => {
+            tracing::warn!("Failed to allocate process popup buffer: {}", e);
+            return;
+        }
+    };
     if !super::copy_popup_content(canvas, &popup.cached_content) {
         return;
     }
-    popup
-        .surface
-        .set_buffer_scale(scale.round().max(1.0) as i32);
-    buffer
-        .attach_to(&popup.surface)
-        .expect("Failed to attach process popup buffer");
+    popup.surface.set_buffer_scale(scale.round().max(1.0) as i32);
+    if let Err(e) = buffer.attach_to(&popup.surface) {
+        tracing::warn!("Failed to attach process popup buffer: {}", e);
+        return;
+    }
     popup.surface.damage_buffer(0, 0, phys_width, phys_height);
     let region = compositor_state.wl_compositor().create_region(qh, ());
     region.add(0, 0, PROCESS_POPUP_WIDTH, PROCESS_POPUP_HEIGHT);

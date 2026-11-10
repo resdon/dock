@@ -12,7 +12,58 @@ pub const BOX_SIZE: f64 = 48.0;
 pub const SPACING: f64 = 8.0;
 pub const DOCK_HEIGHT: f64 = 60.0;
 
+fn raw_window_app_id(window: &crate::state::WindowState) -> String {
+    window
+        .app_id
+        .as_ref()
+        .map(|id| id.to_string())
+        .filter(|id| !id.is_empty())
+        .unwrap_or_else(|| {
+            if !window.title.is_empty() {
+                window.title.clone()
+            } else {
+                "Unknown".to_string()
+            }
+        })
+}
+
 impl AppState {
+    pub(crate) fn compute_apps_in_dock_uncached(&self) -> Vec<String> {
+        let mut apps_in_dock = self.pinned_apps.clone();
+        let mut windows: Vec<&crate::state::WindowState> = self.windows.values().collect();
+        windows.sort_by_key(|window| (window.order_index, window.id.0.protocol_id()));
+        for window in windows {
+            let raw_id = raw_window_app_id(window);
+            let id = self.canonical_running_app_id(&raw_id);
+            if !apps_in_dock.contains(&id) {
+                apps_in_dock.push(id);
+            }
+        }
+        apps_in_dock
+    }
+
+    pub(crate) fn compute_running_by_app_uncached(&self) -> HashMap<String, Vec<ObjectId>> {
+        let mut running_by_app: HashMap<String, Vec<ObjectId>> = HashMap::new();
+        for (id, window) in &self.windows {
+            let raw_id = raw_window_app_id(window);
+            let app_id = self.canonical_running_app_id(&raw_id);
+            running_by_app.entry(app_id).or_default().push(id.0.clone());
+        }
+        for windows in running_by_app.values_mut() {
+            windows.sort_by_key(|id| {
+                self.window_id_for_object(id)
+                    .map(|wid| {
+                        self.windows
+                            .get(&wid)
+                            .map(|w| w.order_index)
+                            .unwrap_or(u64::MAX)
+                    })
+                    .unwrap_or(u64::MAX)
+            });
+        }
+        running_by_app
+    }
+
     pub(crate) fn canonical_running_app_id(&self, raw_id: &str) -> String {
         let normalized = crate::handlers::dock::normalize_app_id(raw_id);
 
@@ -22,6 +73,20 @@ impl AppState {
             .find(|id| id.eq_ignore_ascii_case(&normalized) || id.eq_ignore_ascii_case(raw_id))
         {
             return pinned.clone();
+        }
+
+        // Configurable exact/normalized aliases (best-effort, case-insensitive).
+        for (alias, canonical) in &self.config.app_id_aliases {
+            if normalized.eq_ignore_ascii_case(alias) || raw_id.eq_ignore_ascii_case(alias) {
+                if let Some(pinned) = self
+                    .pinned_apps
+                    .iter()
+                    .find(|id| id.eq_ignore_ascii_case(canonical))
+                {
+                    return pinned.clone();
+                }
+                return canonical.clone();
+            }
         }
 
         // Desktop IDs differ from the process names reported by these apps.
@@ -90,73 +155,27 @@ impl AppState {
 
     /// Returns the current ordered list of app IDs in the dock (pinned + unpinned running).
     pub fn get_apps_in_dock(&self) -> Vec<String> {
-        // Pinned order is authoritative. Running/unpinned applications are added
-        // in stable window order so popup anchors cannot jump between frames.
-        let mut apps_in_dock = self.pinned_apps.clone();
-
-        let mut windows: Vec<&crate::state::WindowState> = self.windows.values().collect();
-        windows.sort_by_key(|window| (window.order_index, window.id.0.protocol_id()));
-
-        for window in windows {
-            let raw_id = window
-                .app_id
-                .as_ref()
-                .map(|id| id.to_string())
-                .filter(|id| !id.is_empty())
-                .unwrap_or_else(|| {
-                    if !window.title.is_empty() {
-                        window.title.clone()
-                    } else {
-                        "Unknown".to_string()
-                    }
-                });
-            let id = self.canonical_running_app_id(&raw_id);
-            if !apps_in_dock.contains(&id) {
-                apps_in_dock.push(id);
-            }
+        if let Some(cached) = &self.cached_apps_in_dock {
+            return cached.clone();
         }
-
-        apps_in_dock
+        self.compute_apps_in_dock_uncached()
     }
 
     pub fn get_running_by_app(&self) -> HashMap<String, Vec<ObjectId>> {
-        let mut running_by_app: HashMap<String, Vec<ObjectId>> = HashMap::new();
-
-        for (id, window) in &self.windows {
-            let raw_id = window
-                .app_id
-                .as_ref()
-                .map(|id| id.to_string())
-                .filter(|id| !id.is_empty())
-                .unwrap_or_else(|| {
-                    if !window.title.is_empty() {
-                        window.title.clone()
-                    } else {
-                        "Unknown".to_string()
-                    }
-                });
-            let app_id = self.canonical_running_app_id(&raw_id);
-            running_by_app.entry(app_id).or_default().push(id.0.clone());
+        if let Some(cached) = &self.cached_running_by_app {
+            return cached.clone();
         }
-
-        for windows in running_by_app.values_mut() {
-            windows.sort_by_key(|id| {
-                self.window_id_for_object(id)
-                    .map(|wid| {
-                        self.windows
-                            .get(&wid)
-                            .map(|w| w.order_index)
-                            .unwrap_or(u64::MAX)
-                    })
-                    .unwrap_or(u64::MAX)
-            });
-        }
-
-        running_by_app
+        self.compute_running_by_app_uncached()
     }
 
     pub fn window_count_for_app(&self, app_id: &str) -> usize {
-        self.get_running_by_app().get(app_id).map_or(0, Vec::len)
+        self.windows
+            .values()
+            .filter(|window| {
+                let raw_id = raw_window_app_id(window);
+                self.canonical_running_app_id(&raw_id) == app_id
+            })
+            .count()
     }
 
     pub fn get_app_id_at_location(&self, x: f64, y: f64) -> Option<String> {

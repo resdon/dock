@@ -10,10 +10,42 @@
 //!   for NVIDIA GPUs. Falls back to "N/A" if not available.
 
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
+
+/// Global FPS counter shared between the event loop and resource monitor.
+///
+/// The main loop increments `FRAME_COUNT` for each rendered frame.
+/// The resource monitor calculates average render FPS from the elapsed time.
+
+static FRAME_COUNT: AtomicU64 = AtomicU64::new(0);
+static START_TIME: OnceLock<Instant> = OnceLock::new();
+
+/// Increment the global render-frame counter.
+/// Call this once after each call to `AppState::draw`.
+pub fn increment_frame_counter() {
+    START_TIME.get_or_init(Instant::now);
+    FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
+}
+
+/// Calculate FPS from the frame counter.
+/// Returns the average FPS since the first frame was counted.
+pub fn get_fps() -> f64 {
+    let count = FRAME_COUNT.load(Ordering::Relaxed);
+    let start = match START_TIME.get() {
+        Some(t) => t,
+        None => return 0.0,
+    };
+    let elapsed = start.elapsed().as_secs_f64();
+    if elapsed < 0.1 {
+        return 0.0;
+    }
+    count as f64 / elapsed
+}
 
 /// Query VRAM usage from `nvidia-smi` for the current process.
 ///
@@ -89,10 +121,7 @@ pub fn start_resource_monitor() {
 
         let pid = match sysinfo::get_current_pid() {
             Ok(p) => p,
-            Err(e) => {
-                eprintln!("[RESOURCE] Failed to get current PID: {e}");
-                return;
-            }
+            Err(_e) => return,
         };
 
         // Wait 1 second before first reading so CPU usage has time to accumulate
@@ -108,7 +137,6 @@ pub fn start_resource_monitor() {
 
             if let Some(process) = sys.process(pid) {
                 let memory_mb = process.memory() / 1024 / 1024;
-                let virtual_memory_mb = process.virtual_memory() / 1024 / 1024;
                 let cpu_usage = process.cpu_usage();
 
                 // Query VRAM from nvidia-smi
@@ -117,8 +145,8 @@ pub fn start_resource_monitor() {
                     .unwrap_or_else(|| "N/A".to_string());
 
                 eprintln!(
-                    "[RESOURCE] CPU: {:.1}% | RAM: {} MB | Virtual: {} MB | VRAM: {}",
-                    cpu_usage, memory_mb, virtual_memory_mb, vram_str
+                    "[RESOURCE] CPU: {:.1}% | RAM: {} MB | VRAM: {} | FPS: {:.1}",
+                    cpu_usage, memory_mb, vram_str, get_fps()
                 );
             } else {
                 break;

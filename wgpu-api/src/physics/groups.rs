@@ -96,6 +96,8 @@ pub struct BodyGroup {
     pub config: GroupConfig,
     /// Whether the group is active.
     pub enabled: bool,
+    /// Reverse index from body to its position within the member vectors.
+    member_index: HashMap<BodyId, usize>,
 }
 
 impl BodyGroup {
@@ -108,6 +110,7 @@ impl BodyGroup {
             rest_positions: Vec::new(),
             config: GroupConfig::default(),
             enabled: true,
+            member_index: HashMap::new(),
         }
     }
 
@@ -120,26 +123,43 @@ impl BodyGroup {
             rest_positions: Vec::new(),
             config,
             enabled: true,
+            member_index: HashMap::new(),
+        }
+    }
+
+    fn reindex_members(&mut self) {
+        self.member_index.clear();
+        for (idx, &body_id) in self.members.iter().enumerate() {
+            self.member_index.insert(body_id, idx);
         }
     }
 
     /// Add a member with a rest position.
     pub fn add_member(&mut self, body: BodyId, rest_position: Point) {
+        if let Some(idx) = self.member_index.get(&body).copied() {
+            self.rest_positions[idx] = rest_position;
+            return;
+        }
+
         self.members.push(body);
         self.rest_positions.push(rest_position);
+        self.member_index.insert(body, self.members.len() - 1);
     }
 
     /// Remove a member by body ID.
     pub fn remove_member(&mut self, body: BodyId) {
-        if let Some(idx) = self.members.iter().position(|&id| id == body) {
-            self.members.remove(idx);
-            self.rest_positions.remove(idx);
-        }
+        let Some(idx) = self.member_index.remove(&body) else {
+            return;
+        };
+
+        self.members.swap_remove(idx);
+        self.rest_positions.swap_remove(idx);
+        self.reindex_members();
     }
 
     /// Check if a body is a member.
     pub fn contains(&self, body: BodyId) -> bool {
-        self.members.contains(&body)
+        self.member_index.contains_key(&body)
     }
 
     /// Number of members.
@@ -149,15 +169,14 @@ impl BodyGroup {
 
     /// Get the rest position for a body.
     pub fn rest_position(&self, body: BodyId) -> Option<Point> {
-        self.members
-            .iter()
-            .position(|&id| id == body)
-            .and_then(|idx| self.rest_positions.get(idx).copied())
+        self.member_index
+            .get(&body)
+            .and_then(|idx| self.rest_positions.get(*idx).copied())
     }
 
     /// Set the rest position for a body.
     pub fn set_rest_position(&mut self, body: BodyId, position: Point) {
-        if let Some(idx) = self.members.iter().position(|&id| id == body) {
+        if let Some(idx) = self.member_index.get(&body).copied() {
             self.rest_positions[idx] = position;
         }
     }
@@ -180,32 +199,38 @@ impl BodyGroup {
         if total_mass > 0.0 {
             Point::new(center.x / total_mass, center.y / total_mass)
         } else {
-            Point::ORIGIN
+            let mut position_sum = Point::ORIGIN;
+            let mut count = 0usize;
+            for &body_id in &self.members {
+                if let Some(body) = bodies.get(&body_id) {
+                    if body.position.x.is_finite() && body.position.y.is_finite() {
+                        position_sum.x += body.position.x;
+                        position_sum.y += body.position.y;
+                        count += 1;
+                    }
+                }
+            }
+            if count == 0 {
+                Point::ORIGIN
+            } else {
+                Point::new(position_sum.x / count as f32, position_sum.y / count as f32)
+            }
         }
     }
 
     /// Compute the group's bounding rectangle.
     pub fn bounding_rect(&self, bodies: &HashMap<BodyId, PhysicsBody>) -> Option<Rect> {
-        let mut first = true;
-        let mut bounds = Rect::ZERO;
-
+        let mut bounds: Option<Rect> = None;
         for &body_id in &self.members {
             if let Some(body) = bodies.get(&body_id) {
                 let b = body.bounding_rect();
-                if first {
-                    bounds = b;
-                    first = false;
-                } else {
-                    bounds = bounds.union(&b);
-                }
+                bounds = Some(match bounds {
+                    Some(existing) => existing.union(&b),
+                    None => b,
+                });
             }
         }
-
-        if first {
-            None
-        } else {
-            Some(bounds)
-        }
+        bounds
     }
 
     /// Check if all members are settled (near rest positions with low velocity).
@@ -260,23 +285,27 @@ impl BodyGroup {
             return (None, None);
         }
 
-        let left = Self {
+        let mut left = Self {
             id: self.id,
             name: format!("{}_left", self.name),
             members: self.members[..index].to_vec(),
             rest_positions: self.rest_positions[..index].to_vec(),
             config: self.config.clone(),
             enabled: self.enabled,
+            member_index: HashMap::new(),
         };
+        left.reindex_members();
 
-        let right = Self {
+        let mut right = Self {
             id: GroupId::new(self.id.as_u64() + 1),
             name: format!("{}_right", self.name),
             members: self.members[index..].to_vec(),
             rest_positions: self.rest_positions[index..].to_vec(),
             config: self.config.clone(),
             enabled: self.enabled,
+            member_index: HashMap::new(),
         };
+        right.reindex_members();
 
         (Some(left), Some(right))
     }
@@ -290,14 +319,10 @@ impl BodyGroup {
         }
     }
 
-    /// Arrange members in a horizontal row.
+    /// Arrange existing members in a horizontal row by updating rest positions.
     pub fn arrange_horizontal(&mut self, start: Point, spacing: f32, member_size: Size) {
-        self.members.clear();
-        self.rest_positions.clear();
-
-        let count = 1.max(self.members.len());
-        // We need to know how many members; for rearrangement, use existing count
-        // This is a template; actual count comes from the caller
+        self.rest_positions =
+            Self::compute_horizontal_layout(self.members.len(), start, spacing, member_size);
     }
 
     /// Compute rest positions for a horizontal arrangement.
@@ -341,6 +366,10 @@ pub struct GroupManager {
     groups: HashMap<GroupId, BodyGroup>,
     /// Next group ID.
     next_id: u64,
+    /// Reverse index from a body ID to the group currently holding it.
+    body_to_group: HashMap<BodyId, GroupId>,
+    /// Rebuild the reverse index the next time a body lookup occurs.
+    body_index_dirty: bool,
 }
 
 impl GroupManager {
@@ -349,7 +378,19 @@ impl GroupManager {
         Self {
             groups: HashMap::new(),
             next_id: 1,
+            body_to_group: HashMap::new(),
+            body_index_dirty: true,
         }
+    }
+
+    fn rebuild_body_index(&mut self) {
+        self.body_to_group.clear();
+        for (&group_id, group) in &self.groups {
+            for &body_id in &group.members {
+                self.body_to_group.insert(body_id, group_id);
+            }
+        }
+        self.body_index_dirty = false;
     }
 
     /// Create a new group.
@@ -358,6 +399,7 @@ impl GroupManager {
         self.next_id += 1;
         let group = BodyGroup::new(id, name);
         self.groups.insert(id, group);
+        self.body_index_dirty = true;
         id
     }
 
@@ -371,6 +413,7 @@ impl GroupManager {
         self.next_id += 1;
         let group = BodyGroup::with_config(id, name, config);
         self.groups.insert(id, group);
+        self.body_index_dirty = true;
         id
     }
 
@@ -381,20 +424,23 @@ impl GroupManager {
 
     /// Get a mutable group.
     pub fn get_group_mut(&mut self, id: GroupId) -> Option<&mut BodyGroup> {
+        self.body_index_dirty = true;
         self.groups.get_mut(&id)
     }
 
     /// Remove a group.
     pub fn remove_group(&mut self, id: GroupId) -> Option<BodyGroup> {
-        self.groups.remove(&id)
+        let removed = self.groups.remove(&id);
+        self.body_index_dirty = true;
+        removed
     }
 
     /// Find the group containing a body.
-    pub fn find_group_for_body(&self, body: BodyId) -> Option<GroupId> {
-        self.groups
-            .iter()
-            .find(|(_, g)| g.contains(body))
-            .map(|(id, _)| *id)
+    pub fn find_group_for_body(&mut self, body: BodyId) -> Option<GroupId> {
+        if self.body_index_dirty {
+            self.rebuild_body_index();
+        }
+        self.body_to_group.get(&body).copied()
     }
 
     /// Number of groups.
@@ -410,6 +456,8 @@ impl GroupManager {
     /// Clear all groups.
     pub fn clear(&mut self) {
         self.groups.clear();
+        self.body_to_group.clear();
+        self.body_index_dirty = false;
     }
 }
 
@@ -441,6 +489,26 @@ mod tests {
         assert_eq!(group.member_count(), 2);
         assert!(group.contains(BodyId::new(1)));
         assert!(group.contains(BodyId::new(2)));
+    }
+
+    #[test]
+    fn zero_mass_center_of_mass_uses_geometric_center() {
+        let mut group = BodyGroup::new(GroupId::new(1), "dock");
+        let mut bodies = HashMap::new();
+        for (id, x) in [(1, 10.0), (2, 30.0)] {
+            let mut body = PhysicsBody::dynamic_body(
+                BodyId::new(id),
+                Point::new(x, 20.0),
+                CollisionShape::circle(5.0),
+                1.0,
+            );
+            body.mass = 0.0;
+            body.inv_mass = 0.0;
+            group.add_member(BodyId::new(id), Point::new(x, 20.0));
+            bodies.insert(BodyId::new(id), body);
+        }
+
+        assert_eq!(group.center_of_mass(&bodies), Point::new(20.0, 20.0));
     }
 
     #[test]

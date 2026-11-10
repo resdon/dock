@@ -2,6 +2,29 @@
 use crate::models::{AudioSnapshot, MediaControl};
 use crate::render::font::FontManager;
 use crate::render::text::draw_text;
+use crate::render::theme;
+
+const RGB_RED: [u8; 3] = [theme::RED_ARGB[2], theme::RED_ARGB[1], theme::RED_ARGB[0]];
+const RGB_YELLOW: [u8; 3] = [
+    theme::YELLOW_ARGB[2],
+    theme::YELLOW_ARGB[1],
+    theme::YELLOW_ARGB[0],
+];
+const RGB_PANEL: [u8; 3] = [
+    theme::PANEL_ARGB[2],
+    theme::PANEL_ARGB[1],
+    theme::PANEL_ARGB[0],
+];
+const RGB_MUTED: [u8; 3] = [theme::MUTED.0, theme::MUTED.1, theme::MUTED.2];
+const RGB_MUTE: [u8; 3] = RGB_MUTED;
+const RGB_INK: [u8; 3] = [theme::INK.0, theme::INK.1, theme::INK.2];
+const RGB_TEXT: [u8; 3] = [theme::TEXT.0, theme::TEXT.1, theme::TEXT.2];
+const RGB_TEXT_MUTED: [u8; 3] = RGB_MUTED;
+const RGB_YELLOW_SOFT: [u8; 3] = [
+    theme::YELLOW_SOFT_ARGB[2],
+    theme::YELLOW_SOFT_ARGB[1],
+    theme::YELLOW_SOFT_ARGB[0],
+];
 
 pub const PLAYER_WIDTH: i32 = 320;
 pub const PLAYER_HEIGHT: i32 = 222;
@@ -109,12 +132,12 @@ pub fn render(
     };
     let enabled = audio.media_status.is_some();
     let playing = audio.media_status.as_deref() == Some("Playing");
-    let red = [220, 38, 38];
-    let yellow = [250, 204, 21];
-    let dark = [24, 24, 27];
-    let muted = [92, 83, 58];
-    let control_ink = if enabled { dark } else { [150, 130, 70] };
-    let play_color = if enabled { red } else { [190, 165, 85] };
+    let red = RGB_RED;
+    let yellow = RGB_YELLOW;
+    let dark = RGB_PANEL;
+    let muted = RGB_MUTED;
+    let control_ink = if enabled { dark } else { RGB_MUTED };
+    let play_color = if enabled { red } else { RGB_YELLOW_SOFT };
 
     if expanded {
         rounded(
@@ -139,7 +162,7 @@ pub fn render(
             s(7),
             s(84),
             s(25),
-            (120, 64, 8),
+            theme::MUTED,
         );
         draw_text(
             canvas,
@@ -150,7 +173,7 @@ pub fn render(
             s(11),
             s(84),
             s(40),
-            (28, 25, 20),
+            theme::INK,
         );
         draw_text(
             canvas,
@@ -161,7 +184,7 @@ pub fn render(
             s(8),
             s(84),
             s(53),
-            (82, 73, 54),
+            theme::MUTED,
         );
         rounded(
             canvas,
@@ -172,7 +195,7 @@ pub fn render(
             s(288),
             s(4),
             s(2),
-            [255, 241, 180],
+            RGB_YELLOW_SOFT,
             alpha,
         );
         rounded(
@@ -196,7 +219,7 @@ pub fn render(
             s(6),
             s(16),
             s(93),
-            (82, 73, 54),
+            theme::MUTED,
         );
         draw_text(
             canvas,
@@ -207,7 +230,7 @@ pub fn render(
             s(6),
             s(272),
             s(93),
-            (82, 73, 54),
+            theme::MUTED,
         );
 
         // The same five-button transport row as the expanded HTML player.
@@ -232,7 +255,7 @@ pub fn render(
             s(160),
             s(138),
             playing,
-            [255, 255, 255],
+            RGB_TEXT,
             alpha,
         );
         chevron(canvas, w, h, s(212), s(139), true, control_ink, alpha);
@@ -249,7 +272,7 @@ pub fn render(
             s(226),
             s(4),
             s(2),
-            [255, 241, 180],
+            RGB_YELLOW_SOFT,
             alpha,
         );
         rounded(
@@ -276,7 +299,7 @@ pub fn render(
             s(7),
             s(282),
             s(193),
-            (82, 73, 54),
+            theme::MUTED,
         );
     } else {
         // Compact mode: a yellow control tray with the large record peeking
@@ -292,7 +315,7 @@ pub fn render(
             s(COMPACT_WIDTH),
             s(58),
             s(18),
-            [70, 52, 0],
+            RGB_PANEL,
             alpha * 0.25,
         );
         rounded(
@@ -328,7 +351,7 @@ pub fn render(
             track_w,
             s(4),
             s(2),
-            [255, 241, 180],
+            RGB_YELLOW_SOFT,
             alpha,
         );
         rounded(
@@ -378,10 +401,15 @@ pub fn render(
 }
 
 fn draw_disc(canvas: &mut [u8], w: i32, h: i32, cx: i32, cy: i32, r: i32, alpha: f32) {
-    circle(canvas, w, h, cx, cy, r, [24, 23, 30], alpha);
+    const DISC_BASE: [u8; 3] = [RGB_PANEL[0], RGB_PANEL[1], RGB_PANEL[2]];
+    const HUB: [u8; 3] = [theme::MUTED.0, theme::MUTED.1, theme::MUTED.2];
+    const HUB_INNER: [u8; 3] = [theme::TEXT.0, theme::TEXT.1, theme::TEXT.2];
+    const HUB_RING: [u8; 3] = [theme::MUTED.0, theme::MUTED.1, theme::MUTED.2];
+    circle(canvas, w, h, cx, cy, r, DISC_BASE, alpha);
     for n in 1..=7 {
         let ring_r = r - n * 7;
         if ring_r > r / 2 {
+            let shade = 50u8.saturating_add((n as u8 % 2) * 8);
             circle_ring(
                 canvas,
                 w,
@@ -389,18 +417,14 @@ fn draw_disc(canvas: &mut [u8], w: i32, h: i32, cx: i32, cy: i32, r: i32, alpha:
                 cx,
                 cy,
                 ring_r,
-                [
-                    58 + (n as u8 % 2) * 8,
-                    56 + (n as u8 % 2) * 8,
-                    65 + (n as u8 % 2) * 8,
-                ],
+                [shade, shade.saturating_add(2), shade.saturating_add(8)],
                 alpha * 0.85,
             );
         }
     }
     let hub_r = (r / 2).max(1);
-    circle(canvas, w, h, cx, cy, hub_r, [203, 213, 225], alpha);
-    circle(canvas, w, h, cx, cy, hub_r - 3, [226, 232, 240], alpha);
+    circle(canvas, w, h, cx, cy, hub_r, HUB, alpha);
+    circle(canvas, w, h, cx, cy, hub_r.saturating_sub(3), HUB_INNER, alpha);
     circle(
         canvas,
         w,
@@ -408,10 +432,10 @@ fn draw_disc(canvas: &mut [u8], w: i32, h: i32, cx: i32, cy: i32, r: i32, alpha:
         cx,
         cy,
         (hub_r / 2).max(1),
-        [248, 250, 252],
+        HUB_INNER,
         alpha,
     );
-    circle_ring(canvas, w, h, cx, cy, hub_r, [100, 116, 139], alpha);
+    circle_ring(canvas, w, h, cx, cy, hub_r, HUB_RING, alpha);
 }
 
 fn draw_play_pause(
@@ -496,22 +520,28 @@ mod tests {
 }
 
 fn truncate(value: &str, max: usize) -> String {
-    let chars: Vec<char> = value.chars().collect();
-    if chars.len() <= max {
+    if value.chars().count() <= max {
         value.to_string()
     } else {
-        format!(
-            "{}…",
-            chars
-                .iter()
-                .take(max.saturating_sub(1))
-                .copied()
-                .collect::<String>()
-        )
+        let take = max.saturating_sub(1);
+        let mut out = String::with_capacity(value.len().min(take * 4) + 3);
+        for c in value.chars().take(take) {
+            out.push(c);
+        }
+        out.push('…');
+        out
     }
 }
 fn time_label(seconds: f64) -> String {
-    format!("{}:{:02}", seconds as u64 / 60, seconds as u64 % 60)
+    let total = seconds.max(0.0).round() as u64;
+    let h = total / 3600;
+    let m = (total % 3600) / 60;
+    let s = total % 60;
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
 }
 fn index(w: i32, x: i32, y: i32) -> usize {
     ((y * w + x) * 4) as usize
@@ -524,17 +554,39 @@ fn blend(c: &mut [u8], w: i32, h: i32, x: i32, y: i32, rgb: [u8; 3], alpha: f32)
     if i + 3 >= c.len() {
         return;
     }
-    let a = alpha.clamp(0.0, 1.0);
-    let inv = 1.0 - a;
-    c[i] = (rgb[2] as f32 * a + c[i] as f32 * inv) as u8;
-    c[i + 1] = (rgb[1] as f32 * a + c[i + 1] as f32 * inv) as u8;
-    c[i + 2] = (rgb[0] as f32 * a + c[i + 2] as f32 * inv) as u8;
-    c[i + 3] = (255.0 * a + c[i + 3] as f32 * inv) as u8;
+    let alpha = (alpha.clamp(0.0, 1.0) * 255.0 + 0.5) as u16;
+    let inverse = 255 - alpha;
+    c[i] = ((rgb[2] as u16 * alpha + c[i] as u16 * inverse + 127) / 255) as u8;
+    c[i + 1] = ((rgb[1] as u16 * alpha + c[i + 1] as u16 * inverse + 127) / 255) as u8;
+    c[i + 2] = ((rgb[0] as u16 * alpha + c[i + 2] as u16 * inverse + 127) / 255) as u8;
+    c[i + 3] = ((255 * alpha + c[i + 3] as u16 * inverse + 127) / 255) as u8;
 }
 fn rect(c: &mut [u8], w: i32, h: i32, x: i32, y: i32, rw: i32, rh: i32, rgb: [u8; 3], a: f32) {
-    for py in y..y + rh {
-        for px in x..x + rw {
-            blend(c, w, h, px, py, rgb, a);
+    if w <= 0 || h <= 0 || rw <= 0 || rh <= 0 {
+        return;
+    }
+    let x0 = x.max(0);
+    let y0 = y.max(0);
+    let x1 = x.saturating_add(rw).min(w);
+    let y1 = y.saturating_add(rh).min(h);
+    if x0 >= x1 || y0 >= y1 {
+        return;
+    }
+
+    let alpha = (a.clamp(0.0, 1.0) * 255.0 + 0.5) as u16;
+    let inverse = 255 - alpha;
+    let bytes_per_row = (x1 - x0) as usize * 4;
+    for py in y0..y1 {
+        let start = ((py as usize * w as usize) + x0 as usize) * 4;
+        if start >= c.len() {
+            break;
+        }
+        let end = start.saturating_add(bytes_per_row).min(c.len() & !3);
+        for pixel in c[start..end].chunks_exact_mut(4) {
+            pixel[0] = ((rgb[2] as u16 * alpha + pixel[0] as u16 * inverse + 127) / 255) as u8;
+            pixel[1] = ((rgb[1] as u16 * alpha + pixel[1] as u16 * inverse + 127) / 255) as u8;
+            pixel[2] = ((rgb[0] as u16 * alpha + pixel[2] as u16 * inverse + 127) / 255) as u8;
+            pixel[3] = ((255 * alpha + pixel[3] as u16 * inverse + 127) / 255) as u8;
         }
     }
 }
@@ -554,22 +606,51 @@ fn line(c: &mut [u8], w: i32, h: i32, x0: i32, y0: i32, x1: i32, y1: i32, rgb: [
     }
 }
 fn circle(c: &mut [u8], w: i32, h: i32, cx: i32, cy: i32, r: i32, rgb: [u8; 3], a: f32) {
-    for y in -r..=r {
-        for x in -r..=r {
-            if x * x + y * y <= r * r {
-                blend(c, w, h, cx + x, cy + y, rgb, a);
-            }
+    if r <= 0 {
+        return;
+    }
+    let r2 = r * r;
+    for dy in -r..=r {
+        let y = cy + dy;
+        if y < 0 || y >= h {
+            continue;
+        }
+        let dx = ((r2 - dy * dy) as f64).sqrt() as i32;
+        let x0 = (cx - dx).max(0);
+        let x1 = (cx + dx).min(w - 1);
+        for x in x0..=x1 {
+            blend(c, w, h, x, y, rgb, a);
         }
     }
 }
 fn circle_ring(c: &mut [u8], w: i32, h: i32, cx: i32, cy: i32, r: i32, rgb: [u8; 3], a: f32) {
+    if r <= 0 {
+        return;
+    }
     let inner = (r - 1).max(0);
-    for y in -r..=r {
-        for x in -r..=r {
-            let d = x * x + y * y;
-            if d <= r * r && d >= inner * inner {
-                blend(c, w, h, cx + x, cy + y, rgb, a);
-            }
+    let r2 = r * r;
+    let inner2 = inner * inner;
+    for dy in -r..=r {
+        let y = cy + dy;
+        if y < 0 || y >= h {
+            continue;
+        }
+        let outer_dx = ((r2 - dy * dy) as f64).sqrt() as i32;
+        let inner_dy2 = inner2 - dy * dy;
+        let inner_dx = if inner_dy2 > 0 {
+            ((inner_dy2 as f64).sqrt()) as i32
+        } else {
+            -1
+        };
+        let left_outer = cx - outer_dx;
+        let left_inner = cx - inner_dx - 1;
+        let right_inner = cx + inner_dx + 1;
+        let right_outer = cx + outer_dx;
+        for x in left_outer.max(0)..=left_inner.min(w - 1) {
+            blend(c, w, h, x, y, rgb, a);
+        }
+        for x in right_inner.max(0)..=right_outer.min(w - 1) {
+            blend(c, w, h, x, y, rgb, a);
         }
     }
 }

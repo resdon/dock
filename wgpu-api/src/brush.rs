@@ -106,7 +106,16 @@ impl PartialEq for Brush {
         match (self, other) {
             (Self::Solid(a), Self::Solid(b)) => a == b,
             (Self::Gradient(a), Self::Gradient(b)) => a == b,
-            (Self::Pattern { .. }, Self::Pattern { .. }) => false, // Images are hard to compare
+            (
+                Self::Pattern {
+                    image: a,
+                    tile_size: a_size,
+                },
+                Self::Pattern {
+                    image: b,
+                    tile_size: b_size,
+                },
+            ) => a == b && a_size == b_size,
             _ => false,
         }
     }
@@ -134,5 +143,12 @@ mod tests {
     fn test_brush_transparent() {
         let brush = Brush::solid(Color::TRANSPARENT);
         assert!(brush.is_transparent());
+    }
+
+    #[test]
+    fn test_pattern_brush_equality_is_reflexive() {
+        let image = Image::new(crate::image::ImageData::solid_color(1, 1, Color::WHITE));
+        let brush = Brush::pattern(image, Size::new(1.0, 1.0));
+        assert_eq!(brush, brush.clone());
     }
 }

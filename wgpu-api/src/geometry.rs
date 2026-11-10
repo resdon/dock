@@ -68,7 +68,7 @@ impl Vector2D {
         self.x * self.x + self.y * self.y
     }
 
-    /// Return a normalized unit vector.
+    /// Return a normalized vector, or zero when this vector has zero length.
     pub fn normalize(&self) -> Self {
         let len = self.length();
         if len > 0.0 {

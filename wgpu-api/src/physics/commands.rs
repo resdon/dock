@@ -528,7 +528,7 @@ impl InteractionManager {
                 position,
                 shape,
             } => {
-                let result = world.insert(*target, *position, *shape);
+                let _result = world.insert(*target, *position, *shape);
                 CommandResult::Success
             }
 
@@ -606,7 +606,7 @@ impl InteractionManager {
             // ---------------------------------------------------------------------
             // Simulation control
             // ---------------------------------------------------------------------
-            InteractionCommand::SetSimulationActive { active } => {
+            InteractionCommand::SetSimulationActive { active: _ } => {
                 // This would typically be handled by the FixedTimestepSimulator
                 // For now, we just return success
                 CommandResult::Success

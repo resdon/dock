@@ -158,36 +158,43 @@ impl World {
         y: i32,
         color: [u8; 3],
     ) {
-        let g_width = glyph.metrics.width;
-        let g_height = glyph.metrics.height;
+        let g_width = glyph.metrics.width as i32;
+        let g_height = glyph.metrics.height as i32;
+        if g_width <= 0 || g_height <= 0 || width == 0 || height == 0 {
+            return;
+        }
 
-        for row in 0..g_height {
-            for col in 0..g_width {
-                let bitmap_idx = row * g_width + col;
+        let base_x = x + glyph.metrics.xmin;
+        let base_y = y - glyph.metrics.ymin - g_height;
+
+        let start_col = (-base_x).max(0);
+        let start_row = (-base_y).max(0);
+        let end_col = (width as i32 - base_x).min(g_width);
+        let end_row = (height as i32 - base_y).min(g_height);
+        if start_col >= end_col || start_row >= end_row {
+            return;
+        }
+
+        for row in start_row..end_row {
+            let target_y = (base_y + row) as usize;
+            let row_base = row as usize * glyph.metrics.width;
+            for col in start_col..end_col {
+                let bitmap_idx = row_base + col as usize;
+                if bitmap_idx >= glyph.bitmap.len() {
+                    continue;
+                }
                 let opacity_u8 = glyph.bitmap[bitmap_idx];
-
                 if opacity_u8 == 0 {
                     continue;
                 }
 
-                let target_x = (x + glyph.metrics.xmin + col as i32) as isize;
-                let target_y = (y - glyph.metrics.ymin - g_height as i32 + row as i32) as isize;
-
-                if target_x < 0
-                    || target_x >= width as isize
-                    || target_y < 0
-                    || target_y >= height as isize
-                {
-                    continue;
-                }
-
-                let pixel_index = (target_y as usize * width + target_x as usize) * 4;
-
+                let target_x = (base_x + col) as usize;
+                let pixel_index = (target_y * width + target_x) * 4;
                 if pixel_index + 3 >= frame.len() {
                     continue;
                 }
 
-                // Canvas is Argb8888 little-endian: [B, G, R, A], color is passed as [R, G, B]
+                // Canvas is Argb8888 little-endian: [B, G, R, A], color is [R, G, B]
                 let alpha = opacity_u8 as u16;
                 if alpha == 255 {
                     frame[pixel_index] = color[2]; // B
@@ -196,9 +203,6 @@ impl World {
                     frame[pixel_index + 3] = 255; // A
                 } else {
                     let inv_alpha = 255u16 - alpha;
-                    // Integer blending avoids three floating-point operations
-                    // per glyph pixel while keeping the same visual result.
-                    // Blend each channel separately in [B, G, R, A] order
                     frame[pixel_index] =
                         ((color[2] as u16 * alpha + frame[pixel_index] as u16 * inv_alpha + 127)
                             / 255) as u8; // B

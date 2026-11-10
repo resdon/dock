@@ -55,7 +55,7 @@ pub fn spawn_rclone_monitor(snapshot_tx: Sender<RcloneSnapshot>, enabled_rx: Rec
                 }
             }
         })
-        .expect("failed to start rclone mount monitor");
+        .ok();
 }
 
 const ABOUT_CACHE_TTL: Duration = Duration::from_secs(60);
@@ -66,6 +66,7 @@ fn enrich_rclone_capacities(
     snapshot: &mut RcloneSnapshot,
     cache: &mut HashMap<String, (Instant, Option<(u64, u64, u64)>)>,
 ) {
+    cache.retain(|_, (updated, _)| updated.elapsed() < ABOUT_CACHE_TTL);
     for mount in &mut snapshot.mounts {
         if mount.source.is_empty() {
             continue;
@@ -239,11 +240,12 @@ fn filesystem_capacity(path: &Path) -> (u64, u64, u64) {
     // statvfs exposes the capacity reported by this exact FUSE mount. We query
     // `rclone about` separately for authoritative remote quota data and use
     // this as a fast fallback when the CLI/API lookup is unavailable.
-    let mut stats: libc::statvfs = unsafe { std::mem::zeroed() };
-    let result = unsafe { libc::statvfs(path.as_ptr(), &mut stats) };
+    let mut stats = std::mem::MaybeUninit::<libc::statvfs>::zeroed();
+    let result = unsafe { libc::statvfs(path.as_ptr(), stats.as_mut_ptr()) };
     if result != 0 {
         return (0, 0, 0);
     }
+    let stats = unsafe { stats.assume_init() };
     let block_size = if stats.f_frsize > 0 {
         stats.f_frsize as u64
     } else {

@@ -18,12 +18,15 @@ raw-window-handle = "0.6"
 # GPU rendering backend — wgpu 30 with Vulkan support
 wgpu = { version = "30", features = ["vulkan"] }
 wgpu-dmabuf = "0.1"
-# Text shaping and rendering stack
-cosmic-text = "0.18"
+# GPU text rendering — glyphon uses cosmic-text for shaping, etagere for atlas packing
+glyphon = "0.12"
+# Keep cosmic-text for direct text layout (glyphon re-exports it)
+cosmic-text = "0.19"
 fontdb = "0.16"
 swash = "0.1.18"
 # GIF decoding for animated images
 gif = "0.13"
+half = "2.7"
 # Math library for vectors, matrices, and quaternions
 glam = "0.29"
 # Slint UI toolkit (optional, for wgpu-30 integration)

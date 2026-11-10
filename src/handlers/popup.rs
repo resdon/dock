@@ -404,8 +404,11 @@ pub fn execute_menu_action(state: &mut AppState, item_type: &MenuItemType) {
                         cache::save_cached_icon(&app_id, *size, *size, rgba);
                     }
                 }
-                cache::persistence::save_pinned_apps(&pinned);
+                if let Err(err) = cache::persistence::save_pinned_apps(&pinned) {
+                    eprintln!("failed to save pinned apps: {err}");
+                }
                 state.pinned_apps = pinned;
+                state.invalidate_dock_app_cache();
             }
         }
         MenuItemType::CloseApp => {

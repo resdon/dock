@@ -154,10 +154,12 @@ impl miette::Diagnostic for AppError {
 // Color-eyre integration (development only)
 // ---------------------------------------------------------------------------
 
+static ERROR_REPORTER_INIT: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
+
 /// Initialize the color-eyre error reporter.
 ///
-/// This should be called once at application startup during development.
-/// It provides colored error messages with backtraces and context.
+/// Idempotent: repeated calls after a successful install are treated as success.
+/// If a previous install attempt failed, the original failure reason is returned.
 ///
 /// # Examples
 /// ```no_run
@@ -170,12 +172,8 @@ impl miette::Diagnostic for AppError {
 ///     Ok(())
 /// }
 /// ```
-///
-/// # Returns
-/// `Ok(())` if initialization succeeds, or an `anyhow::Error` if the
-/// reporter cannot be installed (e.g., already installed).
 pub fn init_error_reporter() -> anyhow::Result<()> {
-    match color_eyre::install() {
+    match ERROR_REPORTER_INIT.get_or_init(|| color_eyre::install().map_err(|e| e.to_string())) {
         Ok(()) => Ok(()),
         Err(e) => Err(anyhow::anyhow!(
             "Failed to install color-eyre error reporter: {}",

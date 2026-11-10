@@ -237,6 +237,76 @@ impl HealthMonitor {
     pub fn failure_threshold(&self) -> usize {
         self.failure_threshold
     }
+
+    /// Returns true if a subsystem status is stale relative to `check_interval`.
+    pub fn is_check_due(&self, subsystem: &str) -> bool {
+        self.get_status(subsystem)
+            .map(|s| s.last_check.elapsed() >= self.check_interval)
+            .unwrap_or(false)
+    }
+
+    /// Returns subsystems whose last check is older than `check_interval`.
+    pub fn due_subsystems(&self) -> Vec<&str> {
+        self.check_all()
+            .into_iter()
+            .filter(|r| r.last_check.elapsed() >= self.check_interval)
+            .map(|r| r.subsystem.as_str())
+            .collect()
+    }
+
+    /// Mark stale subsystems as `Unknown` so health state reflects missing checks.
+    /// Call this periodically from the app loop/scheduler to make monitoring active.
+    pub fn mark_stale_checks_unknown(&mut self) {
+        for subsystem in ["gpu", "wayland", "pipewire", "ui", "system"] {
+            let stale = self
+                .get_status(subsystem)
+                .map(|s| s.last_check.elapsed() >= self.check_interval)
+                .unwrap_or(false);
+            if stale {
+                if let Some(status) = self.get_status_mut(subsystem) {
+                    if status.status != HealthStatus::Unknown {
+                        status.status = HealthStatus::Unknown;
+                        status.message = Some("health check overdue".to_string());
+                        tracing::warn!(
+                            subsystem = status.subsystem.as_str(),
+                            "Health check overdue; marking status unknown"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// Apply a failure-threshold policy for a subsystem: report unhealthy only
+    /// after `failure_threshold` consecutive failures; otherwise mark degraded.
+    pub fn report_failure(&mut self, subsystem: &str, message: impl Into<String>) {
+        let msg = message.into();
+        let threshold = self.failure_threshold;
+        if let Some(status) = self.get_status_mut(subsystem) {
+            status.consecutive_failures += 1;
+            status.last_check = Instant::now();
+            status.message = Some(msg.clone());
+            if status.consecutive_failures >= threshold {
+                status.status = HealthStatus::Unhealthy;
+                tracing::error!(
+                    subsystem = subsystem,
+                    consecutive_failures = status.consecutive_failures,
+                    threshold = threshold,
+                    error = %msg,
+                    "Subsystem unhealthy after repeated failures"
+                );
+            } else {
+                status.status = HealthStatus::Degraded;
+                tracing::warn!(
+                    subsystem = subsystem,
+                    consecutive_failures = status.consecutive_failures,
+                    threshold = threshold,
+                    error = %msg,
+                    "Subsystem degraded (failure below threshold)"
+                );
+            }
+        }
+    }
 }
 
 impl Default for HealthMonitor {

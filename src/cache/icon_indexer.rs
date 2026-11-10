@@ -20,12 +20,14 @@ pub fn spawn_startup_indexer() {
         // Keep the indexer below the UI's scheduling priority. It is cache
         // maintenance, never foreground work.
         #[cfg(target_os = "linux")]
-        unsafe {
-            libc::setpriority(libc::PRIO_PROCESS, 0, 10);
+        {
+            let rc = unsafe { libc::setpriority(libc::PRIO_PROCESS, 0, 10) };
+            if rc != 0 {
+                // Best-effort: failure to lower priority should not stop indexing.
+            }
         }
 
         let list_path = get_icon_list_path();
-        let _start = Instant::now();
 
         // The index is persistent cache data. Rebuilding it on every launch
         // needlessly competes with the UI for CPU and disk bandwidth. Refresh
@@ -80,14 +82,17 @@ pub fn spawn_startup_indexer() {
                 // This prevents directory traversal from starving the Wayland
                 // event/render thread during startup.
                 #[cfg(target_os = "linux")]
-                unsafe {
-                    libc::setpriority(libc::PRIO_PROCESS, 0, 10);
+                {
+                    let rc = unsafe { libc::setpriority(libc::PRIO_PROCESS, 0, 10) };
+                    if rc != 0 {
+                        // Best-effort: failure to lower priority should not stop indexing.
+                    }
                 }
 
                 if let Ok(file) = File::create(&shard_path_clone) {
                     let mut writer = BufWriter::new(file);
                     for dir in chunk {
-                        scan_directory_to_writer(&dir, &mut writer);
+                        scan_directory_to_writer(&dir, &mut writer, 0);
                     }
                     let _ = writer.flush();
                 }
@@ -127,13 +132,18 @@ pub fn spawn_startup_indexer() {
     });
 }
 
-/// Recursively scans directory and streams paths directly into the disk buffer
-fn scan_directory_to_writer(dir: &Path, writer: &mut BufWriter<File>) {
+/// Recursively scans directory and streams paths directly into the disk buffer.
+fn scan_directory_to_writer(dir: &Path, writer: &mut BufWriter<File>, depth: usize) {
+    const MAX_SCAN_DEPTH: usize = 32;
+    if depth > MAX_SCAN_DEPTH {
+        return;
+    }
+
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.is_dir() {
-                scan_directory_to_writer(&path, writer);
+            if path.is_dir() && !path.is_symlink() {
+                scan_directory_to_writer(&path, writer, depth + 1);
             } else if path.is_file() {
                 if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
                     let ext_lower = ext.to_lowercase();

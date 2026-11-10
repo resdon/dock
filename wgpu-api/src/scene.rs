@@ -694,6 +694,28 @@ impl Scene {
 
     /// Add a child to a parent node.
     pub fn add_child(&mut self, parent: NodeId, child: NodeId) -> Result<(), String> {
+        if !self.nodes.contains_key(&parent) {
+            return Err(format!("Parent node {:?} not found", parent));
+        }
+        if !self.nodes.contains_key(&child) {
+            return Err(format!("Child node {:?} not found", child));
+        }
+        if parent == child {
+            return Err("A node cannot be its own parent".to_string());
+        }
+
+        let mut ancestors = HashSet::new();
+        let mut ancestor = Some(parent);
+        while let Some(id) = ancestor {
+            if id == child {
+                return Err("Adding this child would create a scene cycle".to_string());
+            }
+            if !ancestors.insert(id) {
+                return Err("Cannot add a child to an already cyclic scene".to_string());
+            }
+            ancestor = self.nodes.get(&id).and_then(|node| node.parent);
+        }
+
         // Remove child from current parent
         if let Some(child_node) = self.nodes.get_mut(&child) {
             if let Some(old_parent) = child_node.parent {
@@ -713,8 +735,6 @@ impl Scene {
         // Add to parent's children
         if let Some(parent_node) = self.nodes.get_mut(&parent) {
             parent_node.children.push(child);
-        } else {
-            return Err(format!("Parent node {:?} not found", parent));
         }
 
         Ok(())
@@ -934,6 +954,33 @@ mod tests {
         assert_eq!(scene.parent(child), Some(parent));
         let children = scene.children(parent).unwrap();
         assert!(children.contains(&child));
+    }
+
+    #[test]
+    fn test_scene_add_child_rejects_cycles_without_mutation() {
+        let mut scene = Scene::new();
+        let parent = scene.create_group();
+        let child = scene.create_group_under(parent);
+        let grandchild = scene.create_rectangle_under(child, Color::RED);
+
+        assert!(scene.add_child(parent, parent).is_err());
+        assert!(scene.add_child(grandchild, parent).is_err());
+
+        assert_eq!(scene.parent(child), Some(parent));
+        assert_eq!(scene.parent(grandchild), Some(child));
+        assert_eq!(scene.children(parent), Some(&[child][..]));
+        assert_eq!(scene.children(child), Some(&[grandchild][..]));
+    }
+
+    #[test]
+    fn test_scene_add_child_rejects_missing_nodes_without_mutation() {
+        let mut scene = Scene::new();
+        let child = scene.create_group();
+        let missing_parent = NodeId::new(u64::MAX);
+
+        assert!(scene.add_child(missing_parent, child).is_err());
+        assert_eq!(scene.parent(child), None);
+        assert!(scene.roots().contains(&child));
     }
 
     #[test]

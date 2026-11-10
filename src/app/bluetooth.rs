@@ -125,7 +125,7 @@ pub fn spawn_bluetooth_monitor(
                 }
             });
         })
-        .expect("failed to start BlueZ monitor");
+        .ok();
 }
 
 async fn read_snapshot(connection: &Connection) -> BluetoothSnapshot {

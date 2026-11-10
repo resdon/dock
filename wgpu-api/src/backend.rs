@@ -207,6 +207,10 @@ pub struct GpuBackend {
     uniform_bind_group: Option<wgpu::BindGroup>,
     /// Sampler for texture sampling.
     sampler: Option<wgpu::Sampler>,
+    /// Bind group layout shared by pipelines and all texture bind groups.
+    bind_group_layout: Option<wgpu::BindGroupLayout>,
+    /// Bind groups cached for uploaded textures.
+    texture_bind_groups: HashMap<TextureId, wgpu::BindGroup>,
     /// Whether the backend is fully initialized.
     initialized: bool,
 }
@@ -308,8 +312,12 @@ impl GpuBackend {
             uniform_buffer: None,
             uniform_bind_group: None,
             sampler: None,
+            bind_group_layout: None,
+            texture_bind_groups: HashMap::new(),
             initialized: true,
         };
+
+        gpu_backend.bind_group_layout = Some(gpu_backend.create_bind_group_layout());
 
         // Create uniform buffer and pipelines
         gpu_backend.create_uniform_buffer();
@@ -369,7 +377,10 @@ impl GpuBackend {
 
     /// Create the uniform buffer for transform data.
     fn create_uniform_buffer(&mut self) {
-        let bind_group_layout = self.create_bind_group_layout();
+        let Some(bind_group_layout) = self.bind_group_layout.as_ref() else {
+            tracing::error!("Bind group layout not initialized; cannot create uniform buffer");
+            return;
+        };
 
         let uniform_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Uniform Buffer"),
@@ -390,7 +401,9 @@ impl GpuBackend {
             ..Default::default()
         });
 
-        // Create a placeholder texture view for the bind group
+        // Create a placeholder texture view for the solid pipeline bind group.
+        // The solid pipeline doesn't sample textures, but the bind group layout
+        // requires a texture binding at slot 2.
         let placeholder_texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Placeholder Texture"),
             size: wgpu::Extent3d {
@@ -403,7 +416,7 @@ impl GpuBackend {
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8UnormSrgb,
             usage: wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
+            view_formats: &[wgpu::TextureFormat::Rgba8Unorm],
         });
         let placeholder_view =
             placeholder_texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -411,7 +424,7 @@ impl GpuBackend {
         // Create bind group for uniforms
         let uniform_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Uniform Bind Group"),
-            layout: &bind_group_layout,
+            layout: bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -442,8 +455,11 @@ impl GpuBackend {
 
     /// Create render pipelines for textured and solid rendering.
     fn create_pipelines(&mut self) {
-        let bind_group_layout = self.create_bind_group_layout();
-        let pipeline_layout = self.create_pipeline_layout(&bind_group_layout);
+        let Some(bind_group_layout) = self.bind_group_layout.as_ref() else {
+            tracing::error!("Bind group layout not initialized; cannot create pipelines");
+            return;
+        };
+        let pipeline_layout = self.create_pipeline_layout(bind_group_layout);
 
         // Textured pipeline
         let vert_module = self
@@ -563,12 +579,21 @@ impl GpuBackend {
 
     /// Register a texture with the GPU backend.
     pub fn register_texture(&mut self, texture_id: TextureId, config: TextureConfig) {
+        self.texture_bind_groups.remove(&texture_id);
         let wgpu_format = Self::to_wgpu_texture_format(config.format);
         let wgpu_usage = Self::to_wgpu_texture_usage(&config.usage);
         let mip_levels = if config.mip_levels > 0 {
             config.mip_levels
         } else {
             1
+        };
+
+        // For srgb textures, the view format must include the non-srgb equivalent
+        // so that the texture can be sampled correctly in shaders.
+        let view_formats: Vec<wgpu::TextureFormat> = match wgpu_format {
+            wgpu::TextureFormat::Bgra8UnormSrgb => vec![wgpu::TextureFormat::Bgra8Unorm],
+            wgpu::TextureFormat::Rgba8UnormSrgb => vec![wgpu::TextureFormat::Rgba8Unorm],
+            _ => vec![],
         };
 
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
@@ -583,7 +608,7 @@ impl GpuBackend {
             dimension: wgpu::TextureDimension::D2,
             format: wgpu_format,
             usage: wgpu_usage,
-            view_formats: &[],
+            view_formats: &view_formats,
         });
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -632,6 +657,42 @@ impl GpuBackend {
     pub fn remove_texture(&mut self, texture_id: TextureId) {
         self.gpu_textures.remove(&texture_id);
         self.gpu_texture_views.remove(&texture_id);
+        self.texture_bind_groups.remove(&texture_id);
+    }
+
+    /// Return the cached texture bind group, creating it on first use.
+    pub fn texture_bind_group(&mut self, texture_id: TextureId) -> Option<&wgpu::BindGroup> {
+        if !self.texture_bind_groups.contains_key(&texture_id) {
+            let texture_view = self.gpu_texture_views.get(&texture_id)?;
+            let uniform_buffer = self.uniform_buffer.as_ref()?;
+            let sampler = self.sampler.as_ref()?;
+            let layout = self.bind_group_layout.as_ref()?;
+            let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Texture Bind Group"),
+                layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: uniform_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::TextureView(texture_view),
+                    },
+                ],
+            });
+            self.texture_bind_groups.insert(texture_id, bind_group);
+        }
+        self.texture_bind_groups.get(&texture_id)
+    }
+
+    /// Get a bind group that was prepared before opening a render pass.
+    pub fn get_texture_bind_group(&self, texture_id: TextureId) -> Option<&wgpu::BindGroup> {
+        self.texture_bind_groups.get(&texture_id)
     }
 
     /// Create a wgpu Surface from raw Wayland display and surface pointers.
@@ -653,29 +714,25 @@ impl GpuBackend {
         use std::ptr::NonNull;
 
         // Create a Wayland display handle from the raw pointer
-        let display_handle = unsafe {
-            let non_null = NonNull::new(display).ok_or_else(|| "Null display pointer".to_string())?;
-            let dh = WaylandDisplayHandle::new(non_null);
-            RawDisplayHandle::Wayland(dh)
-        };
+        let non_null = NonNull::new(display).ok_or_else(|| "Null display pointer".to_string())?;
+        let display_handle = RawDisplayHandle::Wayland(WaylandDisplayHandle::new(non_null));
 
         // Create a Wayland window handle from the surface pointer
-        let window_handle = unsafe {
-            WaylandWindowHandle::new(NonNull::new(surface).ok_or_else(|| "Null surface pointer".to_string())?)
-        };
+        let window_handle = WaylandWindowHandle::new(
+            NonNull::new(surface).ok_or_else(|| "Null surface pointer".to_string())?,
+        );
 
         // Create the display and window handles for wgpu
-        let dh = unsafe { DisplayHandle::borrow_raw(display_handle) };
-        let wh = unsafe {
-            WindowHandle::borrow_raw(window_handle.into())
-        };
+        let dh = DisplayHandle::borrow_raw(display_handle);
+        let wh = WindowHandle::borrow_raw(window_handle.into());
 
         // Create the wgpu surface using unsafe API
         let target = wgpu::SurfaceTargetUnsafe::from_display_and_window(&dh, &wh)
             .map_err(|e| format!("Invalid window handle: {:?}", e))?;
-        let surface = unsafe {
-            self.instance.create_surface_unsafe(target)
-        }.map_err(|e| format!("Failed to create Wayland surface: {}", e))?;
+        let surface = self
+            .instance
+            .create_surface_unsafe(target)
+            .map_err(|e| format!("Failed to create Wayland surface: {}", e))?;
         Ok(surface)
     }
 
@@ -785,12 +842,7 @@ impl GpuBackend {
     /// Update the uniform buffer with new transform data.
     pub fn update_uniforms(&mut self, uniforms: &UniformBufferObject) {
         if let Some(buf) = &self.uniform_buffer {
-            self.queue.write_buffer(buf, 0, unsafe {
-                std::slice::from_raw_parts(
-                    uniforms as *const _ as *const u8,
-                    UniformBufferObject::SIZE as usize,
-                )
-            });
+            self.queue.write_buffer(buf, 0, bytemuck::cast_slice(&[*uniforms]));
         }
     }
 
@@ -956,12 +1008,18 @@ impl GpuBackend {
             planes: dmabuf
                 .planes
                 .iter()
-                .map(|p| DmabufPlane {
-                    fd: p.fd.try_clone().map_err(|e| format!("Failed to clone fd: {}", e)).unwrap(),
-                    offset: p.offset,
-                    stride: p.stride,
+                .map(|p| {
+                    let fd = p
+                        .fd
+                        .try_clone()
+                        .map_err(|e| format!("Failed to clone dmabuf fd: {}", e))?;
+                    Ok(DmabufPlane {
+                        fd,
+                        offset: p.offset,
+                        stride: p.stride,
+                    })
                 })
-                .collect(),
+                .collect::<Result<Vec<DmabufPlane>, String>>()?,
         };
 
         Ok((texture, info))

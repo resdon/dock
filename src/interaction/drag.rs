@@ -74,10 +74,18 @@ pub fn handle_drag_release(
                 }
             }
         }
-        crate::cache::persistence::save_pinned_apps(&state.pinned_apps);
+        if layer_changed {
+            if let Err(err) = crate::cache::persistence::save_pinned_apps(&state.pinned_apps) {
+                eprintln!("failed to save pinned apps: {err}");
+            }
+            state.invalidate_dock_app_cache();
+        }
     } else if let Some(old_idx) = state.pinned_apps.iter().position(|x| x == dragged_id) {
         state.pinned_apps.remove(old_idx);
-        crate::cache::persistence::save_pinned_apps(&state.pinned_apps);
+        if let Err(err) = crate::cache::persistence::save_pinned_apps(&state.pinned_apps) {
+            eprintln!("failed to save pinned apps: {err}");
+        }
+        state.invalidate_dock_app_cache();
         layer_changed = true;
     }
 

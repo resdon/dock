@@ -1,9 +1,10 @@
 fn main() {
-    let out_dir = std::env::var("OUT_DIR").unwrap();
+    let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR environment variable not set by Cargo");
 
     // Compile both Slint files.
-    slint_build::compile("ui.slint").unwrap();
-    slint_build::compile("bluetooth-widget.slint").unwrap();
+    slint_build::compile("ui.slint").expect("failed to compile ui.slint");
+    slint_build::compile("bluetooth-widget.slint")
+        .expect("failed to compile bluetooth-widget.slint");
 
     // slint_build internally sets SLINT_INCLUDE_GENERATED to the last file compiled.
     // We need to override it back to ui.rs and set a separate var for the bluetooth widget.

@@ -27,7 +27,6 @@ fn read_proc_pgid(pid: u32) -> u32 {
     0
 }
 
-/// Strips trailing numeric instance identifiers (e.g., "app_1234" -> "app") while leaving Steam app IDs untouched.
 fn normalize_app_id(app_id: &str) -> &str {
     if app_id.starts_with("steam_icon_") {
         return app_id;
@@ -38,6 +37,12 @@ fn normalize_app_id(app_id: &str) -> &str {
         }
     }
     app_id
+}
+
+fn app_matches_target(candidate: &str, target: &str) -> bool {
+    let candidate_norm = normalize_app_id(candidate).to_ascii_lowercase();
+    let target_norm = normalize_app_id(target).to_ascii_lowercase();
+    candidate_norm == target_norm
 }
 
 impl AppState {
@@ -66,8 +71,8 @@ impl AppState {
         let my_pid = unsafe { libc::getpid() as u32 };
         let my_ppid = unsafe { libc::getppid() as u32 };
         let my_pgid = unsafe { libc::getpgrp() as u32 };
+        let target_norm = normalize_app_id(app_id).to_ascii_lowercase();
         let mut pids_to_kill = Vec::new();
-        let target_app_lower = app_id.to_lowercase();
 
         let targets: Vec<(ObjectId, Option<u32>)> = self
             .windows
@@ -76,15 +81,16 @@ impl AppState {
                 let win_app_id = win
                     .app_id
                     .as_ref()
-                    .map(|id| id.to_string())
+                    .map(|id| id.as_str())
                     .filter(|id| !id.is_empty())
-                    .unwrap_or_else(|| win.title.clone())
-                    .to_lowercase();
-
-                if win_app_id == target_app_lower
-                    || win_app_id.starts_with(&target_app_lower)
-                    || target_app_lower.contains(&win_app_id)
-                {
+                    .unwrap_or("");
+                let win_title = win.title.as_str();
+                let window_identifier = if !win_app_id.is_empty() {
+                    win_app_id
+                } else {
+                    win_title
+                };
+                if app_matches_target(window_identifier, &target_norm) {
                     Some((win.id.0.clone(), win.process_id.map(|pid| pid.0)))
                 } else {
                     None
@@ -98,20 +104,16 @@ impl AppState {
             }
             if let Some(pid) = pid {
                 if pid == my_pid || pid == my_ppid {
-                } else {
-                    // Also skip processes in our own process group to avoid killing
-                    // cargo, shell, or other processes that share our process group
-                    let pid_pgid = read_proc_pgid(pid);
-                    if pid_pgid == my_pgid {
-                    } else {
-                        pids_to_kill.push(pid);
-                    }
+                    continue;
+                }
+
+                // Only terminate the exact process we have a direct PID for. This avoids
+                // searching the full system and prevents killing unrelated apps by name.
+                let pid_pgid = read_proc_pgid(pid);
+                if pid_pgid != my_pgid && pid > 1 {
+                    pids_to_kill.push(pid);
                 }
             }
-        }
-
-        if target_app_lower.contains("steam") || app_id.starts_with("steam_icon_") {
-            let _ = std::process::Command::new("steam").arg("-shutdown").spawn();
         }
 
         for pid in &pids_to_kill {
@@ -119,37 +121,6 @@ impl AppState {
                 unsafe {
                     libc::kill(*pid as i32, libc::SIGTERM);
                 }
-            }
-        }
-
-        // Process discovery remains outside animation/frame paths. This explicit
-        // close operation is user initiated, so a fresh process scan is acceptable.
-        self.sys_scanner
-            .refresh_processes(sysinfo::ProcessesToUpdate::All, true);
-        let clean_name = normalize_app_id(&target_app_lower);
-
-        let mut _proc_kills = 0;
-        for (pid, proc_) in self.sys_scanner.processes() {
-            let pid_u32 = pid.as_u32();
-            if pid_u32 <= 1 || pid_u32 == my_pid || pid_u32 == my_ppid {
-                continue;
-            }
-
-            // Also skip processes in our own process group to avoid killing
-            // cargo, shell, or other processes that share our process group
-            let proc_pgid = read_proc_pgid(pid_u32);
-            if proc_pgid == my_pgid {
-                continue;
-            }
-
-            let proc_name = proc_.name().to_string_lossy().to_lowercase();
-            let proc_stem = proc_name.split('.').next().unwrap_or(&proc_name);
-
-            if proc_name == clean_name || proc_stem == clean_name {
-                unsafe {
-                    libc::kill(pid_u32 as i32, libc::SIGTERM);
-                }
-                _proc_kills += 1;
             }
         }
 
