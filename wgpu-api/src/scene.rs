@@ -10,12 +10,12 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::geometry::{Point, Size, Rect, NodeId};
-use crate::color::Color;
-use crate::texture::TextureId;
-use crate::layout::{Insets, CornerRadius, Shadow};
 use crate::brush::Brush;
-use crate::text::{TextStyle, TextAlign, TextBaseline};
+use crate::color::Color;
+use crate::geometry::{NodeId, Point, Rect, Size};
+use crate::layout::{CornerRadius, Insets, Shadow};
+use crate::text::{TextAlign, TextBaseline, TextStyle};
+use crate::texture::TextureId;
 use crate::video::VideoNode;
 
 // ---------------------------------------------------------------------------
@@ -125,7 +125,12 @@ impl NodeStyle {
 
     /// Compute the bounding rectangle in parent coordinates.
     pub fn bounding_rect(&self) -> Rect {
-        Rect::new(self.position.x, self.position.y, self.size.width, self.size.height)
+        Rect::new(
+            self.position.x,
+            self.position.y,
+            self.size.width,
+            self.size.height,
+        )
     }
 }
 
@@ -487,7 +492,10 @@ impl Node {
 
     /// Create a text node.
     pub fn text(id: NodeId, content: impl Into<String>, font_size: f32, color: Color) -> Self {
-        Self::new(id, NodeContent::Text(SceneText::new(content, font_size, color)))
+        Self::new(
+            id,
+            NodeContent::Text(SceneText::new(content, font_size, color)),
+        )
     }
 
     /// Create a video node.
@@ -612,7 +620,12 @@ impl Scene {
     }
 
     /// Create a text node.
-    pub fn create_text(&mut self, content: impl Into<String>, font_size: f32, color: Color) -> NodeId {
+    pub fn create_text(
+        &mut self,
+        content: impl Into<String>,
+        font_size: f32,
+        color: Color,
+    ) -> NodeId {
         let id = self.alloc_id();
         let node = Node::text(id, content, font_size, color);
         self.add_node(node);
@@ -652,7 +665,9 @@ impl Scene {
     /// Remove a node recursively.
     fn remove_node_recursive(&mut self, id: NodeId) {
         // Collect children first to avoid borrow conflicts
-        let children: Vec<NodeId> = self.nodes.get(&id)
+        let children: Vec<NodeId> = self
+            .nodes
+            .get(&id)
             .map(|node| node.children.clone())
             .unwrap_or_default();
 
@@ -781,9 +796,7 @@ impl Scene {
         self.traverse_visible(|node| {
             result.push(node.id);
         });
-        result.sort_by_key(|id| {
-            self.nodes.get(id).map(|n| n.style.z_index).unwrap_or(0)
-        });
+        result.sort_by_key(|id| self.nodes.get(id).map(|n| n.style.z_index).unwrap_or(0));
         result
     }
 

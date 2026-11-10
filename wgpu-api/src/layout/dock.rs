@@ -4,7 +4,7 @@
 //! when icons are added, removed, or rearranged.
 
 use crate::geometry::{Point, Rect, Size};
-use crate::physics::{BodyId, PhysicsBody, CollisionShape, BodyGroup, GroupConfig, GroupId};
+use crate::physics::{BodyGroup, BodyId, CollisionShape, GroupConfig, GroupId, PhysicsBody};
 
 /// Layout direction for dock icons.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -120,12 +120,8 @@ impl DockLayout {
         }
 
         match self.config.direction {
-            DockLayoutDirection::Horizontal => {
-                self.compute_horizontal_positions(count)
-            }
-            DockLayoutDirection::Vertical => {
-                self.compute_vertical_positions(count)
-            }
+            DockLayoutDirection::Horizontal => self.compute_horizontal_positions(count),
+            DockLayoutDirection::Vertical => self.compute_vertical_positions(count),
         }
     }
 
@@ -144,12 +140,8 @@ impl DockLayout {
         // Starting X based on alignment
         let start_x = match self.config.alignment {
             DockAlignment::Start => padding,
-            DockAlignment::Center => {
-                (container_w - total_width) / 2.0
-            }
-            DockAlignment::End => {
-                container_w - total_width - padding
-            }
+            DockAlignment::Center => (container_w - total_width) / 2.0,
+            DockAlignment::End => container_w - total_width - padding,
             DockAlignment::SpaceEvenly => {
                 let available = container_w - 2.0 * padding;
                 let total_with_spacing = count as f32 * icon_w + (count as f32 - 1.0) * spacing;
@@ -313,12 +305,8 @@ impl DockLayout {
                 let shape = CollisionShape::AABB {
                     half_extents: half_size,
                 };
-                let mut body = PhysicsBody::dynamic_body(
-                    BodyId::new(i as u64 + 1),
-                    *pos,
-                    shape,
-                    1.0,
-                );
+                let mut body =
+                    PhysicsBody::dynamic_body(BodyId::new(i as u64 + 1), *pos, shape, 1.0);
                 body.set_rest_position(*pos);
                 body
             })
@@ -334,10 +322,10 @@ impl Default for DockLayout {
 
 #[cfg(test)]
 mod tests {
+    use super::DockLayoutConfig;
     use super::*;
     use crate::geometry::{Point, Size};
-    use crate::physics::{BodyId, PhysicsBody, CollisionShape};
-    use super::DockLayoutConfig;
+    use crate::physics::{BodyId, CollisionShape, PhysicsBody};
 
     #[test]
     fn test_horizontal_layout() {

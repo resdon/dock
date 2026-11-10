@@ -68,13 +68,17 @@ impl AppState {
             // order that matches the popup's title-sorted display order. Without this sort,
             // HashMap iteration order is arbitrary, causing stream 0 to bind to a random
             // window among those with the same title, breaking the popup grid mapping.
-            let mut window_ids: Vec<(String, u32)> = self.windows.iter().filter_map(|(id, win)| {
-                if win.title.is_empty() {
-                    None
-                } else {
-                    Some((win.title.clone(), id.0.protocol_id()))
-                }
-            }).collect();
+            let mut window_ids: Vec<(String, u32)> = self
+                .windows
+                .iter()
+                .filter_map(|(id, win)| {
+                    if win.title.is_empty() {
+                        None
+                    } else {
+                        Some((win.title.clone(), id.0.protocol_id()))
+                    }
+                })
+                .collect();
             window_ids.sort_by(|(a_title, a_id), (b_title, b_id)| {
                 a_title.cmp(b_title).then(a_id.cmp(b_id))
             });
@@ -126,7 +130,8 @@ impl AppState {
                     // Excluding them would make the popup show no windows even though
                     // the app has open windows.
                     win.output_ids.is_empty()
-                        || win.output_ids
+                        || win
+                            .output_ids
                             .iter()
                             .any(|id| id.0 == dock_output_id.clone())
                 })
@@ -192,7 +197,7 @@ impl AppState {
                 config: &self.config,
             };
 
-// Popups
+            // Popups
             window_list::draw_window_list_popup(
                 dock_instance,
                 qh,
@@ -273,7 +278,7 @@ impl AppState {
                 self.pending_focus_app_id = None;
             }
 
-// Side bars: all disabled
+            // Side bars: all disabled
             // side_bars::draw_left_tray_bar(...);
             // super::widget_bar::draw_status_widget_bar(...);
             // side_bars::draw_bottom_system_bar(...);

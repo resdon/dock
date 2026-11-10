@@ -205,10 +205,22 @@ impl HealthMonitor {
     /// Get a summary of all subsystem health.
     pub fn health_summary(&self) -> String {
         let results = self.check_all();
-        let healthy = results.iter().filter(|r| r.status == HealthStatus::Healthy).count();
-        let degraded = results.iter().filter(|r| r.status == HealthStatus::Degraded).count();
-        let unhealthy = results.iter().filter(|r| r.status == HealthStatus::Unhealthy).count();
-        let unknown = results.iter().filter(|r| r.status == HealthStatus::Unknown).count();
+        let healthy = results
+            .iter()
+            .filter(|r| r.status == HealthStatus::Healthy)
+            .count();
+        let degraded = results
+            .iter()
+            .filter(|r| r.status == HealthStatus::Degraded)
+            .count();
+        let unhealthy = results
+            .iter()
+            .filter(|r| r.status == HealthStatus::Unhealthy)
+            .count();
+        let unknown = results
+            .iter()
+            .filter(|r| r.status == HealthStatus::Unknown)
+            .count();
 
         format!(
             "Health: {} healthy, {} degraded, {} unhealthy, {} unknown",
@@ -269,10 +281,7 @@ mod tests {
         let mut monitor = HealthMonitor::new();
         monitor.report_unhealthy("gpu", "device lost");
         assert!(monitor.any_unhealthy());
-        assert_eq!(
-            monitor.get_status("gpu").unwrap().consecutive_failures,
-            1
-        );
+        assert_eq!(monitor.get_status("gpu").unwrap().consecutive_failures, 1);
     }
 
     #[test]
@@ -299,10 +308,7 @@ mod tests {
         let mut monitor = HealthMonitor::new();
         monitor.report_unhealthy("gpu", "error 1");
         monitor.report_unhealthy("gpu", "error 2");
-        assert_eq!(
-            monitor.get_status("gpu").unwrap().consecutive_failures,
-            2
-        );
+        assert_eq!(monitor.get_status("gpu").unwrap().consecutive_failures, 2);
     }
 
     #[test]

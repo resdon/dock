@@ -53,8 +53,8 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::geometry::{Size, Point, Rect};
 use crate::color::Color;
+use crate::geometry::{Point, Rect, Size};
 use crate::viewport::Viewport;
 
 // ---------------------------------------------------------------------------
@@ -363,7 +363,11 @@ pub struct PopupAnchor {
 impl PopupAnchor {
     /// Create a new anchor at the given point.
     pub fn new(rect: Rect, gravity: PopupGravity, offset: Point) -> Self {
-        Self { rect, gravity, offset }
+        Self {
+            rect,
+            gravity,
+            offset,
+        }
     }
 }
 
@@ -412,7 +416,11 @@ impl WaylandPopupConfig {
     pub fn new(size: Size) -> Self {
         Self {
             size,
-            anchor: PopupAnchor::new(Rect::new(0.0, 0.0, 0.0, 0.0), PopupGravity::default(), Point::new(0.0, 0.0)),
+            anchor: PopupAnchor::new(
+                Rect::new(0.0, 0.0, 0.0, 0.0),
+                PopupGravity::default(),
+                Point::new(0.0, 0.0),
+            ),
             reactive: true,
             hide_with_parent: true,
         }
@@ -565,7 +573,10 @@ pub enum PointerEventType {
     /// Pointer motion.
     Motion,
     /// Button press/release.
-    Button { button: PointerButton, state: PointerButtonState },
+    Button {
+        button: PointerButton,
+        state: PointerButtonState,
+    },
     /// Axis scroll.
     Axis { axis: AxisType, value: f64 },
 }
@@ -1039,8 +1050,7 @@ mod tests {
 
     #[test]
     fn test_window_creation() {
-        let config = WaylandWindowConfig::new("Test")
-            .with_size(Size::new(800.0, 600.0));
+        let config = WaylandWindowConfig::new("Test").with_size(Size::new(800.0, 600.0));
         let window = WaylandWindow::new(WaylandWindowId::new(1), config);
 
         assert_eq!(window.id.as_u64(), 1);
@@ -1076,8 +1086,7 @@ mod tests {
 
     #[test]
     fn test_window_resize() {
-        let config = WaylandWindowConfig::new("Test")
-            .with_size(Size::new(800.0, 600.0));
+        let config = WaylandWindowConfig::new("Test").with_size(Size::new(800.0, 600.0));
         let mut window = WaylandWindow::new(WaylandWindowId::new(1), config);
 
         window.on_resize(Size::new(1024.0, 768.0), 2.0);
@@ -1088,13 +1097,8 @@ mod tests {
 
     #[test]
     fn test_popup_creation() {
-        let config = WaylandPopupConfig::new(Size::new(200.0, 150.0))
-            .with_reactive(false);
-        let popup = WaylandPopup::new(
-            WaylandPopupId::new(1),
-            WaylandWindowId::new(1),
-            config,
-        );
+        let config = WaylandPopupConfig::new(Size::new(200.0, 150.0)).with_reactive(false);
+        let popup = WaylandPopup::new(WaylandPopupId::new(1), WaylandWindowId::new(1), config);
 
         assert_eq!(popup.parent.as_u64(), 1);
         assert!(popup.visible);
@@ -1104,11 +1108,7 @@ mod tests {
     #[test]
     fn test_popup_dismiss() {
         let config = WaylandPopupConfig::new(Size::new(200.0, 150.0));
-        let mut popup = WaylandPopup::new(
-            WaylandPopupId::new(1),
-            WaylandWindowId::new(1),
-            config,
-        );
+        let mut popup = WaylandPopup::new(WaylandPopupId::new(1), WaylandWindowId::new(1), config);
 
         assert!(popup.is_active());
         popup.dismiss();
@@ -1119,11 +1119,7 @@ mod tests {
     #[test]
     fn test_popup_hide_show() {
         let config = WaylandPopupConfig::new(Size::new(200.0, 150.0));
-        let mut popup = WaylandPopup::new(
-            WaylandPopupId::new(1),
-            WaylandWindowId::new(1),
-            config,
-        );
+        let mut popup = WaylandPopup::new(WaylandPopupId::new(1), WaylandWindowId::new(1), config);
 
         popup.hide();
         assert!(!popup.visible);
@@ -1257,7 +1253,9 @@ mod tests {
     fn test_wayland_connection_dismiss_popup() {
         let mut conn = WaylandConnection::new();
         let window_id = conn.create_window(WaylandWindowConfig::new("Test"));
-        let popup_id = conn.create_popup(window_id, WaylandPopupConfig::default()).unwrap();
+        let popup_id = conn
+            .create_popup(window_id, WaylandPopupConfig::default())
+            .unwrap();
 
         conn.dismiss_popup(popup_id);
         assert_eq!(conn.popup_count(), 0);
@@ -1387,8 +1385,8 @@ mod tests {
             color: Color::rgba(0.0, 0.0, 0.0, 0.5),
         };
 
-        let popup = VisualPopup::new(Point::new(0.0, 0.0), Size::new(100.0, 50.0))
-            .with_shadow(shadow);
+        let popup =
+            VisualPopup::new(Point::new(0.0, 0.0), Size::new(100.0, 50.0)).with_shadow(shadow);
 
         assert!(popup.shadow.is_some());
         let shadow = popup.shadow.unwrap();

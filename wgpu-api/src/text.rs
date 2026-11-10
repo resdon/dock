@@ -3,8 +3,8 @@
 //! Text is rendered using font files with glyph caching and sub-pixel
 //! positioning for smooth appearance.
 
-use crate::geometry::{Point, Size};
 use crate::color::Color;
+use crate::geometry::{Point, Size};
 
 /// Font weight (boldness).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

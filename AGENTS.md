@@ -265,7 +265,10 @@ These rules **must not be violated** when implementing changes:
 
 ## Testing and Quality Control
 
-The `docs/testing/` directory contains the 8-layer quality control pipeline:
+The `docs/testing/` directory contains the mandatory testing protocol and 8-layer quality control pipeline:
+
+**Mandatory Protocol:**
+- [TESTING_PROTOCOL.md](docs/testing/TESTING_PROTOCOL.md) — **22-phase AI agent testing & verification protocol** (read before any code changes)
 
 | Document | Topic |
 |----------|-------|

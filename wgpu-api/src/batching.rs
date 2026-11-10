@@ -22,9 +22,9 @@
 use std::collections::HashMap;
 
 use crate::geometry::Rect;
-use crate::texture::TextureId;
+use crate::gpu::{BlendMode, PipelineType, QuadInstance};
 use crate::render::DrawCommand;
-use crate::gpu::{QuadInstance, PipelineType, BlendMode};
+use crate::texture::TextureId;
 
 // ---------------------------------------------------------------------------
 // Batch key
@@ -69,7 +69,12 @@ impl BatchKey {
 
     /// Create a textured batch key.
     pub fn textured(texture_id: TextureId, blend_mode: BlendMode, clip_index: u32) -> Self {
-        Self::new(PipelineType::TexturedQuad, Some(texture_id), blend_mode, clip_index)
+        Self::new(
+            PipelineType::TexturedQuad,
+            Some(texture_id),
+            blend_mode,
+            clip_index,
+        )
     }
 }
 
@@ -213,12 +218,15 @@ impl BatchSorter {
                     [rect.width, rect.height],
                     [color.r, color.g, color.b, color.a],
                 );
-                self.add_batched(key, BatchedCommand {
+                self.add_batched(
                     key,
-                    z_order: self.z_order,
-                    instance,
-                    original: DrawCommandType::Rectangle,
-                });
+                    BatchedCommand {
+                        key,
+                        z_order: self.z_order,
+                        instance,
+                        original: DrawCommandType::Rectangle,
+                    },
+                );
                 self.z_order += 1;
 
                 // Stroke as a separate command if present
@@ -236,14 +244,22 @@ impl BatchSorter {
                         let instance = QuadInstance::solid(
                             [stroke_rect.x, stroke_rect.y],
                             [stroke_rect.width, stroke_rect.height],
-                            [stroke_color.r, stroke_color.g, stroke_color.b, stroke_color.a],
+                            [
+                                stroke_color.r,
+                                stroke_color.g,
+                                stroke_color.b,
+                                stroke_color.a,
+                            ],
                         );
-                        self.add_batched(key, BatchedCommand {
+                        self.add_batched(
                             key,
-                            z_order: self.z_order,
-                            instance,
-                            original: DrawCommandType::Rectangle,
-                        });
+                            BatchedCommand {
+                                key,
+                                z_order: self.z_order,
+                                instance,
+                                original: DrawCommandType::Rectangle,
+                            },
+                        );
                         self.z_order += 1;
                     }
                 }
@@ -259,15 +275,21 @@ impl BatchSorter {
                     [dest_rect.x, dest_rect.y],
                     [dest_rect.width, dest_rect.height],
                     [source_uv.x, source_uv.y],
-                    [source_uv.x + source_uv.width, source_uv.y + source_uv.height],
+                    [
+                        source_uv.x + source_uv.width,
+                        source_uv.y + source_uv.height,
+                    ],
                     [tint.r, tint.g, tint.b, tint.a],
                 );
-                self.add_batched(key, BatchedCommand {
+                self.add_batched(
                     key,
-                    z_order: self.z_order,
-                    instance,
-                    original: DrawCommandType::Image,
-                });
+                    BatchedCommand {
+                        key,
+                        z_order: self.z_order,
+                        instance,
+                        original: DrawCommandType::Image,
+                    },
+                );
                 self.z_order += 1;
             }
             DrawCommand::Text {
@@ -290,12 +312,15 @@ impl BatchSorter {
                     [*font_size, *font_size],
                     [color.r, color.g, color.b, color.a],
                 );
-                self.add_batched(key, BatchedCommand {
+                self.add_batched(
                     key,
-                    z_order: self.z_order,
-                    instance,
-                    original: DrawCommandType::Text,
-                });
+                    BatchedCommand {
+                        key,
+                        z_order: self.z_order,
+                        instance,
+                        original: DrawCommandType::Text,
+                    },
+                );
                 self.z_order += 1;
             }
             DrawCommand::Video {
@@ -309,15 +334,21 @@ impl BatchSorter {
                     [dest_rect.x, dest_rect.y],
                     [dest_rect.width, dest_rect.height],
                     [source_uv.x, source_uv.y],
-                    [source_uv.x + source_uv.width, source_uv.y + source_uv.height],
+                    [
+                        source_uv.x + source_uv.width,
+                        source_uv.y + source_uv.height,
+                    ],
                     [tint.r, tint.g, tint.b, tint.a],
                 );
-                self.add_batched(key, BatchedCommand {
+                self.add_batched(
                     key,
-                    z_order: self.z_order,
-                    instance,
-                    original: DrawCommandType::Video,
-                });
+                    BatchedCommand {
+                        key,
+                        z_order: self.z_order,
+                        instance,
+                        original: DrawCommandType::Video,
+                    },
+                );
                 self.z_order += 1;
             }
             DrawCommand::PushClip { clip_rect: _ } => {
@@ -369,7 +400,8 @@ impl BatchSorter {
             let b_tex = b.key.texture_id.map(|t| t.as_u64()).unwrap_or(0);
             let a_blend = a.key.blend_mode as u32;
             let b_blend = b.key.blend_mode as u32;
-            a_type.cmp(&b_type)
+            a_type
+                .cmp(&b_type)
                 .then(a_tex.cmp(&b_tex))
                 .then(a_blend.cmp(&b_blend))
         });
@@ -423,7 +455,9 @@ impl BatchInfo {
         let mut batches_by_pipeline = HashMap::new();
 
         for batch in batches {
-            *batches_by_pipeline.entry(batch.key.pipeline_type).or_insert(0) += 1;
+            *batches_by_pipeline
+                .entry(batch.key.pipeline_type)
+                .or_insert(0) += 1;
 
             if last_pipeline != Some(batch.key.pipeline_type) {
                 pipeline_switches += 1;

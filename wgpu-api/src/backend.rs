@@ -12,11 +12,11 @@
 
 use std::collections::HashMap;
 
-use crate::surface::{SurfaceConfig, SurfaceId, SurfaceFormat};
-use crate::texture::{TextureConfig, TextureFormat as TexFormat, TextureId, TextureUsage};
 use crate::command::Command;
 use crate::renderer::{PowerPreference, RendererBackend};
 use crate::shaders;
+use crate::surface::{SurfaceConfig, SurfaceFormat, SurfaceId};
+use crate::texture::{TextureConfig, TextureFormat as TexFormat, TextureId, TextureUsage};
 
 /// Uniform buffer data for the 2D transform shader.
 ///
@@ -48,9 +48,7 @@ impl UniformBufferObject {
     pub const SIZE: u64 = std::mem::size_of::<Self>() as u64;
 
     /// Create a uniform buffer object from a transform matrix.
-    pub fn from_transform(
-        matrix: &crate::transform::Matrix3,
-    ) -> Self {
+    pub fn from_transform(matrix: &crate::transform::Matrix3) -> Self {
         let e = &matrix.elements;
         Self {
             transform: [e[0], e[1], e[3], e[4]],
@@ -89,11 +87,7 @@ impl TexturedVertex {
     }
 
     /// Build a quad of textured vertices.
-    pub fn quad(
-        x: f32, y: f32, w: f32, h: f32,
-        uv: [f32; 4],
-        color: [f32; 4],
-    ) -> [Self; 6] {
+    pub fn quad(x: f32, y: f32, w: f32, h: f32, uv: [f32; 4], color: [f32; 4]) -> [Self; 6] {
         [
             // Triangle 1
             Self::new([x, y], [uv[0], uv[1]], color),
@@ -143,7 +137,13 @@ impl SolidVertex {
     }
 
     /// Build a circle approximated as a polygon.
-    pub fn circle(center_x: f32, center_y: f32, radius: f32, segments: usize, color: [f32; 4]) -> Vec<Self> {
+    pub fn circle(
+        center_x: f32,
+        center_y: f32,
+        radius: f32,
+        segments: usize,
+        color: [f32; 4],
+    ) -> Vec<Self> {
         let mut vertices = Vec::with_capacity(3 * segments);
         for i in 0..segments {
             let a1 = (i as f32 / segments as f32) * std::f32::consts::PI * 2.0;
@@ -274,16 +274,14 @@ impl GpuBackend {
 
         // Request device with DMA-BUF support
         let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: Some("wgpu-api Device"),
-                    required_features: wgpu::Features::VULKAN_EXTERNAL_MEMORY_DMA_BUF,
-                    required_limits: wgpu::Limits::downlevel_defaults(),
-                    memory_hints: wgpu::MemoryHints::default(),
-                    experimental_features: wgpu::ExperimentalFeatures::disabled(),
-                    trace: wgpu::Trace::Off,
-                },
-            )
+            .request_device(&wgpu::DeviceDescriptor {
+                label: Some("wgpu-api Device"),
+                required_features: wgpu::Features::VULKAN_EXTERNAL_MEMORY_DMA_BUF,
+                required_limits: wgpu::Limits::downlevel_defaults(),
+                memory_hints: wgpu::MemoryHints::default(),
+                experimental_features: wgpu::ExperimentalFeatures::disabled(),
+                trace: wgpu::Trace::Off,
+            })
             .await
             .map_err(|e| format!("Failed to create GPU device: {}", e))?;
 
@@ -321,46 +319,51 @@ impl GpuBackend {
 
     /// Create the bind group layout shared by all render pipelines.
     fn create_bind_group_layout(&self) -> wgpu::BindGroupLayout {
-        self.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Bind Group Layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
+        self.device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Bind Group Layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::VERTEX,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
                     },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
                     },
-                    count: None,
-                },
-            ],
-        })
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                ],
+            })
     }
 
     /// Create the pipeline layout shared by all render pipelines.
-    fn create_pipeline_layout(&self, bind_group_layout: &wgpu::BindGroupLayout) -> wgpu::PipelineLayout {
-        self.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Pipeline Layout"),
-            bind_group_layouts: &[Some(bind_group_layout)],
-            immediate_size: 0,
-        })
+    fn create_pipeline_layout(
+        &self,
+        bind_group_layout: &wgpu::BindGroupLayout,
+    ) -> wgpu::PipelineLayout {
+        self.device
+            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Pipeline Layout"),
+                bind_group_layouts: &[Some(bind_group_layout)],
+                immediate_size: 0,
+            })
     }
 
     /// Create the uniform buffer for transform data.
@@ -389,7 +392,11 @@ impl GpuBackend {
         // Create a placeholder texture view for the bind group
         let placeholder_texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Placeholder Texture"),
-            size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -397,7 +404,8 @@ impl GpuBackend {
             usage: wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
-        let placeholder_view = placeholder_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let placeholder_view =
+            placeholder_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
         // Create bind group for uniforms
         let uniform_bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -430,70 +438,79 @@ impl GpuBackend {
         let pipeline_layout = self.create_pipeline_layout(&bind_group_layout);
 
         // Textured pipeline
-        let vert_module = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Textured Vertex Shader"),
-            source: wgpu::ShaderSource::Wgsl(shaders::VERTEX_SHADER.into()),
-        });
-        let frag_module = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Textured Fragment Shader"),
-            source: wgpu::ShaderSource::Wgsl(shaders::FRAGMENT_SHADER.into()),
-        });
-        let textured_pipeline = self.device.create_render_pipeline(
-            &wgpu::RenderPipelineDescriptor {
-                label: Some("Textured Pipeline"),
-                layout: Some(&pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &vert_module,
-                    entry_point: Some("main"),
-                    compilation_options: Default::default(),
-                    buffers: &[Some(wgpu::VertexBufferLayout {
-                        array_stride: TexturedVertex::SIZE as u64,
-                        step_mode: wgpu::VertexStepMode::Vertex,
-                        attributes: &wgpu::vertex_attr_array![
-                            0 => Float32x2,
-                            1 => Float32x2,
-                            2 => Float32x4,
-                        ],
-                    })],
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &frag_module,
-                    entry_point: Some("main"),
-                    compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: wgpu::TextureFormat::Bgra8UnormSrgb,
-                        blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleList,
-                    strip_index_format: None,
-                    front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: None,
-                    unclipped_depth: false,
-                    polygon_mode: wgpu::PolygonMode::Fill,
-                    conservative: false,
-                },
-                depth_stencil: None,
-                multisample: wgpu::MultisampleState::default(),
-                multiview_mask: None,
-                cache: None,
-            },
-        );
+        let vert_module = self
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("Textured Vertex Shader"),
+                source: wgpu::ShaderSource::Wgsl(shaders::VERTEX_SHADER.into()),
+            });
+        let frag_module = self
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("Textured Fragment Shader"),
+                source: wgpu::ShaderSource::Wgsl(shaders::FRAGMENT_SHADER.into()),
+            });
+        let textured_pipeline =
+            self.device
+                .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("Textured Pipeline"),
+                    layout: Some(&pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &vert_module,
+                        entry_point: Some("main"),
+                        compilation_options: Default::default(),
+                        buffers: &[Some(wgpu::VertexBufferLayout {
+                            array_stride: TexturedVertex::SIZE as u64,
+                            step_mode: wgpu::VertexStepMode::Vertex,
+                            attributes: &wgpu::vertex_attr_array![
+                                0 => Float32x2,
+                                1 => Float32x2,
+                                2 => Float32x4,
+                            ],
+                        })],
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &frag_module,
+                        entry_point: Some("main"),
+                        compilation_options: Default::default(),
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+                            blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
+                    }),
+                    primitive: wgpu::PrimitiveState {
+                        topology: wgpu::PrimitiveTopology::TriangleList,
+                        strip_index_format: None,
+                        front_face: wgpu::FrontFace::Ccw,
+                        cull_mode: None,
+                        unclipped_depth: false,
+                        polygon_mode: wgpu::PolygonMode::Fill,
+                        conservative: false,
+                    },
+                    depth_stencil: None,
+                    multisample: wgpu::MultisampleState::default(),
+                    multiview_mask: None,
+                    cache: None,
+                });
         self.textured_pipeline = Some(textured_pipeline);
 
         // Solid pipeline
-        let solid_vert_module = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Solid Vertex Shader"),
-            source: wgpu::ShaderSource::Wgsl(shaders::SOLID_VERTEX_SHADER.into()),
-        });
-        let solid_frag_module = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Solid Fragment Shader"),
-            source: wgpu::ShaderSource::Wgsl(shaders::SOLID_FRAGMENT_SHADER.into()),
-        });
-        let solid_pipeline = self.device.create_render_pipeline(
-            &wgpu::RenderPipelineDescriptor {
+        let solid_vert_module = self
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("Solid Vertex Shader"),
+                source: wgpu::ShaderSource::Wgsl(shaders::SOLID_VERTEX_SHADER.into()),
+            });
+        let solid_frag_module = self
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("Solid Fragment Shader"),
+                source: wgpu::ShaderSource::Wgsl(shaders::SOLID_FRAGMENT_SHADER.into()),
+            });
+        let solid_pipeline = self
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("Solid Pipeline"),
                 layout: Some(&pipeline_layout),
                 vertex: wgpu::VertexState {
@@ -532,8 +549,7 @@ impl GpuBackend {
                 multisample: wgpu::MultisampleState::default(),
                 multiview_mask: None,
                 cache: None,
-            },
-        );
+            });
         self.solid_pipeline = Some(solid_pipeline);
     }
 
@@ -541,7 +557,11 @@ impl GpuBackend {
     pub fn register_texture(&mut self, texture_id: TextureId, config: TextureConfig) {
         let wgpu_format = Self::to_wgpu_texture_format(config.format);
         let wgpu_usage = Self::to_wgpu_texture_usage(&config.usage);
-        let mip_levels = if config.mip_levels > 0 { config.mip_levels } else { 1 };
+        let mip_levels = if config.mip_levels > 0 {
+            config.mip_levels
+        } else {
+            1
+        };
 
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some(&format!("Texture {}", texture_id.as_u64())),
@@ -653,10 +673,7 @@ impl GpuBackend {
     }
 
     /// Acquire a surface frame for rendering.
-    pub fn acquire_surface_frame(
-        &mut self,
-        surface_id: SurfaceId,
-    ) -> Option<wgpu::SurfaceTexture> {
+    pub fn acquire_surface_frame(&mut self, surface_id: SurfaceId) -> Option<wgpu::SurfaceTexture> {
         let surface = self.gpu_surfaces.get(&surface_id)?;
         match surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(t) => Some(t),
@@ -715,7 +732,12 @@ impl GpuBackend {
     /// Update the uniform buffer with new transform data.
     pub fn update_uniforms(&mut self, uniforms: &UniformBufferObject) {
         if let Some(buf) = &self.uniform_buffer {
-            self.queue.write_buffer(buf, 0, unsafe { std::slice::from_raw_parts(uniforms as *const _ as *const u8, UniformBufferObject::SIZE as usize) });
+            self.queue.write_buffer(buf, 0, unsafe {
+                std::slice::from_raw_parts(
+                    uniforms as *const _ as *const u8,
+                    UniformBufferObject::SIZE as usize,
+                )
+            });
         }
     }
 
@@ -789,8 +811,7 @@ impl GpuBackend {
             wgpu_usage |= wgpu::TextureUsages::COPY_DST;
         }
         if wgpu_usage.is_empty() {
-            wgpu_usage = wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_DST;
+            wgpu_usage = wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST;
         }
         wgpu_usage
     }
@@ -822,10 +843,18 @@ impl GpuBackend {
     /// Compute texture usage flags count.
     pub fn texture_usage_count(usage: &TextureUsage) -> u32 {
         let mut count = 0;
-        if usage.render_target { count += 1; }
-        if usage.sample { count += 1; }
-        if usage.copy_source { count += 1; }
-        if usage.copy_destination { count += 1; }
+        if usage.render_target {
+            count += 1;
+        }
+        if usage.sample {
+            count += 1;
+        }
+        if usage.copy_source {
+            count += 1;
+        }
+        if usage.copy_destination {
+            count += 1;
+        }
         count
     }
 
@@ -846,16 +875,19 @@ impl GpuBackend {
 
     /// Process commands and estimate the number of draw calls.
     pub fn estimate_draw_calls(commands: &[Command]) -> usize {
-        commands.iter().filter(|cmd| match cmd {
-            Command::Clear(_) => false,
-            Command::PushTransform(_) => false,
-            Command::PopTransform => false,
-            Command::SetBlendMode(_) => false,
-            Command::SetOpacity(_) => false,
-            Command::Clip { .. } => false,
-            Command::ResetClip => false,
-            _ => true,
-        }).count()
+        commands
+            .iter()
+            .filter(|cmd| match cmd {
+                Command::Clear(_) => false,
+                Command::PushTransform(_) => false,
+                Command::PopTransform => false,
+                Command::SetBlendMode(_) => false,
+                Command::SetOpacity(_) => false,
+                Command::Clip { .. } => false,
+                Command::ResetClip => false,
+                _ => true,
+            })
+            .count()
     }
 }
 
@@ -1038,7 +1070,9 @@ mod tests {
             Command::Clear(crate::color::Color::BLACK),
             Command::Rect {
                 rect: crate::geometry::Rect::ZERO,
-                fill: Some(crate::primitives::FillStyle::Solid(crate::color::Color::RED)),
+                fill: Some(crate::primitives::FillStyle::Solid(
+                    crate::color::Color::RED,
+                )),
                 stroke: None,
             },
             Command::PushTransform(crate::transform::Transform::new()),
@@ -1050,7 +1084,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_gpu_backend_creation() {
-        let backend = GpuBackend::new(RendererBackend::Vulkan, PowerPreference::HighPerformance).await.unwrap();
+        let backend = GpuBackend::new(RendererBackend::Vulkan, PowerPreference::HighPerformance)
+            .await
+            .unwrap();
         assert!(backend.is_initialized());
         assert_eq!(backend.texture_count(), 0);
     }

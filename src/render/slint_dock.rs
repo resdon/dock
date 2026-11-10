@@ -77,10 +77,20 @@ impl SlintDockRenderer {
             .map_err(|e| format!("Failed to set Slint platform: {:?}", e))?;
 
         // Create the dock widget
-        let widget = DockWidget::new()
-            .map_err(|e| format!("Failed to create DockWidget: {:?}", e))?;
+        let widget =
+            DockWidget::new().map_err(|e| format!("Failed to create DockWidget: {:?}", e))?;
 
-        Ok(Self { widget, window, icon_cache: std::collections::HashMap::new(), bounce_animations: std::collections::HashMap::new(), click_animations: std::collections::HashMap::new(), minimize_animations: std::collections::HashMap::new(), render_buffer: Vec::new(), last_state_hash: 0, last_debug_instant: std::time::Instant::now() })
+        Ok(Self {
+            widget,
+            window,
+            icon_cache: std::collections::HashMap::new(),
+            bounce_animations: std::collections::HashMap::new(),
+            click_animations: std::collections::HashMap::new(),
+            minimize_animations: std::collections::HashMap::new(),
+            render_buffer: Vec::new(),
+            last_state_hash: 0,
+            last_debug_instant: std::time::Instant::now(),
+        })
     }
 
     /// Simple hash for dock state to detect changes
@@ -99,21 +109,39 @@ impl SlintDockRenderer {
     ) -> u64 {
         let mut hash: u64 = 0;
         for pin in &dock_state.pins {
-            hash = hash.wrapping_add(pin.app_id.len() as u64).wrapping_mul(0x100000001B3);
-            hash = hash.wrapping_add((pin.is_running as u64) << 1).wrapping_mul(0x100000001B3);
-            hash = hash.wrapping_add((pin.is_activated as u64) << 2).wrapping_mul(0x100000001B3);
-            hash = hash.wrapping_add(pin.running_count as u64).wrapping_mul(0x100000001B3);
-            hash = hash.wrapping_add(pin.badge_count.unwrap_or(0) as u64).wrapping_mul(0x100000001B3);
+            hash = hash
+                .wrapping_add(pin.app_id.len() as u64)
+                .wrapping_mul(0x100000001B3);
+            hash = hash
+                .wrapping_add((pin.is_running as u64) << 1)
+                .wrapping_mul(0x100000001B3);
+            hash = hash
+                .wrapping_add((pin.is_activated as u64) << 2)
+                .wrapping_mul(0x100000001B3);
+            hash = hash
+                .wrapping_add(pin.running_count as u64)
+                .wrapping_mul(0x100000001B3);
+            hash = hash
+                .wrapping_add(pin.badge_count.unwrap_or(0) as u64)
+                .wrapping_mul(0x100000001B3);
         }
-        hash = hash.wrapping_add(hovered_index.unwrap_or(usize::MAX) as u64).wrapping_mul(0x100000001B3);
+        hash = hash
+            .wrapping_add(hovered_index.unwrap_or(usize::MAX) as u64)
+            .wrapping_mul(0x100000001B3);
         // Include drag state so the model updates during drag
-        hash = hash.wrapping_add((is_dragging as u64) << 1).wrapping_mul(0x100000001B3);
+        hash = hash
+            .wrapping_add((is_dragging as u64) << 1)
+            .wrapping_mul(0x100000001B3);
         if let Some(id) = dragged_app_id {
-            hash = hash.wrapping_add(id.len() as u64).wrapping_mul(0x100000001B3);
+            hash = hash
+                .wrapping_add(id.len() as u64)
+                .wrapping_mul(0x100000001B3);
         }
         // Include drag target slot during drag so offset_x updates when cursor crosses a slot boundary
         if is_dragging {
-            hash = hash.wrapping_add(drag_target_slot as u64).wrapping_mul(0x100000001B3);
+            hash = hash
+                .wrapping_add(drag_target_slot as u64)
+                .wrapping_mul(0x100000001B3);
         }
         hash
     }
@@ -143,7 +171,7 @@ impl SlintDockRenderer {
 
         // Clear canvas to transparent black first — SHM pool reuses buffers
         canvas.fill(0);
-        
+
         // The Slint widget matches the Wayland surface dimensions exactly
         let slint_width = phys_width as usize;
         let slint_height = phys_height as usize;
@@ -151,14 +179,22 @@ impl SlintDockRenderer {
 
         // Resize render buffer if needed (avoids per-frame allocation)
         if self.render_buffer.len() < total_pixels {
-            self.render_buffer.resize(total_pixels, PremultipliedRgbaColor { red: 0, green: 0, blue: 0, alpha: 0 });
+            self.render_buffer.resize(
+                total_pixels,
+                PremultipliedRgbaColor {
+                    red: 0,
+                    green: 0,
+                    blue: 0,
+                    alpha: 0,
+                },
+            );
         }
         let slint_buffer = &mut self.render_buffer[..total_pixels];
 
         // Set the Slint widget size to match the surface
         self.widget.set_dock_width(slint_width as i32);
         self.widget.set_dock_height(slint_height as i32);
-        
+
         // Set configurable properties from config
         // Parse hex color strings to slint::Brush::SolidColor
         fn hex_to_brush(hex: &str) -> slint::Brush {
@@ -174,9 +210,12 @@ impl SlintDockRenderer {
             }
             slint::Brush::SolidColor(slint::Color::from_rgb_u8(0, 229, 255)) // fallback to cyan
         }
-        self.widget.set_hover_color(hex_to_brush(&config.hover_color));
-        self.widget.set_dash_focused_color(hex_to_brush(&config.dash_focused_color));
-        self.widget.set_dash_inactive_color(hex_to_brush(&config.dash_inactive_color));
+        self.widget
+            .set_hover_color(hex_to_brush(&config.hover_color));
+        self.widget
+            .set_dash_focused_color(hex_to_brush(&config.dash_focused_color));
+        self.widget
+            .set_dash_inactive_color(hex_to_brush(&config.dash_inactive_color));
         self.widget.set_hover_highlight(config.hover_highlight);
         self.widget.set_click_animation(config.click_animation);
         self.widget.set_bounce_animation(config.bounce_animation);
@@ -189,9 +228,9 @@ impl SlintDockRenderer {
                 u8::from_str_radix(&bg_hex[4..6], 16),
             ) {
                 let a = (config.background_alpha * 255.0) as u8;
-                self.widget.set_background_color(
-                    slint::Brush::SolidColor(slint::Color::from_argb_u8(a, r, g, b))
-                );
+                self.widget.set_background_color(slint::Brush::SolidColor(
+                    slint::Color::from_argb_u8(a, r, g, b),
+                ));
             }
         }
         // Border color with alpha embedded directly in the color
@@ -203,14 +242,16 @@ impl SlintDockRenderer {
                 u8::from_str_radix(&br_hex[4..6], 16),
             ) {
                 let a = (config.border_alpha * 255.0) as u8;
-                self.widget.set_border_color(
-                    slint::Brush::SolidColor(slint::Color::from_argb_u8(a, r, g, b))
-                );
+                self.widget
+                    .set_border_color(slint::Brush::SolidColor(slint::Color::from_argb_u8(
+                        a, r, g, b,
+                    )));
             }
         }
-    
+
         // Set the Slint window size
-        self.window.set_size(PhysicalSize::new(slint_width as u32, slint_height as u32));
+        self.window
+            .set_size(PhysicalSize::new(slint_width as u32, slint_height as u32));
 
         // Calculate drag target slot index for sliding animation
         let item_slot_width = 56f32; // icon_size (48) + spacing (8)
@@ -256,7 +297,11 @@ impl SlintDockRenderer {
                     // The existing icon loader provides 512x512 RGBA pixels
                     let s = *size as usize;
                     if rgba.len() == s * s * 4 {
-                        let buf = SharedPixelBuffer::clone_from_slice(rgba.as_slice(), s as u32, s as u32);
+                        let buf = SharedPixelBuffer::clone_from_slice(
+                            rgba.as_slice(),
+                            s as u32,
+                            s as u32,
+                        );
                         let img = Image::from_rgba8(buf);
                         self.icon_cache.insert(pin.app_id.clone(), img.clone());
                         icon_cache_misses += 1;
@@ -272,7 +317,11 @@ impl SlintDockRenderer {
                 };
 
                 // Bounce animation: smooth sine wave over configurable duration
-                let bounce_counter = self.bounce_animations.get(&pin.app_id).copied().unwrap_or(0);
+                let bounce_counter = self
+                    .bounce_animations
+                    .get(&pin.app_id)
+                    .copied()
+                    .unwrap_or(0);
                 // Decrement bounce counter
                 if let Some(count) = self.bounce_animations.get_mut(&pin.app_id) {
                     *count = count.saturating_sub(1);
@@ -297,7 +346,9 @@ impl SlintDockRenderer {
                     *count = count.saturating_sub(1);
                 }
                 let click_scale = if click_counter > 0 {
-                    let total_frames = ((config.click_animation_up_duration + config.click_animation_down_duration) * 60.0) as u32;
+                    let total_frames = ((config.click_animation_up_duration
+                        + config.click_animation_down_duration)
+                        * 60.0) as u32;
                     if total_frames == 0 {
                         1.0
                     } else {
@@ -310,7 +361,11 @@ impl SlintDockRenderer {
                     1.0f32
                 };
                 // Minimize animation: shrink down then restore (inverse sine wave)
-                let minimize_counter = self.minimize_animations.get(&pin.app_id).copied().unwrap_or(0);
+                let minimize_counter = self
+                    .minimize_animations
+                    .get(&pin.app_id)
+                    .copied()
+                    .unwrap_or(0);
                 // Decrement minimize animation counter
                 if let Some(count) = self.minimize_animations.get_mut(&pin.app_id) {
                     *count = count.saturating_sub(1);
@@ -330,7 +385,13 @@ impl SlintDockRenderer {
                     1.0f32
                 };
                 // Combined animation scale: minimize > click > bounce priority
-                let anim_scale = if minimize_counter > 0 { minimize_scale } else if click_counter > 0 { click_scale } else { bounce_scale };
+                let anim_scale = if minimize_counter > 0 {
+                    minimize_scale
+                } else if click_counter > 0 {
+                    click_scale
+                } else {
+                    bounce_scale
+                };
                 // Compute scaled icon dimensions and centered position
                 let base_icon_size = 48f32;
                 let base_icon_y = 6f32;
@@ -344,7 +405,8 @@ impl SlintDockRenderer {
                 let is_hovered = hovered_index == Some(i);
                 // Hide this icon in the dock only when actually dragging (not just on press)
                 // `dragged_app_id` is set on press, but `is_dragging` is only true after moving > 5px
-                let is_dragging_item = is_dragging && dragged_app_id.is_some_and(|id| *id == pin.app_id);
+                let is_dragging_item =
+                    is_dragging && dragged_app_id.is_some_and(|id| *id == pin.app_id);
 
                 // Calculate horizontal offset for sliding animation
                 let offset_x = if is_dragging && drag_source_idx >= 0 {
@@ -405,12 +467,22 @@ impl SlintDockRenderer {
         // Compute state hash to detect if anything changed
         // Use drag_target_slot instead of raw pointer_x so Slint only re-renders when
         // the cursor crosses into a new icon slot, not every pixel movement
-        let mut state_hash = Self::compute_state_hash(dock_state, hovered_index, is_dragging, dragged_app_id, drag_target_slot);
+        let mut state_hash = Self::compute_state_hash(
+            dock_state,
+            hovered_index,
+            is_dragging,
+            dragged_app_id,
+            drag_target_slot,
+        );
         // Include icon cache keys so newly loaded icons trigger a model update
         for key in &icon_cache_keys {
-            state_hash = state_hash.wrapping_add(key.len() as u64).wrapping_mul(0x100000001B3);
+            state_hash = state_hash
+                .wrapping_add(key.len() as u64)
+                .wrapping_mul(0x100000001B3);
             for byte in key.as_bytes() {
-                state_hash = state_hash.wrapping_add(*byte as u64).wrapping_mul(0x100000001B3);
+                state_hash = state_hash
+                    .wrapping_add(*byte as u64)
+                    .wrapping_mul(0x100000001B3);
             }
         }
         let state_changed = state_hash != self.last_state_hash;
@@ -432,7 +504,12 @@ impl SlintDockRenderer {
         // Clear the Slint render buffer to transparent before rendering
         // This ensures that areas outside the dock_bg are transparent
         for pixel in slint_buffer.iter_mut() {
-            *pixel = PremultipliedRgbaColor { red: 0, green: 0, blue: 0, alpha: 0 };
+            *pixel = PremultipliedRgbaColor {
+                red: 0,
+                green: 0,
+                blue: 0,
+                alpha: 0,
+            };
         }
 
         // Render via Slint
@@ -472,10 +549,22 @@ impl SlintDockRenderer {
             if let Some(app_id) = dragged_app_id {
                 if let Some(icon) = self.icon_cache.get(app_id) {
                     // Find the dragged item's properties
-                    let (wc, foc) = dock_state.pins.iter().find(|p| p.app_id == *app_id)
+                    let (wc, foc) = dock_state
+                        .pins
+                        .iter()
+                        .find(|p| p.app_id == *app_id)
                         .map(|p| (p.running_count, p.is_activated))
                         .unwrap_or((0, false));
-                    self.draw_dragged_icon(canvas, icon, phys_width as usize, phys_height as usize, pointer_x, pointer_y, wc, foc);
+                    self.draw_dragged_icon(
+                        canvas,
+                        icon,
+                        phys_width as usize,
+                        phys_height as usize,
+                        pointer_x,
+                        pointer_y,
+                        wc,
+                        foc,
+                    );
                 }
             }
         }
@@ -495,7 +584,8 @@ impl SlintDockRenderer {
             return;
         }
         let total_frames = (config.bounce_animation_duration * 60.0) as u32;
-        self.bounce_animations.insert(app_id.to_string(), total_frames.max(1));
+        self.bounce_animations
+            .insert(app_id.to_string(), total_frames.max(1));
     }
 
     /// Trigger a click animation for the given app_id.
@@ -509,8 +599,11 @@ impl SlintDockRenderer {
         if click_active || bounce_active || minimize_active {
             return;
         }
-        let total_frames = ((config.click_animation_up_duration + config.click_animation_down_duration) * 60.0) as u32;
-        self.click_animations.insert(app_id.to_string(), total_frames.max(1));
+        let total_frames = ((config.click_animation_up_duration
+            + config.click_animation_down_duration)
+            * 60.0) as u32;
+        self.click_animations
+            .insert(app_id.to_string(), total_frames.max(1));
     }
 
     /// Trigger a minimize animation for the given app_id.
@@ -525,7 +618,8 @@ impl SlintDockRenderer {
             return;
         }
         let total_frames = (config.minimize_animation_duration * 60.0) as u32;
-        self.minimize_animations.insert(app_id.to_string(), total_frames.max(1));
+        self.minimize_animations
+            .insert(app_id.to_string(), total_frames.max(1));
     }
 
     /// Check if any animations are currently active (bounce, click, or minimize).
@@ -579,7 +673,11 @@ impl SlintDockRenderer {
                 break;
             }
 
-            let src_y = if icon_height == 1 { 0 } else { dy * (icon_height - 1) / (target_size - 1) };
+            let src_y = if icon_height == 1 {
+                0
+            } else {
+                dy * (icon_height - 1) / (target_size - 1)
+            };
 
             for dx in 0..target_size {
                 let dst_x = start_x + dx;
@@ -589,7 +687,11 @@ impl SlintDockRenderer {
                     continue;
                 }
 
-                let src_x = if icon_width == 1 { 0 } else { dx * (icon_width - 1) / (target_size - 1) };
+                let src_x = if icon_width == 1 {
+                    0
+                } else {
+                    dx * (icon_width - 1) / (target_size - 1)
+                };
 
                 let src_idx = (src_y * icon_width + src_x) * 4;
                 if src_idx + 3 >= pixels.len() {
@@ -602,10 +704,10 @@ impl SlintDockRenderer {
                 }
 
                 // Source pixel is RGBA, write directly as BGRA (fully opaque)
-                canvas[dst_idx] = pixels[src_idx + 2];       // B
-                canvas[dst_idx + 1] = pixels[src_idx + 1];   // G
-                canvas[dst_idx + 2] = pixels[src_idx];       // R
-                canvas[dst_idx + 3] = pixels[src_idx + 3];   // A
+                canvas[dst_idx] = pixels[src_idx + 2]; // B
+                canvas[dst_idx + 1] = pixels[src_idx + 1]; // G
+                canvas[dst_idx + 2] = pixels[src_idx]; // R
+                canvas[dst_idx + 3] = pixels[src_idx + 3]; // A
             }
         }
 
@@ -619,7 +721,15 @@ impl SlintDockRenderer {
                 // Silver #9CA3AF: B=0xAF, G=0xA3, R=0x9C
                 (0xAFu8, 0xA3u8, 0x9Cu8)
             };
-            self.draw_dashes(canvas, start_x, dash_y, canvas_width, canvas_height, window_count, dash_color);
+            self.draw_dashes(
+                canvas,
+                start_x,
+                dash_y,
+                canvas_width,
+                canvas_height,
+                window_count,
+                dash_color,
+            );
         }
     }
 
@@ -637,11 +747,11 @@ impl SlintDockRenderer {
         // Dash configurations: (count, width_each, gap)
         // Total span: 32px, starting at base_x + 8
         let configs: &[(usize, f32, f32)] = &[
-            (1, 32.0, 0.0),    // 1 dash: 32px wide
-            (2, 14.5, 3.0),    // 2 dashes: 14.5px each, 3px gap
-            (3, 8.67, 3.0),    // 3 dashes: 8.67px each, 3px gap
-            (4, 6.25, 3.0),    // 4 dashes: 6.25px each, 3px gap
-            (5, 4.8, 3.0),     // 5 dashes: 4.8px each, 3px gap
+            (1, 32.0, 0.0), // 1 dash: 32px wide
+            (2, 14.5, 3.0), // 2 dashes: 14.5px each, 3px gap
+            (3, 8.67, 3.0), // 3 dashes: 8.67px each, 3px gap
+            (4, 6.25, 3.0), // 4 dashes: 6.25px each, 3px gap
+            (5, 4.8, 3.0),  // 5 dashes: 4.8px each, 3px gap
         ];
 
         let config = match configs.get(window_count - 1) {
@@ -668,10 +778,10 @@ impl SlintDockRenderer {
                     }
                     let idx = (y * canvas_width + x) * 4;
                     if idx + 2 < canvas.len() {
-                        canvas[idx] = color.0;   // B
+                        canvas[idx] = color.0; // B
                         canvas[idx + 1] = color.1; // G
                         canvas[idx + 2] = color.2; // R
-                        canvas[idx + 3] = 255;    // A (fully opaque)
+                        canvas[idx + 3] = 255; // A (fully opaque)
                     }
                 }
             }

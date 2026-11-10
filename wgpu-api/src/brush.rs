@@ -4,8 +4,8 @@
 //! type that can be used for both fill and stroke operations.
 
 use crate::color::{Color, Gradient};
-use crate::image::Image;
 use crate::geometry::Size;
+use crate::image::Image;
 
 /// A brush for filling or stroking shapes.
 ///

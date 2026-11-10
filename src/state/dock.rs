@@ -297,8 +297,12 @@ impl AppState {
         let margin = config.margin;
 
         for dock in &mut self.docks {
-            let Some(ref mut db) = dock.dashed_block_surface else { continue };
-            let output_size = self.output_state.info(&dock.output)
+            let Some(ref mut db) = dock.dashed_block_surface else {
+                continue;
+            };
+            let output_size = self
+                .output_state
+                .info(&dock.output)
                 .and_then(|info| info.logical_size)
                 .unwrap_or((1920, 1080));
             let output_width = output_size.0 as i32;
@@ -343,8 +347,12 @@ impl AppState {
         let margin = config.margin;
 
         for dock in &mut self.docks {
-            let Some(ref mut dt) = dock.date_time_block_surface else { continue };
-            let output_size = self.output_state.info(&dock.output)
+            let Some(ref mut dt) = dock.date_time_block_surface else {
+                continue;
+            };
+            let output_size = self
+                .output_state
+                .info(&dock.output)
                 .and_then(|info| info.logical_size)
                 .unwrap_or((1920, 1080));
             let output_width = output_size.0 as i32;

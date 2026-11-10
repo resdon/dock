@@ -3,8 +3,8 @@
 //! Paths are built from line segments, arcs, and bezier curves.
 //! Shapes are convenience constructors for common geometric figures.
 
-use crate::geometry::Point;
 use crate::color::Color;
+use crate::geometry::Point;
 
 /// A vector path composed of drawing commands.
 ///
@@ -82,13 +82,41 @@ impl Path {
 
         self.move_to(x + r, y);
         self.line_to(x + width - r, y);
-        self.arc(x + width - r, y + r, r, -std::f32::consts::PI / 2.0, 0.0, true);
+        self.arc(
+            x + width - r,
+            y + r,
+            r,
+            -std::f32::consts::PI / 2.0,
+            0.0,
+            true,
+        );
         self.line_to(x + width, y + height - r);
-        self.arc(x + width - r, y + height - r, r, 0.0, std::f32::consts::PI / 2.0, true);
+        self.arc(
+            x + width - r,
+            y + height - r,
+            r,
+            0.0,
+            std::f32::consts::PI / 2.0,
+            true,
+        );
         self.line_to(x + r, y + height);
-        self.arc(x + r, y + height - r, r, std::f32::consts::PI / 2.0, std::f32::consts::PI, true);
+        self.arc(
+            x + r,
+            y + height - r,
+            r,
+            std::f32::consts::PI / 2.0,
+            std::f32::consts::PI,
+            true,
+        );
         self.line_to(x, y + r);
-        self.arc(x, y + r, r, std::f32::consts::PI, -std::f32::consts::PI / 2.0, true);
+        self.arc(
+            x,
+            y + r,
+            r,
+            std::f32::consts::PI,
+            -std::f32::consts::PI / 2.0,
+            true,
+        );
         self.close();
     }
 
@@ -120,23 +148,12 @@ impl Path {
             start_angle,
             end_angle,
             clockwise,
-            end: Point::new(
-                cx + radius * end_angle.cos(),
-                cy + radius * end_angle.sin(),
-            ),
+            end: Point::new(cx + radius * end_angle.cos(), cy + radius * end_angle.sin()),
         });
     }
 
     /// Draw a cubic bezier curve.
-    pub fn cubic_bezier_to(
-        &mut self,
-        cx1: f32,
-        cy1: f32,
-        cx2: f32,
-        cy2: f32,
-        x: f32,
-        y: f32,
-    ) {
+    pub fn cubic_bezier_to(&mut self, cx1: f32, cy1: f32, cx2: f32, cy2: f32, x: f32, y: f32) {
         self.commands.push(PathCommand::CubicBezierTo {
             cp1: Point::new(cx1, cy1),
             cp2: Point::new(cx2, cy2),
@@ -145,13 +162,7 @@ impl Path {
     }
 
     /// Draw a quadratic bezier curve.
-    pub fn quadratic_bezier_to(
-        &mut self,
-        cx: f32,
-        cy: f32,
-        x: f32,
-        y: f32,
-    ) {
+    pub fn quadratic_bezier_to(&mut self, cx: f32, cy: f32, x: f32, y: f32) {
         self.commands.push(PathCommand::QuadraticBezierTo {
             cp: Point::new(cx, cy),
             end: Point::new(x, y),
@@ -199,16 +210,9 @@ pub enum PathCommand {
         end: Point,
     },
     /// Draw a cubic bezier curve.
-    CubicBezierTo {
-        cp1: Point,
-        cp2: Point,
-        end: Point,
-    },
+    CubicBezierTo { cp1: Point, cp2: Point, end: Point },
     /// Draw a quadratic bezier curve.
-    QuadraticBezierTo {
-        cp: Point,
-        end: Point,
-    },
+    QuadraticBezierTo { cp: Point, end: Point },
     /// Close the current subpath.
     Close,
 }
@@ -251,7 +255,11 @@ pub mod shape {
         let angle_step = std::f32::consts::PI / points as f32;
         for i in 0..points * 2 {
             let angle = i as f32 * angle_step - std::f32::consts::PI / 2.0;
-            let r = if i % 2 == 0 { outer_radius } else { inner_radius };
+            let r = if i % 2 == 0 {
+                outer_radius
+            } else {
+                inner_radius
+            };
             let x = cx + r * angle.cos();
             let y = cy + r * angle.sin();
             if i == 0 {

@@ -24,7 +24,7 @@
 //! GPU buffers are **not** recreated. Only resources whose dimensions or formats
 //! actually changed are recreated.
 
-use crate::geometry::{Size, Rect, Point};
+use crate::geometry::{Point, Rect, Size};
 
 // ---------------------------------------------------------------------------
 // Viewport
@@ -77,10 +77,7 @@ impl Viewport {
     /// Useful when the OS reports the framebuffer size directly.
     pub fn from_physical(physical_size: Size, scale_factor: f32) -> Self {
         let sf = scale_factor.max(0.1);
-        let logical_size = Size::new(
-            physical_size.width / sf,
-            physical_size.height / sf,
-        );
+        let logical_size = Size::new(physical_size.width / sf, physical_size.height / sf);
         Self {
             logical_size,
             physical_size,
@@ -113,10 +110,7 @@ impl Viewport {
 
     /// Convert a physical point to logical coordinates.
     pub fn physical_to_logical(&self, point: Point) -> Point {
-        Point::new(
-            point.x / self.scale_factor,
-            point.y / self.scale_factor,
-        )
+        Point::new(point.x / self.scale_factor, point.y / self.scale_factor)
     }
 
     /// Convert a logical rectangle to physical coordinates.
@@ -242,10 +236,7 @@ impl ResizeEvent {
     /// Create from a physical size and scale factor (derive logical).
     pub fn from_physical(physical_size: Size, scale_factor: f32) -> Self {
         let sf = scale_factor.max(0.1);
-        let logical_size = Size::new(
-            physical_size.width / sf,
-            physical_size.height / sf,
-        );
+        let logical_size = Size::new(physical_size.width / sf, physical_size.height / sf);
         Self {
             logical_size,
             physical_size,
@@ -267,8 +258,7 @@ impl ResizeEvent {
 ///
 /// The goal is to **minimize** recreation: only resources whose dimensions
 /// or formats actually changed should be recreated.
-#[derive(Debug, Clone, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct ResourceChanges {
     /// The surface framebuffer needs to be resized.
     surface_framebuffer: bool,
@@ -539,11 +529,7 @@ mod tests {
 
     #[test]
     fn test_resize_event() {
-        let event = ResizeEvent::new(
-            Size::new(800.0, 600.0),
-            Size::new(1600.0, 1200.0),
-            2.0,
-        );
+        let event = ResizeEvent::new(Size::new(800.0, 600.0), Size::new(1600.0, 1200.0), 2.0);
         assert!(event.is_meaningful());
     }
 

@@ -45,12 +45,12 @@ pub fn draw_main_dock(
     _render_gpu: Option<&mut wgpu_api::Renderer>,
     _dmabuf_state: &DmabufState,
     is_animating: bool,
-     scale_int: i32,
-     mut slint_renderer: Option<&mut SlintDockRenderer>,
-     bounce_app_id: Option<&String>,
-     click_app_id: Option<&String>,
-     minimize_app_id: Option<&String>,
-     config: &crate::config::DockConfig,
+    scale_int: i32,
+    mut slint_renderer: Option<&mut SlintDockRenderer>,
+    bounce_app_id: Option<&String>,
+    click_app_id: Option<&String>,
+    minimize_app_id: Option<&String>,
+    config: &crate::config::DockConfig,
 ) {
     let dock_height: u32 = frame.dock_height;
     let dock_scale = dock.scale_factor;
@@ -131,7 +131,19 @@ pub fn draw_main_dock(
         if let Some(app_id) = minimize_app_id {
             renderer.start_minimize_animation(app_id, config);
         }
-        renderer.render(canvas, &dock_state, phys_width, phys_height, icon_cache, interaction.hovered_icon, is_dragging, dragged_app_id, interaction.pointer_position.x as i32, interaction.pointer_position.y as i32, config);
+        renderer.render(
+            canvas,
+            &dock_state,
+            phys_width,
+            phys_height,
+            icon_cache,
+            interaction.hovered_icon,
+            is_dragging,
+            dragged_app_id,
+            interaction.pointer_position.x as i32,
+            interaction.pointer_position.y as i32,
+            config,
+        );
     } else {
         canvas.fill(0);
     }

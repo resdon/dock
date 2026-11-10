@@ -34,7 +34,6 @@ impl FontManager {
             .join("dock/glyphs");
         let _ = fs::create_dir_all(&cache_dir);
 
-
         Ok(Self {
             primary_font,
             _primary_mmap: Some(mmap),
@@ -127,10 +126,8 @@ impl FontManager {
                     }
                 }
             }
-            Ok(_out) => {
-            }
-            Err(_e) => {
-            }
+            Ok(_out) => {}
+            Err(_e) => {}
         }
         None
     }

@@ -45,8 +45,8 @@
 //!
 //! Derive from collision intensity and use a short decay function.
 
-use crate::geometry::{Point, Size, Vector2D};
 use super::body::{BodyId, PhysicsBody};
+use crate::geometry::{Point, Size, Vector2D};
 
 // ---------------------------------------------------------------------------
 // Motion state
@@ -240,7 +240,10 @@ impl CollisionEffect {
             intensity: intensity.clamp(0.0, 1.0),
             active: true,
             squash_direction: if direction.length() > 0.001 {
-                Vector2D::new(direction.x / direction.length(), direction.y / direction.length())
+                Vector2D::new(
+                    direction.x / direction.length(),
+                    direction.y / direction.length(),
+                )
             } else {
                 Vector2D::new(1.0, 0.0)
             },
@@ -378,12 +381,12 @@ impl VisualEffects {
         let dir_y = motion.velocity.y / speed;
 
         // Stretch along movement direction
-        let stretch = (1.0 + speed * self.config.stretch_coefficient)
-            .clamp(1.0, self.config.max_stretch);
+        let stretch =
+            (1.0 + speed * self.config.stretch_coefficient).clamp(1.0, self.config.max_stretch);
 
         // Squash perpendicular to movement
-        let squash = (1.0 - speed * self.config.squash_coefficient)
-            .clamp(self.config.max_squash, 1.0);
+        let squash =
+            (1.0 - speed * self.config.squash_coefficient).clamp(self.config.max_squash, 1.0);
 
         // Compute scale in the movement direction
         // For horizontal movement: stretch X, squash Y
@@ -424,8 +427,8 @@ impl VisualEffects {
 
         let stretch = (1.0 + accel * self.config.stretch_coefficient * 0.5)
             .clamp(1.0, self.config.max_stretch);
-        let squash = (1.0 - accel * self.config.squash_coefficient * 0.5)
-            .clamp(self.config.max_squash, 1.0);
+        let squash =
+            (1.0 - accel * self.config.squash_coefficient * 0.5).clamp(self.config.max_squash, 1.0);
 
         VisualTransform {
             translation: Point::ORIGIN,
@@ -441,7 +444,11 @@ impl VisualEffects {
     /// Register a collision event for visual effects.
     pub fn register_collision(&mut self, body: BodyId, intensity: f32, direction: Vector2D) {
         let effect = CollisionEffect::new(intensity, direction);
-        if let Some((_, existing)) = self.collision_effects.iter_mut().find(|(id, _)| *id == body) {
+        if let Some((_, existing)) = self
+            .collision_effects
+            .iter_mut()
+            .find(|(id, _)| *id == body)
+        {
             *existing = effect;
         } else {
             self.collision_effects.push((body, effect));
@@ -586,7 +593,10 @@ impl VisualEffects {
 
     /// Get the drag visual state for a body.
     pub fn get_drag_state(&self, body: BodyId) -> Option<DragVisualState> {
-        self.drag_states.iter().find(|(id, _)| *id == body).map(|(_, s)| *s)
+        self.drag_states
+            .iter()
+            .find(|(id, _)| *id == body)
+            .map(|(_, s)| *s)
     }
 
     // ---------------------------------------------------------------------
@@ -894,10 +904,7 @@ mod tests {
 
     #[test]
     fn test_group_visual_effects() {
-        let mut states = vec![
-            MotionState::default(),
-            MotionState::default(),
-        ];
+        let mut states = vec![MotionState::default(), MotionState::default()];
         states[0].velocity = Vector2D::new(100.0, 0.0);
         states[1].velocity = Vector2D::new(100.0, 0.0);
         let effects = GroupVisualEffects::from_motion_states(&states);

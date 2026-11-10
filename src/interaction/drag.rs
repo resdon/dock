@@ -22,7 +22,6 @@ pub fn handle_drag_release(
     let (box_size, spacing, start_offset_x) = layout;
     let mut layer_changed = false;
 
-
     if is_over_icons {
         let mut dropped_idx = None;
         let pointer_x = state.interaction.pointer_position.x as i32;

@@ -4,8 +4,8 @@
 //! using the Slint font rasterizer for smooth text.
 
 use crate::config::{DockConfig, PopupBorderStyle};
-use crate::geometry::popup::SurfaceGeometry;
 use crate::geometry::popup::PopupGeometry;
+use crate::geometry::popup::SurfaceGeometry;
 use crate::state::WindowState;
 
 use crate::render::font::FontManager;
@@ -113,7 +113,11 @@ const POPUP_TEXT_BASELINE_NUDGE_PX: i32 = 14;
 /// which window is currently focused.
 fn radio_mark(canvas: &mut [u8], width: i32, height: i32, cx: i32, cy: i32, selected: bool) {
     // Canvas is ARGB8888 - use ARGB color constants
-    let outer = if selected { theme::RED_ARGB } else { theme::BORDER_ARGB };
+    let outer = if selected {
+        theme::RED_ARGB
+    } else {
+        theme::BORDER_ARGB
+    };
     for y in -5..=5 {
         for x in -5..=5 {
             let d = x * x + y * y;
@@ -161,7 +165,6 @@ pub struct CaptureFrameData {
     pub original_height: u32,
 }
 
-
 /// Draw a scaled PipeWire capture frame image into the canvas.
 ///
 /// Scales the frame to fit within the specified width/height while
@@ -179,7 +182,12 @@ fn draw_capture_frame(
 ) {
     let src_w = src_data.width as i32;
     let src_h = src_data.height as i32;
-    if src_w <= 0 || src_h <= 0 || frame_w <= 0 || frame_h <= 0 || src_data.rgba.len() < (src_w * src_h * 4) as usize {
+    if src_w <= 0
+        || src_h <= 0
+        || frame_w <= 0
+        || frame_h <= 0
+        || src_data.rgba.len() < (src_w * src_h * 4) as usize
+    {
         return;
     }
 
@@ -223,7 +231,7 @@ fn draw_capture_frame(
                     let g = src_data.rgba[src_idx + 1];
                     let b = src_data.rgba[src_idx + 2];
                     let a = src_data.rgba[src_idx + 3];
-                    canvas[dst_idx] = b;     // B
+                    canvas[dst_idx] = b; // B
                     canvas[dst_idx + 1] = g; // G
                     canvas[dst_idx + 2] = r; // R
                     canvas[dst_idx + 3] = a; // A
@@ -295,7 +303,8 @@ pub fn render_window_list_surface(
     let close_hover_color = DockConfig::parse_hex_color_bgra(&config.popup_close_hover_color);
     let hover_border_color = DockConfig::parse_hex_color_bgra(&config.popup_hover_border_color);
     let close_button_color = DockConfig::parse_hex_color_bgra(&config.popup_close_button_color);
-    let close_button_hover_color = DockConfig::parse_hex_color_bgra(&config.popup_close_button_hover_color);
+    let close_button_hover_color =
+        DockConfig::parse_hex_color_bgra(&config.popup_close_button_hover_color);
     let close_cross_color = DockConfig::parse_hex_color_bgra(&config.popup_close_cross_color);
     let _frame_bg_color = DockConfig::parse_hex_color_bgra(&config.popup_frame_bg_color);
     // Window title text — green (#00FF00) for high contrast readability
@@ -311,8 +320,7 @@ pub fn render_window_list_surface(
         && (local_pointer_y as f32) < (frame_logical_h + rows_logical_h)
     {
         let rows_y = local_pointer_y as f32 - frame_logical_h;
-        let idx = ((rows_y / item_h_log) as i32).clamp(0, (item_count - 1) as i32)
-            as usize;
+        let idx = ((rows_y / item_h_log) as i32).clamp(0, (item_count - 1) as i32) as usize;
         Some(idx)
     } else {
         None
@@ -355,7 +363,9 @@ pub fn render_window_list_surface(
     let close_hovered_row = (0..item_count).find(|&i| {
         let item_top_phys = rows_area_y + i as i32 * phys_item_h;
         let close_btn_size = (close_btn_size_cfg * scale_factor).round() as i32;
-        let close_btn_x = menu_width - close_btn_size - ((config.popup_close_button_margin as f32 * scale_factor).round() as i32);
+        let close_btn_x = menu_width
+            - close_btn_size
+            - ((config.popup_close_button_margin as f32 * scale_factor).round() as i32);
         let close_btn_y = item_top_phys + (phys_item_h - close_btn_size) / 2;
         ptr_phys_x >= close_btn_x
             && ptr_phys_x < close_btn_x + close_btn_size
@@ -438,7 +448,13 @@ pub fn render_window_list_surface(
 
         let truncate_len = config.popup_text_truncate as usize;
         let title = if w.title.chars().count() > truncate_len {
-            format!("{}...", w.title.chars().take(truncate_len.saturating_sub(3)).collect::<String>())
+            format!(
+                "{}...",
+                w.title
+                    .chars()
+                    .take(truncate_len.saturating_sub(3))
+                    .collect::<String>()
+            )
         } else {
             w.title.clone()
         };
@@ -463,7 +479,9 @@ pub fn render_window_list_surface(
 
         // Render Close Button
         let close_btn_size = (close_btn_size_cfg * scale_factor).round() as i32;
-        let close_btn_x = menu_width - close_btn_size - ((config.popup_close_button_margin as f32 * scale_factor).round() as i32);
+        let close_btn_x = menu_width
+            - close_btn_size
+            - ((config.popup_close_button_margin as f32 * scale_factor).round() as i32);
         let close_btn_y = item_top_phys + (current_item_h_phys - close_btn_size) / 2;
 
         let is_close_hovered = ptr_phys_x >= close_btn_x

@@ -55,8 +55,8 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use crate::geometry::{Size, Point, Rect};
 use crate::color::Color;
+use crate::geometry::{Point, Rect, Size};
 use crate::texture::TextureId;
 
 // ---------------------------------------------------------------------------
@@ -263,7 +263,7 @@ impl DockWidget {
             click_animation: true,
             bounce_animation: true,
             background_color: Color::rgba(0.11, 0.11, 0.13, 1.0), // #1D1C22
-            border_color: Color::rgba(0.30, 0.29, 0.33, 1.0), // #4C4954
+            border_color: Color::rgba(0.30, 0.29, 0.33, 1.0),     // #4C4954
             dock_items: Vec::new(),
         }
     }
@@ -830,8 +830,8 @@ impl SlintWgpuAdapter {
     pub fn select_backend(&mut self) -> Result<(), String> {
         #[cfg(feature = "slint-wgpu-30")]
         {
-            use slint::BackendSelector;
             use slint::wgpu_30::WGPUConfiguration;
+            use slint::BackendSelector;
 
             BackendSelector::new()
                 .require_wgpu_30(WGPUConfiguration::default())
@@ -1001,7 +1001,10 @@ impl Default for WidgetRegistry {
 #[derive(Debug, Clone)]
 pub enum SlintEvent {
     /// Dock item was clicked.
-    DockItemClick { index: i32, button: SlintMouseButton },
+    DockItemClick {
+        index: i32,
+        button: SlintMouseButton,
+    },
     /// Dock item hover changed.
     DockItemHover { index: i32, is_hovered: bool },
     /// Dock item drag started.
@@ -1011,7 +1014,10 @@ pub enum SlintEvent {
     /// Dock item drag ended.
     DockItemDragEnd { index: i32, position: Point },
     /// Bluetooth device action.
-    BluetoothAction { action: BluetoothAction, device_index: Option<i32> },
+    BluetoothAction {
+        action: BluetoothAction,
+        device_index: Option<i32>,
+    },
     /// Widget resize request.
     WidgetResize { widget_id: WidgetId, size: Size },
     /// Widget close request.
@@ -1304,7 +1310,8 @@ mod tests {
 
     #[test]
     fn test_slint_component() {
-        let mut component = SlintComponent::new(WidgetId::new(1), "DockWidget", Size::new(520.0, 60.0));
+        let mut component =
+            SlintComponent::new(WidgetId::new(1), "DockWidget", Size::new(520.0, 60.0));
         assert_eq!(component.name, "DockWidget");
         assert!(component.visible);
         assert!(component.texture.is_none());

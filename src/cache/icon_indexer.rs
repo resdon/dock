@@ -38,7 +38,6 @@ pub fn spawn_startup_indexer() {
             }
         }
 
-
         let home = std::env::var("HOME").unwrap_or_default();
         let search_dirs = vec![
             PathBuf::from("/usr/share/icons"),

@@ -1078,10 +1078,13 @@ graph LR
 
 ## Testing and Quality Control
 
+**Mandatory Protocol:** [TESTING_PROTOCOL.md](docs/testing/TESTING_PROTOCOL.md) — 22-phase AI agent testing & verification protocol (read before any code changes).
+
 **8-Layer Pipeline:** `docs/testing/` directory contains the complete quality control infrastructure.
 
 | Layer | File | Purpose |
 |-------|------|---------|
+| 0. **Testing Protocol** | `docs/testing/TESTING_PROTOCOL.md` | **Mandatory 22-phase AI agent testing protocol** |
 | 1. Static Analysis | `scripts/check.sh` | Automated fmt, check, clippy, tests, audit pipeline |
 | 2. Profiling | `docs/testing/profiling.md` | CPU/RAM profiling with perf, heaptrack, Massif, Tracy |
 | 3. GPU Validation | `docs/testing/gpu-validation.md` | wgpu error scopes, Vulkan layers, RenderDoc, MangoHud |

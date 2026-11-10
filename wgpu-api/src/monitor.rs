@@ -458,12 +458,7 @@ pub enum GpuMemoryCategory {
 
 impl GpuMemoryCategory {
     /// Apply a memory change to the breakdown.
-    fn apply(
-        &self,
-        breakdown: &mut GpuMemoryBreakdown,
-        size: MemorySize,
-        is_allocation: bool,
-    ) {
+    fn apply(&self, breakdown: &mut GpuMemoryBreakdown, size: MemorySize, is_allocation: bool) {
         let field = match self {
             Self::Texture => &mut breakdown.textures,
             Self::VertexBuffer => &mut breakdown.vertex_buffers,
@@ -635,12 +630,7 @@ pub enum CpuMemoryCategory {
 }
 
 impl CpuMemoryCategory {
-    fn apply(
-        &self,
-        breakdown: &mut CpuMemoryBreakdown,
-        size: MemorySize,
-        is_allocation: bool,
-    ) {
+    fn apply(&self, breakdown: &mut CpuMemoryBreakdown, size: MemorySize, is_allocation: bool) {
         let field = match self {
             Self::SceneGraph => &mut breakdown.scene_graph,
             Self::Animations => &mut breakdown.animations,
@@ -948,7 +938,10 @@ impl SystemResourceLimits {
     /// Read CPU core count from /proc/cpuinfo.
     fn read_cpu_cores() -> u32 {
         if let Ok(content) = std::fs::read_to_string("/proc/cpuinfo") {
-            let cores = content.lines().filter(|l| l.starts_with("processor")).count();
+            let cores = content
+                .lines()
+                .filter(|l| l.starts_with("processor"))
+                .count();
             return cores.max(1) as u32;
         }
         1
@@ -956,9 +949,7 @@ impl SystemResourceLimits {
 
     /// Read CPU thread count from sysfs.
     fn read_cpu_threads() -> u32 {
-        if let Ok(content) =
-            std::fs::read_to_string("/sys/devices/system/cpu/online")
-        {
+        if let Ok(content) = std::fs::read_to_string("/sys/devices/system/cpu/online") {
             // Format: "0-7" or "0,1,2,3"
             let threads = content
                 .split('-')
@@ -1085,8 +1076,7 @@ impl ResourceSnapshot {
 
         // Check CPU memory pressure
         let cpu_ratio = if self.system_limits.total_ram.bytes > 0 {
-            self.cpu_memory.total_allocated.bytes as f64
-                / self.system_limits.total_ram.bytes as f64
+            self.cpu_memory.total_allocated.bytes as f64 / self.system_limits.total_ram.bytes as f64
         } else {
             0.0
         };
@@ -1406,9 +1396,7 @@ impl ResourceHistory {
         let cpu_values: Vec<u64> = entries.iter().map(|e| e.cpu_memory_bytes).collect();
 
         let duration = if entries.len() > 1 {
-            (entries.back().unwrap().timestamp
-                - entries.front().unwrap().timestamp)
-            .as_secs_f64()
+            (entries.back().unwrap().timestamp - entries.front().unwrap().timestamp).as_secs_f64()
         } else {
             0.0
         };
@@ -1423,12 +1411,8 @@ impl ResourceHistory {
             min_frame_time_ms: frame_times.iter().cloned().fold(f32::MAX, f32::min),
             max_frame_time_ms: frame_times.iter().cloned().fold(0.0, f32::max),
             p99_frame_time_ms: percentile(&mut frame_times.clone(), 0.99),
-            peak_gpu_memory: MemorySize::from_bytes(
-                gpu_values.iter().cloned().max().unwrap_or(0),
-            ),
-            peak_cpu_memory: MemorySize::from_bytes(
-                cpu_values.iter().cloned().max().unwrap_or(0),
-            ),
+            peak_gpu_memory: MemorySize::from_bytes(gpu_values.iter().cloned().max().unwrap_or(0)),
+            peak_cpu_memory: MemorySize::from_bytes(cpu_values.iter().cloned().max().unwrap_or(0)),
             total_draw_calls: entries.iter().map(|e| e.draw_calls as u64).sum(),
         }
     }
@@ -1633,11 +1617,7 @@ impl ResourceMonitor {
     }
 
     /// Record a GPU memory deallocation.
-    pub fn record_gpu_deallocation(
-        &mut self,
-        size: MemorySize,
-        category: GpuMemoryCategory,
-    ) {
+    pub fn record_gpu_deallocation(&mut self, size: MemorySize, category: GpuMemoryCategory) {
         if !self.enabled {
             return;
         }
@@ -1846,7 +1826,10 @@ mod tests {
         usage.record_allocation(MemorySize::from_mb(10), GpuMemoryCategory::Texture);
         assert_eq!(usage.allocation_count, 1);
         assert_eq!(usage.allocations_this_frame, 1);
-        assert_eq!(usage.breakdown.textures.bytes, MemorySize::from_mb(10).bytes);
+        assert_eq!(
+            usage.breakdown.textures.bytes,
+            MemorySize::from_mb(10).bytes
+        );
         usage.update_peak();
         assert_eq!(usage.peak_usage.bytes, MemorySize::from_mb(10).bytes);
     }
@@ -1857,10 +1840,7 @@ mod tests {
         usage.record_allocation(MemorySize::from_mb(10), GpuMemoryCategory::Texture);
         usage.record_deallocation(MemorySize::from_mb(5), GpuMemoryCategory::Texture);
         assert_eq!(usage.allocation_count, 0);
-        assert_eq!(
-            usage.breakdown.textures.bytes,
-            MemorySize::from_mb(5).bytes
-        );
+        assert_eq!(usage.breakdown.textures.bytes, MemorySize::from_mb(5).bytes);
     }
 
     #[test]
@@ -1992,17 +1972,18 @@ mod tests {
     #[test]
     fn test_resource_snapshot() {
         let snapshot = ResourceSnapshot::new();
-        assert!(!snapshot.total_memory().is_zero() || snapshot.gpu_memory.total_allocated.is_zero());
+        assert!(
+            !snapshot.total_memory().is_zero() || snapshot.gpu_memory.total_allocated.is_zero()
+        );
     }
 
     #[test]
     fn test_resource_health() {
-        assert!(ResourceHealth::Healthy.worse(ResourceHealth::Healthy)
-            == ResourceHealth::Healthy);
-        assert!(ResourceHealth::Healthy.worse(ResourceHealth::Warning)
-            == ResourceHealth::Warning);
-        assert!(ResourceHealth::Warning.worse(ResourceHealth::Critical)
-            == ResourceHealth::Critical);
+        assert!(ResourceHealth::Healthy.worse(ResourceHealth::Healthy) == ResourceHealth::Healthy);
+        assert!(ResourceHealth::Healthy.worse(ResourceHealth::Warning) == ResourceHealth::Warning);
+        assert!(
+            ResourceHealth::Warning.worse(ResourceHealth::Critical) == ResourceHealth::Critical
+        );
     }
 
     #[test]
@@ -2041,10 +2022,7 @@ mod tests {
         assert!(monitor.is_enabled());
 
         monitor.begin_frame();
-        monitor.record_gpu_allocation(
-            MemorySize::from_mb(10),
-            GpuMemoryCategory::Texture,
-        );
+        monitor.record_gpu_allocation(MemorySize::from_mb(10), GpuMemoryCategory::Texture);
         monitor.end_frame(16.67);
 
         let stats = monitor.frame_stats();
@@ -2057,10 +2035,7 @@ mod tests {
         monitor.set_enabled(false);
 
         monitor.begin_frame();
-        monitor.record_gpu_allocation(
-            MemorySize::from_mb(10),
-            GpuMemoryCategory::Texture,
-        );
+        monitor.record_gpu_allocation(MemorySize::from_mb(10), GpuMemoryCategory::Texture);
         monitor.end_frame(16.67);
 
         // Should not record anything when disabled
@@ -2077,10 +2052,7 @@ mod tests {
     #[test]
     fn test_resource_monitor_reset() {
         let mut monitor = ResourceMonitor::new();
-        monitor.record_gpu_allocation(
-            MemorySize::from_mb(10),
-            GpuMemoryCategory::Texture,
-        );
+        monitor.record_gpu_allocation(MemorySize::from_mb(10), GpuMemoryCategory::Texture);
         monitor.reset();
         assert_eq!(monitor.gpu_memory.allocation_count, 0);
     }
@@ -2088,22 +2060,14 @@ mod tests {
     #[test]
     fn test_gpu_memory_category_apply() {
         let mut bd = GpuMemoryBreakdown::new();
-        GpuMemoryCategory::VertexBuffer.apply(
-            &mut bd,
-            MemorySize::from_mb(5),
-            true,
-        );
+        GpuMemoryCategory::VertexBuffer.apply(&mut bd, MemorySize::from_mb(5), true);
         assert_eq!(bd.vertex_buffers.bytes, MemorySize::from_mb(5).bytes);
     }
 
     #[test]
     fn test_cpu_memory_category_apply() {
         let mut bd = CpuMemoryBreakdown::new();
-        CpuMemoryCategory::VideoFrames.apply(
-            &mut bd,
-            MemorySize::from_mb(100),
-            true,
-        );
+        CpuMemoryCategory::VideoFrames.apply(&mut bd, MemorySize::from_mb(100), true);
         assert_eq!(bd.video_frames.bytes, MemorySize::from_mb(100).bytes);
     }
 
@@ -2137,10 +2101,7 @@ mod tests {
         let mut usage = GpuMemoryBreakdown::new();
         usage.textures = MemorySize::from_mb(100);
         let remaining = budget.remaining(&usage);
-        assert_eq!(
-            remaining.textures.bytes,
-            MemorySize::from_mb(156).bytes
-        );
+        assert_eq!(remaining.textures.bytes, MemorySize::from_mb(156).bytes);
     }
 
     #[test]

@@ -169,6 +169,15 @@ When creating or modifying public APIs:
 pub fn function_name(...) { ... }
 ```
 
+## Testing and Verification Protocol
+
+**Mandatory**: Before making any code changes, read `docs/testing/TESTING_PROTOCOL.md`. This 22-phase protocol defines the complete testing and verification workflow that every AI agent must follow.
+
+The protocol includes three mandatory testing gates:
+1. **Gate 1: Build correctness** — Formatting, compilation, Clippy, unit tests, dependency checks
+2. **Gate 2: Runtime correctness** — Real Wayland session, Vulkan rendering, Slint widgets, visual regression, stress testing
+3. **Gate 3: Performance acceptance** — CPU, RAM, VRAM, frame times measured against the previous Git checkpoint
+
 ## Error Handling Policy
 
 **Mandatory**: Follow the error detection, diagnosis, and recovery policy in `docs/architecture/error-policy.md` for every error you encounter.

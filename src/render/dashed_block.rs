@@ -45,8 +45,7 @@ pub fn bluetooth_icon_at(x: f64, y: f64, config: &DockConfig) -> bool {
     let bt_icon_x = row_start_x; // bluetooth is the right icon in top row (index 1)
     let bt_x = bt_icon_x + icon_size + icon_gap;
 
-    (bt_x..bt_x + icon_size).contains(&x)
-        && (top_row_y..top_row_y + icon_size).contains(&y)
+    (bt_x..bt_x + icon_size).contains(&x) && (top_row_y..top_row_y + icon_size).contains(&y)
 }
 
 use resvg::tiny_skia::{Pixmap, Transform};
@@ -94,7 +93,7 @@ pub fn render_dashed_block(
     // Border color parsed from hex string (e.g., "#00FF00" → (0, 255, 0) as (R, G, B) tuple)
     let border_color = DockConfig::parse_hex_color(&config.dashed_block_border_color);
     let dash_len = config.dashed_block_dash_length as usize; // pixels per dash segment
-    let gap_len = config.dashed_block_gap_length as usize;   // pixels per gap segment
+    let gap_len = config.dashed_block_gap_length as usize; // pixels per gap segment
     let cycle = dash_len + gap_len; // total cycle length for the dash pattern
     let thickness = config.dashed_block_border_thickness as usize; // border thickness in pixels
 
@@ -160,8 +159,15 @@ pub fn render_dashed_block(
     // Resvg's Pixmap outputs RGBA; `write_bgra_pixel` handles the R↔B swap.
     //
     // The icon is scaled to fit the configured `icon_size` and blended with the global alpha.
-    let render_svg_icon = |svg_data: &[u8], icon_x: usize, icon_y: usize, icon_size: usize,
-                           w: usize, h: usize, canvas: &mut [u8], a: u8, options: &Options| {
+    let render_svg_icon = |svg_data: &[u8],
+                           icon_x: usize,
+                           icon_y: usize,
+                           icon_size: usize,
+                           w: usize,
+                           h: usize,
+                           canvas: &mut [u8],
+                           a: u8,
+                           options: &Options| {
         if let Ok(tree) = Tree::from_data(svg_data, options) {
             let mut pixmap = Pixmap::new(icon_size as u32, icon_size as u32).unwrap();
             let transform = Transform::from_scale(
@@ -182,11 +188,14 @@ pub fn render_dashed_block(
                             let canvas_idx = (py * w + px) * 4;
                             let final_a = (svg_a as f32 / 255.0 * a as f32) as u8;
                             // resvg pixmap is RGBA [R,G,B,A]; write_bgra_pixel writes BGRA8888
-                            write_bgra_pixel(canvas, canvas_idx,
+                            write_bgra_pixel(
+                                canvas,
+                                canvas_idx,
                                 svg_pixels[svg_idx],     // R
                                 svg_pixels[svg_idx + 1], // G
                                 svg_pixels[svg_idx + 2], // B
-                                final_a);                // A
+                                final_a,
+                            ); // A
                         }
                     }
                 }
@@ -235,8 +244,40 @@ pub fn render_dashed_block(
     );
 
     // Render all 4 SVG icons onto the canvas
-    render_svg_icon(rclone_svg, rclone_icon_x, top_row_y, icon_size, w, h, canvas, a, &options);
-    render_svg_icon(bt_svg, bt_icon_x, top_row_y, icon_size, w, h, canvas, a, &options);
-    render_svg_icon(speaker_svg, speaker_icon_x, bottom_row_y, icon_size, w, h, canvas, a, &options);
-    render_svg_icon(pac_svg, pac_icon_x, bottom_row_y, icon_size, w, h, canvas, a, &options);
+    render_svg_icon(
+        rclone_svg,
+        rclone_icon_x,
+        top_row_y,
+        icon_size,
+        w,
+        h,
+        canvas,
+        a,
+        &options,
+    );
+    render_svg_icon(
+        bt_svg, bt_icon_x, top_row_y, icon_size, w, h, canvas, a, &options,
+    );
+    render_svg_icon(
+        speaker_svg,
+        speaker_icon_x,
+        bottom_row_y,
+        icon_size,
+        w,
+        h,
+        canvas,
+        a,
+        &options,
+    );
+    render_svg_icon(
+        pac_svg,
+        pac_icon_x,
+        bottom_row_y,
+        icon_size,
+        w,
+        h,
+        canvas,
+        a,
+        &options,
+    );
 }

@@ -4,7 +4,7 @@
 //! pixels (integer coordinates) happens only when preparing the rendering
 //! pass, not in application code.
 
-use std::ops::{Add, Sub, Mul, Div};
+use std::ops::{Add, Div, Mul, Sub};
 
 /// Opaque identifier for a rendering node in the scene graph.
 ///
@@ -265,7 +265,10 @@ pub struct Size {
 
 impl Size {
     /// Zero size.
-    pub const ZERO: Self = Self { width: 0.0, height: 0.0 };
+    pub const ZERO: Self = Self {
+        width: 0.0,
+        height: 0.0,
+    };
 
     /// Create a new size.
     pub const fn new(width: f32, height: f32) -> Self {

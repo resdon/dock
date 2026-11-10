@@ -40,9 +40,24 @@ fn format_time() -> String {
         return String::new();
     }
     let mut buf = [0i8; 16];
-    let n = unsafe { libc::strftime(buf.as_mut_ptr(), buf.len(), b"%H:%M\0".as_ptr() as *const _, &local) };
-    if n == 0 { return String::new(); }
-    String::from_utf8_lossy(&buf[..n as usize].iter().map(|c| *c as u8).collect::<Vec<u8>>()).into_owned()
+    let n = unsafe {
+        libc::strftime(
+            buf.as_mut_ptr(),
+            buf.len(),
+            b"%H:%M\0".as_ptr() as *const _,
+            &local,
+        )
+    };
+    if n == 0 {
+        return String::new();
+    }
+    String::from_utf8_lossy(
+        &buf[..n as usize]
+            .iter()
+            .map(|c| *c as u8)
+            .collect::<Vec<u8>>(),
+    )
+    .into_owned()
 }
 
 /// Format the current day and month as "8 November" using libc::strftime.
@@ -53,9 +68,24 @@ fn format_day_month() -> String {
         return String::new();
     }
     let mut buf = [0i8; 32];
-    let n = unsafe { libc::strftime(buf.as_mut_ptr(), buf.len(), b"%e %B\0".as_ptr() as *const _, &local) };
-    if n == 0 { return String::new(); }
-    String::from_utf8_lossy(&buf[..n as usize].iter().map(|c| *c as u8).collect::<Vec<u8>>()).into_owned()
+    let n = unsafe {
+        libc::strftime(
+            buf.as_mut_ptr(),
+            buf.len(),
+            b"%e %B\0".as_ptr() as *const _,
+            &local,
+        )
+    };
+    if n == 0 {
+        return String::new();
+    }
+    String::from_utf8_lossy(
+        &buf[..n as usize]
+            .iter()
+            .map(|c| *c as u8)
+            .collect::<Vec<u8>>(),
+    )
+    .into_owned()
 }
 
 /// Format the current year as "'26" using libc::strftime.
@@ -66,9 +96,24 @@ fn format_year() -> String {
         return String::new();
     }
     let mut buf = [0i8; 16];
-    let n = unsafe { libc::strftime(buf.as_mut_ptr(), buf.len(), b"'%y\0".as_ptr() as *const _, &local) };
-    if n == 0 { return String::new(); }
-    String::from_utf8_lossy(&buf[..n as usize].iter().map(|c| *c as u8).collect::<Vec<u8>>()).into_owned()
+    let n = unsafe {
+        libc::strftime(
+            buf.as_mut_ptr(),
+            buf.len(),
+            b"'%y\0".as_ptr() as *const _,
+            &local,
+        )
+    };
+    if n == 0 {
+        return String::new();
+    }
+    String::from_utf8_lossy(
+        &buf[..n as usize]
+            .iter()
+            .map(|c| *c as u8)
+            .collect::<Vec<u8>>(),
+    )
+    .into_owned()
 }
 
 /// Renders the date/time block into a BGRA8888 canvas.
@@ -142,12 +187,24 @@ pub fn render_date_time_block(
     let time_text_y = config.date_time_block_time_text_y as i32;
     let mut time_text_width = 0i32;
     for c in time_str.chars() {
-        if c == '\u{200b}' || c.is_control() { continue; }
+        if c == '\u{200b}' || c.is_control() {
+            continue;
+        }
         let glyph = font_manager.get_glyph(c, time_font_size as f32);
         time_text_width += glyph.metrics.advance_width.round() as i32;
     }
     let time_text_x = (width as i32 - time_text_width) / 2;
-    draw_text(canvas, width as i32, height as i32, font_manager, &time_str, time_font_size as i32, time_text_x, time_text_y, text_color);
+    draw_text(
+        canvas,
+        width as i32,
+        height as i32,
+        font_manager,
+        &time_str,
+        time_font_size as i32,
+        time_text_x,
+        time_text_y,
+        text_color,
+    );
 
     // === Draw current day+month (e.g., "8 November") centered below the time ===
     let day_month_str = format_day_month();
@@ -155,22 +212,46 @@ pub fn render_date_time_block(
     let day_month_text_y = config.date_time_block_day_month_y as i32;
     let mut day_month_text_width = 0i32;
     for c in day_month_str.chars() {
-        if c == '\u{200b}' || c.is_control() { continue; }
+        if c == '\u{200b}' || c.is_control() {
+            continue;
+        }
         let glyph = font_manager.get_glyph(c, date_font_size as f32);
         day_month_text_width += glyph.metrics.advance_width.round() as i32;
     }
     let day_month_text_x = (width as i32 - day_month_text_width) / 2;
-    draw_text(canvas, width as i32, height as i32, font_manager, &day_month_str, date_font_size as i32, day_month_text_x, day_month_text_y, text_color);
+    draw_text(
+        canvas,
+        width as i32,
+        height as i32,
+        font_manager,
+        &day_month_str,
+        date_font_size as i32,
+        day_month_text_x,
+        day_month_text_y,
+        text_color,
+    );
 
     // === Draw current year (e.g., "'26") centered below the day+month ===
     let year_str = format_year();
     let year_text_y = config.date_time_block_year_y as i32;
     let mut year_text_width = 0i32;
     for c in year_str.chars() {
-        if c == '\u{200b}' || c.is_control() { continue; }
+        if c == '\u{200b}' || c.is_control() {
+            continue;
+        }
         let glyph = font_manager.get_glyph(c, date_font_size as f32);
         year_text_width += glyph.metrics.advance_width.round() as i32;
     }
     let year_text_x = (width as i32 - year_text_width) / 2;
-    draw_text(canvas, width as i32, height as i32, font_manager, &year_str, date_font_size as i32, year_text_x, year_text_y, text_color);
+    draw_text(
+        canvas,
+        width as i32,
+        height as i32,
+        font_manager,
+        &year_str,
+        date_font_size as i32,
+        year_text_x,
+        year_text_y,
+        text_color,
+    );
 }

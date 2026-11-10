@@ -33,11 +33,11 @@
 
 use std::collections::HashMap;
 
-use crate::geometry::{Point, Rect, Vector2D};
 use super::body::{BodyId, PhysicsBody};
+use super::fields::ForceField;
 use super::forces::SpringForce;
 use super::solver::PhysicsSolver;
-use super::fields::ForceField;
+use crate::geometry::{Point, Rect, Vector2D};
 
 /// Configuration for the physics world.
 #[derive(Debug, Clone, Copy)]
@@ -423,7 +423,9 @@ impl PhysicsWorld {
                         let impulse = collision.compute_impulse(&a, &b);
                         if impulse.length_squared() > 0.0001 {
                             if let Some(mut_a) = self.bodies.get_mut(&id_a) {
-                                mut_a.apply_impulse(crate::geometry::Vector2D::new(-impulse.x, -impulse.y));
+                                mut_a.apply_impulse(crate::geometry::Vector2D::new(
+                                    -impulse.x, -impulse.y,
+                                ));
                             }
                             if let Some(mut_b) = self.bodies.get_mut(&id_b) {
                                 mut_b.apply_impulse(impulse);
@@ -433,7 +435,10 @@ impl PhysicsWorld {
                         let friction = collision.compute_friction_impulse(&a, &b, &impulse);
                         if friction.length_squared() > 0.0001 {
                             if let Some(mut_a) = self.bodies.get_mut(&id_a) {
-                                mut_a.apply_impulse(crate::geometry::Vector2D::new(-friction.x, -friction.y));
+                                mut_a.apply_impulse(crate::geometry::Vector2D::new(
+                                    -friction.x,
+                                    -friction.y,
+                                ));
                             }
                             if let Some(mut_b) = self.bodies.get_mut(&id_b) {
                                 mut_b.apply_impulse(friction);
@@ -566,9 +571,11 @@ impl PhysicsWorld {
         let elapsed = start.elapsed();
         self.stats.step_time = elapsed.as_secs_f32();
         self.stats.body_count = self.bodies.len();
-        self.stats.dynamic_count = self.bodies.values().filter(|b| {
-            b.body_type == crate::physics::body::BodyType::Dynamic
-        }).count();
+        self.stats.dynamic_count = self
+            .bodies
+            .values()
+            .filter(|b| b.body_type == crate::physics::body::BodyType::Dynamic)
+            .count();
         self.stats.sleeping_count = self.bodies.values().filter(|b| b.is_sleeping).count();
     }
 
@@ -596,9 +603,11 @@ impl PhysicsWorld {
     /// Update statistics.
     pub fn update_stats(&mut self) {
         self.stats.body_count = self.bodies.len();
-        self.stats.dynamic_count = self.bodies.values().filter(|b| {
-            b.body_type == crate::physics::body::BodyType::Dynamic
-        }).count();
+        self.stats.dynamic_count = self
+            .bodies
+            .values()
+            .filter(|b| b.body_type == crate::physics::body::BodyType::Dynamic)
+            .count();
         self.stats.sleeping_count = self.bodies.values().filter(|b| b.is_sleeping).count();
     }
 
@@ -641,7 +650,7 @@ impl Default for PhysicsWorld {
 mod tests {
     use super::*;
     use crate::geometry::{Point, Vector2D};
-    use crate::physics::body::{BodyId, PhysicsBody, CollisionShape, BodyType};
+    use crate::physics::body::{BodyId, BodyType, CollisionShape, PhysicsBody};
 
     #[test]
     fn test_create_world() {
@@ -895,11 +904,8 @@ mod tests {
             CollisionShape::circle(10.0),
             1.0,
         );
-        let body2 = PhysicsBody::static_body(
-            BodyId::new(2),
-            Point::ORIGIN,
-            CollisionShape::circle(10.0),
-        );
+        let body2 =
+            PhysicsBody::static_body(BodyId::new(2), Point::ORIGIN, CollisionShape::circle(10.0));
         world.add_body(body1);
         world.add_body(body2);
         world.update_stats();

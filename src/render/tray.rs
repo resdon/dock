@@ -291,7 +291,6 @@ pub fn process_button_at(
         && (3..TRAY_HEIGHT - 3).contains(&y)
 }
 
-
 fn draw_rounded_panel(
     canvas: &mut [u8],
     width: i32,
@@ -477,8 +476,7 @@ pub fn render_tray_into_canvas(
     let width = phys_width as i32;
     let height = phys_height as i32;
     let layout = tray_layout((width as f64 / scale).round() as i32, items.len(), bar);
-    if debug {
-    }
+    if debug {}
     let left_x = layout.panel_x;
     let panel_y = tray_y + 2;
     draw_rounded_panel(
@@ -493,8 +491,7 @@ pub fn render_tray_into_canvas(
         alpha * 0.92,
         [28, 27, 33],
     );
-    if debug {
-    }
+    if debug {}
 
     // Keyboard layout badge.
     let keyboard_x = layout.keyboard_x;
@@ -531,8 +528,7 @@ pub fn render_tray_into_canvas(
         ((tray_y + 24) as f64 * scale).round() as i32,
         (250, 204, 21),
     );
-    if debug {
-    }
+    if debug {}
 
     // Network rates immediately follow the keyboard indicator. The arrows are
     // drawn as vector pixels, not font glyphs, so no fc-match or font parsing
@@ -585,8 +581,7 @@ pub fn render_tray_into_canvas(
         network_baseline,
         (224, 219, 201),
     );
-    if debug {
-    }
+    if debug {}
 
     // Date is placed to the left of the time; the pair is right-aligned to the
     // dock surface instead of depending on the current tray item count.
@@ -657,8 +652,7 @@ pub fn render_tray_into_canvas(
         baseline,
         (34, 30, 24),
     );
-    if debug {
-    }
+    if debug {}
 
     // Tray item icons occupy the leading portion of the left status group.
     for (index, item) in items.iter().enumerate() {
@@ -782,8 +776,7 @@ pub fn render_tray_into_canvas(
             }
         }
     }
-    if debug {
-    }
+    if debug {}
 }
 
 /// Draws only StatusNotifierItem icons. This renderer targets the independent
@@ -805,8 +798,7 @@ pub fn render_tray_icons_into_canvas(
     let width = phys_width as i32;
     let height = phys_height as i32;
     let (logical_width, logical_height) = tray_logical_size(items.len());
-    if debug {
-    }
+    if debug {}
     // Match the right-hand utility panel: same 76x72 footprint, full rounded
     // silhouette, corner radius, and dark panel treatment.
     draw_rounded_panel_with_radius(
@@ -908,8 +900,7 @@ pub fn render_tray_icons_into_canvas(
             );
         }
     }
-    if debug {
-    }
+    if debug {}
 }
 
 /// Draws keyboard layout, network rates and date/time in a compact panel below
@@ -1097,8 +1088,7 @@ pub fn render_system_status_into_canvas(
         (34, 30, 24),
     );
 
-    if debug {
-    }
+    if debug {}
 }
 
 #[cfg(test)]

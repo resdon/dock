@@ -17,8 +17,7 @@ pub fn refresh_cache_on_launch() {
     let cache_dir = get_cache_dir();
 
     if cache_dir.exists() {
-        if let Err(_e) = fs::remove_dir_all(&cache_dir) {
-        }
+        if let Err(_e) = fs::remove_dir_all(&cache_dir) {}
     }
     let _ = fs::create_dir_all(&cache_dir);
 }

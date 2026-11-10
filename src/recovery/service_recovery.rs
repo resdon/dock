@@ -66,9 +66,10 @@ impl ServiceRecovery {
     ///
     /// Uses exponential backoff with jitter to avoid thundering herd.
     pub fn backoff_delay(&self, attempt: usize) -> Duration {
-        let delay = self.config.initial_backoff.mul_f64(
-            self.config.backoff_multiplier.powi(attempt as i32)
-        );
+        let delay = self
+            .config
+            .initial_backoff
+            .mul_f64(self.config.backoff_multiplier.powi(attempt as i32));
         delay.min(self.config.max_backoff)
     }
 

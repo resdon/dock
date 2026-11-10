@@ -63,9 +63,9 @@
 
 use std::collections::HashMap;
 
-use crate::geometry::Point;
 use super::body::{BodyId, PhysicsBody};
 use super::world::{PhysicsWorld, PhysicsWorldConfig};
+use crate::geometry::Point;
 
 /// Configuration for the fixed timestep physics simulation.
 ///
@@ -379,7 +379,11 @@ impl FixedTimestepSimulator {
     ///
     /// Blends between the previous and current simulation state using the
     /// accumulator's remaining time as the interpolation factor.
-    pub fn interpolated_state(&self, world: &PhysicsWorld, id: BodyId) -> Option<InterpolatedState> {
+    pub fn interpolated_state(
+        &self,
+        world: &PhysicsWorld,
+        id: BodyId,
+    ) -> Option<InterpolatedState> {
         let current = world.get_body(id)?;
         let alpha = self.interpolation_alpha();
 
@@ -425,21 +429,36 @@ impl FixedTimestepSimulator {
     }
 
     /// Apply a force to a body (delegates to PhysicsWorld).
-    pub fn apply_force(&mut self, world: &mut PhysicsWorld, id: BodyId, force: crate::geometry::Vector2D) {
+    pub fn apply_force(
+        &mut self,
+        world: &mut PhysicsWorld,
+        id: BodyId,
+        force: crate::geometry::Vector2D,
+    ) {
         if let Some(body) = world.get_body_mut(id) {
             body.apply_force(force, self.config.fixed_dt);
         }
     }
 
     /// Apply an impulse to a body (delegates to PhysicsWorld).
-    pub fn apply_impulse(&mut self, world: &mut PhysicsWorld, id: BodyId, impulse: crate::geometry::Vector2D) {
+    pub fn apply_impulse(
+        &mut self,
+        world: &mut PhysicsWorld,
+        id: BodyId,
+        impulse: crate::geometry::Vector2D,
+    ) {
         if let Some(body) = world.get_body_mut(id) {
             body.apply_impulse(impulse);
         }
     }
 
     /// Set the velocity of a body directly (delegates to PhysicsWorld).
-    pub fn set_velocity(&mut self, world: &mut PhysicsWorld, id: BodyId, velocity: crate::geometry::Vector2D) {
+    pub fn set_velocity(
+        &mut self,
+        world: &mut PhysicsWorld,
+        id: BodyId,
+        velocity: crate::geometry::Vector2D,
+    ) {
         if let Some(body) = world.get_body_mut(id) {
             body.velocity = velocity;
         }
@@ -449,7 +468,11 @@ impl FixedTimestepSimulator {
     ///
     /// Returns the current (non-interpolated) state.  For interpolated
     /// state, use [`interpolated_state`](Self::interpolated_state).
-    pub fn state(&self, world: &PhysicsWorld, id: BodyId) -> Option<super::visual_effects::MotionState> {
+    pub fn state(
+        &self,
+        world: &PhysicsWorld,
+        id: BodyId,
+    ) -> Option<super::visual_effects::MotionState> {
         let body = world.get_body(id)?;
         Some(super::visual_effects::MotionState::from_body(body))
     }
@@ -474,15 +497,10 @@ impl Default for FixedTimestepSimulator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::physics::body::{CollisionShape, BodyType};
+    use crate::physics::body::{BodyType, CollisionShape};
 
     fn make_test_body(id: u64, pos: Point) -> PhysicsBody {
-        PhysicsBody::dynamic_body(
-            BodyId::new(id),
-            pos,
-            CollisionShape::circle(10.0),
-            1.0,
-        )
+        PhysicsBody::dynamic_body(BodyId::new(id), pos, CollisionShape::circle(10.0), 1.0)
     }
 
     #[test]
@@ -713,7 +731,11 @@ mod tests {
         let body = make_test_body(1, Point::new(0.0, 0.0));
         world.add_body(body);
 
-        sim.apply_force(&mut world, BodyId::new(1), crate::geometry::Vector2D::new(100.0, 0.0));
+        sim.apply_force(
+            &mut world,
+            BodyId::new(1),
+            crate::geometry::Vector2D::new(100.0, 0.0),
+        );
 
         let body = world.get_body(BodyId::new(1)).unwrap();
         // Force should have been applied as acceleration
@@ -728,7 +750,11 @@ mod tests {
         let body = make_test_body(1, Point::new(0.0, 0.0));
         world.add_body(body);
 
-        sim.apply_impulse(&mut world, BodyId::new(1), crate::geometry::Vector2D::new(50.0, 0.0));
+        sim.apply_impulse(
+            &mut world,
+            BodyId::new(1),
+            crate::geometry::Vector2D::new(50.0, 0.0),
+        );
 
         let body = world.get_body(BodyId::new(1)).unwrap();
         assert!((body.velocity.x - 50.0).abs() < 0.1);
@@ -742,7 +768,11 @@ mod tests {
         let body = make_test_body(1, Point::new(0.0, 0.0));
         world.add_body(body);
 
-        sim.set_velocity(&mut world, BodyId::new(1), crate::geometry::Vector2D::new(200.0, 100.0));
+        sim.set_velocity(
+            &mut world,
+            BodyId::new(1),
+            crate::geometry::Vector2D::new(200.0, 100.0),
+        );
 
         let body = world.get_body(BodyId::new(1)).unwrap();
         assert!((body.velocity.x - 200.0).abs() < f32::EPSILON);

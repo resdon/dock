@@ -30,11 +30,7 @@ pub struct FrameInfo {
 
 impl FrameInfo {
     /// Create a new FrameInfo.
-    pub fn new(
-        surface_id: SurfaceId,
-        surface_size: Size,
-        scale_factor: f32,
-    ) -> Self {
+    pub fn new(surface_id: SurfaceId, surface_size: Size, scale_factor: f32) -> Self {
         Self {
             start_time: 0.0,
             delta_time: 0.016, // ~60 FPS default
@@ -165,11 +161,7 @@ mod tests {
 
     #[test]
     fn test_frame_info_physical_size() {
-        let info = FrameInfo::new(
-            SurfaceId::new(1),
-            Size::new(800.0, 600.0),
-            2.0,
-        );
+        let info = FrameInfo::new(SurfaceId::new(1), Size::new(800.0, 600.0), 2.0);
         let phys = info.physical_size();
         assert!((phys.width - 1600.0).abs() < f32::EPSILON);
         assert!((phys.height - 1200.0).abs() < f32::EPSILON);

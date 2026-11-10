@@ -493,7 +493,9 @@ impl AppState {
             return (0, 0);
         };
 
-        let output_size = self.output_state.info(&dock.output)
+        let output_size = self
+            .output_state
+            .info(&dock.output)
             .and_then(|info| info.logical_size)
             .unwrap_or((1920, 1080));
         let output_width = output_size.0 as i32;
@@ -529,9 +531,7 @@ impl AppState {
             crate::config::DockAnchor::Bottom => {
                 output_height - surface_height - margin - db_height
             }
-            crate::config::DockAnchor::Top => {
-                margin + surface_height
-            }
+            crate::config::DockAnchor::Top => margin + surface_height,
             crate::config::DockAnchor::Left => {
                 let dock_bottom_edge = (output_height / 2) + (surface_height / 2);
                 let db_bottom = dock_bottom_edge + gap;

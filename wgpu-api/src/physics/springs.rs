@@ -6,8 +6,8 @@
 //! - Creating chain-like behavior between adjacent icons
 //! - Simulating elastic connections between groups
 
-use crate::geometry::{Point, Vector2D};
 use super::body::{BodyId, PhysicsBody};
+use crate::geometry::{Point, Vector2D};
 
 /// A spring constraint connecting two bodies.
 #[derive(Debug, Clone)]
@@ -46,7 +46,12 @@ impl SpringConstraint {
     }
 
     /// Create a spring from body A to a fixed point.
-    pub fn to_fixed_point(body_a: BodyId, fixed_point: Point, stiffness: f32, damping: f32) -> Self {
+    pub fn to_fixed_point(
+        body_a: BodyId,
+        fixed_point: Point,
+        stiffness: f32,
+        damping: f32,
+    ) -> Self {
         Self {
             body_a,
             body_b: BodyId::new(0), // sentinel for fixed point
@@ -128,10 +133,7 @@ impl SpringConstraint {
         let dy = b.position.y - a.position.y;
         let current_length = (dx * dx + dy * dy).sqrt();
         let length_diff = (current_length - self.rest_length).abs();
-        let rel_vel = Vector2D::new(
-            b.velocity.x - a.velocity.x,
-            b.velocity.y - a.velocity.y,
-        );
+        let rel_vel = Vector2D::new(b.velocity.x - a.velocity.x, b.velocity.y - a.velocity.y);
         length_diff < threshold && rel_vel.length() < threshold
     }
 }
@@ -252,10 +254,14 @@ impl SpringChain {
             match (a_body, b_body) {
                 (Some(a), Some(b)) => {
                     let f = spring.compute_force(a, b);
-                    let entry_a = force_map.entry(spring.body_a).or_insert_with(|| crate::geometry::Vector2D::ZERO);
+                    let entry_a = force_map
+                        .entry(spring.body_a)
+                        .or_insert_with(|| crate::geometry::Vector2D::ZERO);
                     entry_a.x -= f.x;
                     entry_a.y -= f.y;
-                    let entry_b = force_map.entry(spring.body_b).or_insert_with(|| crate::geometry::Vector2D::ZERO);
+                    let entry_b = force_map
+                        .entry(spring.body_b)
+                        .or_insert_with(|| crate::geometry::Vector2D::ZERO);
                     entry_b.x += f.x;
                     entry_b.y += f.y;
                 }
@@ -334,17 +340,11 @@ impl RadialSpringSystem {
 mod tests {
     use super::*;
     use crate::geometry::{Point, Vector2D};
-    use crate::physics::body::{BodyId, PhysicsBody, CollisionShape};
+    use crate::physics::body::{BodyId, CollisionShape, PhysicsBody};
 
     #[test]
     fn test_spring_force_pulls_bodies_together() {
-        let spring = SpringConstraint::new(
-            BodyId::new(1),
-            BodyId::new(2),
-            50.0,
-            100.0,
-            0.5,
-        );
+        let spring = SpringConstraint::new(BodyId::new(1), BodyId::new(2), 50.0, 100.0, 0.5);
         let a = PhysicsBody::dynamic_body(
             BodyId::new(1),
             Point::new(0.0, 0.0),
@@ -364,13 +364,7 @@ mod tests {
 
     #[test]
     fn test_spring_force_pushes_bodies_apart() {
-        let spring = SpringConstraint::new(
-            BodyId::new(1),
-            BodyId::new(2),
-            100.0,
-            100.0,
-            0.5,
-        );
+        let spring = SpringConstraint::new(BodyId::new(1), BodyId::new(2), 100.0, 100.0, 0.5);
         let a = PhysicsBody::dynamic_body(
             BodyId::new(1),
             Point::new(0.0, 0.0),
@@ -390,13 +384,7 @@ mod tests {
 
     #[test]
     fn test_spring_at_rest_length() {
-        let spring = SpringConstraint::new(
-            BodyId::new(1),
-            BodyId::new(2),
-            50.0,
-            100.0,
-            0.5,
-        );
+        let spring = SpringConstraint::new(BodyId::new(1), BodyId::new(2), 50.0, 100.0, 0.5);
         let a = PhysicsBody::dynamic_body(
             BodyId::new(1),
             Point::new(0.0, 0.0),
@@ -416,13 +404,7 @@ mod tests {
 
     #[test]
     fn test_spring_apply_changes_velocity() {
-        let spring = SpringConstraint::new(
-            BodyId::new(1),
-            BodyId::new(2),
-            50.0,
-            100.0,
-            0.5,
-        );
+        let spring = SpringConstraint::new(BodyId::new(1), BodyId::new(2), 50.0, 100.0, 0.5);
         let mut a = PhysicsBody::dynamic_body(
             BodyId::new(1),
             Point::new(0.0, 0.0),
@@ -443,13 +425,7 @@ mod tests {
 
     #[test]
     fn test_disabled_spring() {
-        let mut spring = SpringConstraint::new(
-            BodyId::new(1),
-            BodyId::new(2),
-            50.0,
-            100.0,
-            0.5,
-        );
+        let mut spring = SpringConstraint::new(BodyId::new(1), BodyId::new(2), 50.0, 100.0, 0.5);
         spring.enabled = false;
         let mut a = PhysicsBody::dynamic_body(
             BodyId::new(1),
@@ -470,11 +446,7 @@ mod tests {
 
     #[test]
     fn test_distance_constraint() {
-        let constraint = DistanceConstraint::new(
-            BodyId::new(1),
-            BodyId::new(2),
-            50.0,
-        );
+        let constraint = DistanceConstraint::new(BodyId::new(1), BodyId::new(2), 50.0);
         let mut a = PhysicsBody::dynamic_body(
             BodyId::new(1),
             Point::new(0.0, 0.0),
@@ -509,12 +481,7 @@ mod tests {
 
     #[test]
     fn test_radial_spring_system() {
-        let system = RadialSpringSystem::new(
-            Point::new(0.0, 0.0),
-            100.0,
-            0.5,
-            50.0,
-        );
+        let system = RadialSpringSystem::new(Point::new(0.0, 0.0), 100.0, 0.5, 50.0);
         let body = PhysicsBody::dynamic_body(
             BodyId::new(1),
             Point::new(100.0, 0.0),
@@ -528,12 +495,7 @@ mod tests {
 
     #[test]
     fn test_radial_spring_inside_radius() {
-        let system = RadialSpringSystem::new(
-            Point::new(0.0, 0.0),
-            100.0,
-            0.5,
-            100.0,
-        );
+        let system = RadialSpringSystem::new(Point::new(0.0, 0.0), 100.0, 0.5, 100.0);
         let body = PhysicsBody::dynamic_body(
             BodyId::new(1),
             Point::new(50.0, 0.0),
@@ -547,13 +509,7 @@ mod tests {
 
     #[test]
     fn test_spring_is_at_rest() {
-        let spring = SpringConstraint::new(
-            BodyId::new(1),
-            BodyId::new(2),
-            50.0,
-            100.0,
-            0.5,
-        );
+        let spring = SpringConstraint::new(BodyId::new(1), BodyId::new(2), 50.0, 100.0, 0.5);
         let a = PhysicsBody::dynamic_body(
             BodyId::new(1),
             Point::new(0.0, 0.0),
@@ -571,12 +527,8 @@ mod tests {
 
     #[test]
     fn test_fixed_point_spring() {
-        let spring = SpringConstraint::to_fixed_point(
-            BodyId::new(1),
-            Point::new(100.0, 100.0),
-            100.0,
-            0.5,
-        );
+        let spring =
+            SpringConstraint::to_fixed_point(BodyId::new(1), Point::new(100.0, 100.0), 100.0, 0.5);
         let body = PhysicsBody::dynamic_body(
             BodyId::new(1),
             Point::new(0.0, 0.0),

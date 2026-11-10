@@ -28,8 +28,8 @@
 //! For popups, use a separate logical scene or child node hierarchy depending
 //! on whether you need an actual Wayland popup or merely a visual overlay.
 
-use crate::geometry::{Rect, Point, Size};
 use crate::animation::Easing;
+use crate::geometry::{Point, Rect, Size};
 
 // ---------------------------------------------------------------------------
 // Geometry animation
@@ -555,10 +555,8 @@ impl MorphManager {
         duration: f32,
         easing: Easing,
     ) {
-        self.animations.insert(
-            node_id,
-            GeometryAnimation::new(from, to, duration, easing),
-        );
+        self.animations
+            .insert(node_id, GeometryAnimation::new(from, to, duration, easing));
     }
 
     /// Start a size animation for a node.
@@ -570,10 +568,8 @@ impl MorphManager {
         duration: f32,
         easing: Easing,
     ) {
-        self.size_animations.insert(
-            node_id,
-            SizeAnimation::new(from, to, duration, easing),
-        );
+        self.size_animations
+            .insert(node_id, SizeAnimation::new(from, to, duration, easing));
     }
 
     /// Start a popup animation.
@@ -678,9 +674,7 @@ impl MorphManager {
 
     /// Get the number of active animations.
     pub fn active_count(&self) -> usize {
-        self.animations.len()
-            + self.size_animations.len()
-            + self.popup_animations.len()
+        self.animations.len() + self.size_animations.len() + self.popup_animations.len()
     }
 
     /// Check if there are any active animations.

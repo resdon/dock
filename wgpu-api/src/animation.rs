@@ -3,8 +3,8 @@
 //! Animations interpolate between values over time using easing functions.
 //! They can be applied to any numeric property (position, scale, opacity, etc.).
 
-use crate::geometry::{Point, Size, Vector2D};
 use crate::color::Color;
+use crate::geometry::{Point, Size, Vector2D};
 use crate::transform::Transform;
 
 /// Opaque identifier for an active animation.
@@ -110,35 +110,17 @@ impl Easing {
 #[derive(Debug, Clone, PartialEq)]
 pub enum AnimationType {
     /// Animate a single float value.
-    Float {
-        start: f32,
-        end: f32,
-    },
+    Float { start: f32, end: f32 },
     /// Animate a point (position).
-    Point {
-        start: Point,
-        end: Point,
-    },
+    Point { start: Point, end: Point },
     /// Animate a size (dimensions).
-    Size {
-        start: Size,
-        end: Size,
-    },
+    Size { start: Size, end: Size },
     /// Animate a color.
-    Color {
-        start: Color,
-        end: Color,
-    },
+    Color { start: Color, end: Color },
     /// Animate a transform matrix.
-    Transform {
-        start: Transform,
-        end: Transform,
-    },
+    Transform { start: Transform, end: Transform },
     /// Animate a vector.
-    Vector {
-        start: Vector2D,
-        end: Vector2D,
-    },
+    Vector { start: Vector2D, end: Vector2D },
 }
 
 /// Current interpolated value of an animation.
@@ -451,8 +433,7 @@ impl PulseAnimation {
     /// uniform scale. Scale around the icon's center by setting
     /// `anchor` to `(0.5, 0.5)` in the node's style.
     pub fn evaluate(&self) -> f32 {
-        1.0 + self.amplitude
-            * (self.elapsed * self.frequency * std::f32::consts::TAU).sin()
+        1.0 + self.amplitude * (self.elapsed * self.frequency * std::f32::consts::TAU).sin()
     }
 
     /// Advance the animation by a time delta (in seconds).
@@ -606,8 +587,8 @@ impl BounceAnimation {
     pub fn evaluate(&self) -> f32 {
         let decay = (-self.damping * self.elapsed).exp();
         let current_amplitude = self.amplitude * decay;
-        self.target + current_amplitude
-            * (self.elapsed * self.frequency * std::f32::consts::TAU).sin()
+        self.target
+            + current_amplitude * (self.elapsed * self.frequency * std::f32::consts::TAU).sin()
     }
 
     /// Advance the animation by a time delta.
@@ -641,7 +622,12 @@ pub struct SpringAnimation {
 
 impl SpringAnimation {
     /// Create a new spring animation.
-    pub const fn new(target: f32, initial_displacement: f32, stiffness: f32, damping_ratio: f32) -> Self {
+    pub const fn new(
+        target: f32,
+        initial_displacement: f32,
+        stiffness: f32,
+        damping_ratio: f32,
+    ) -> Self {
         Self {
             target,
             initial_displacement,
@@ -833,7 +819,11 @@ impl ContinuousAnimation {
     pub fn fade(min_opacity: f32, max_opacity: f32, frequency: f32) -> Self {
         Self {
             property: AnimatedProperty::Opacity,
-            animation: ContinuousAnimationType::Fade(FadeAnimation::new(min_opacity, max_opacity, frequency)),
+            animation: ContinuousAnimationType::Fade(FadeAnimation::new(
+                min_opacity,
+                max_opacity,
+                frequency,
+            )),
             active: true,
         }
     }
@@ -974,7 +964,11 @@ impl AnimationManager {
     /// Add a continuous animation to a node.
     pub fn add_animation(&mut self, node_id: crate::geometry::NodeId, anim: ContinuousAnimation) {
         self.register_node(node_id);
-        if let Some(animated) = self.animated_nodes.iter_mut().find(|an| an.node_id == node_id) {
+        if let Some(animated) = self
+            .animated_nodes
+            .iter_mut()
+            .find(|an| an.node_id == node_id)
+        {
             animated.add_animation(anim);
         }
     }
@@ -986,7 +980,10 @@ impl AnimationManager {
 
     /// Update all animated nodes by a time delta.
     /// Returns a map of node_id -> (property, value) pairs.
-    pub fn update_all(&mut self, dt: f32) -> Vec<(crate::geometry::NodeId, Vec<(AnimatedProperty, f32)>)> {
+    pub fn update_all(
+        &mut self,
+        dt: f32,
+    ) -> Vec<(crate::geometry::NodeId, Vec<(AnimatedProperty, f32)>)> {
         self.animated_nodes
             .iter_mut()
             .filter(|an| an.has_active_animations())
@@ -1005,12 +1002,18 @@ impl AnimationManager {
 
     /// Get the number of nodes with active animations.
     pub fn active_node_count(&self) -> usize {
-        self.animated_nodes.iter().filter(|an| an.has_active_animations()).count()
+        self.animated_nodes
+            .iter()
+            .filter(|an| an.has_active_animations())
+            .count()
     }
 
     /// Get the total number of active animations.
     pub fn active_animation_count(&self) -> usize {
-        self.animated_nodes.iter().map(|an| an.active_animation_count()).sum()
+        self.animated_nodes
+            .iter()
+            .map(|an| an.active_animation_count())
+            .sum()
     }
 
     /// Check if a node is being animated.
@@ -1025,7 +1028,9 @@ impl AnimationManager {
 
     /// Get mutable access to animated node data.
     pub fn get_mut(&mut self, node_id: crate::geometry::NodeId) -> Option<&mut AnimatedNode> {
-        self.animated_nodes.iter_mut().find(|an| an.node_id == node_id)
+        self.animated_nodes
+            .iter_mut()
+            .find(|an| an.node_id == node_id)
     }
 
     /// Clear all animations.
@@ -1356,8 +1361,8 @@ impl PolygonShape {
         let mut verts = Vec::new();
 
         for i in 0..self.sides {
-            let angle = (i as f32 / self.sides as f32 * std::f32::consts::TAU)
-                + self.rotation.to_radians();
+            let angle =
+                (i as f32 / self.sides as f32 * std::f32::consts::TAU) + self.rotation.to_radians();
 
             verts.push(Point::new(
                 center.x + angle.cos() * self.radius,
@@ -1476,7 +1481,13 @@ pub struct Particle {
 
 impl Particle {
     /// Create a new particle.
-    pub fn new(position: Point, velocity: Vector2D, lifetime: f32, size: f32, color: Color) -> Self {
+    pub fn new(
+        position: Point,
+        velocity: Vector2D,
+        lifetime: f32,
+        size: f32,
+        color: Color,
+    ) -> Self {
         Self {
             position,
             velocity,
@@ -1735,9 +1746,18 @@ mod tests {
     #[test]
     fn test_keyframe_animation() {
         let mut kf = KeyframeAnimation::new(vec![
-            Keyframe { time: 0.0, value: 0.0 },
-            Keyframe { time: 1.0, value: 100.0 },
-            Keyframe { time: 2.0, value: 50.0 },
+            Keyframe {
+                time: 0.0,
+                value: 0.0,
+            },
+            Keyframe {
+                time: 1.0,
+                value: 100.0,
+            },
+            Keyframe {
+                time: 2.0,
+                value: 50.0,
+            },
         ]);
 
         assert!((kf.evaluate() - 0.0).abs() < f32::EPSILON);

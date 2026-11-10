@@ -63,6 +63,6 @@ pub mod rclone;
 pub mod rclone_popup;
 pub mod system_bar;
 
-pub mod date_time_block;
 pub mod dashed_block;
+pub mod date_time_block;
 pub mod side_bars;

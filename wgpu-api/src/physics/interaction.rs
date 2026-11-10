@@ -61,11 +61,13 @@
 //! - **System B (Rigid bodies)** — insert, cut, merge modify collision topology
 //! - **System C (Fields)** — attract, repel, concentrate, disperse use force fields
 
-use crate::geometry::{NodeId, Point, Rect, Vector2D};
-use super::body::{BodyId, PhysicsBody, CollisionShape, BodyType, PhysicalProperties, PhysicsObject};
+use super::body::{
+    BodyId, BodyType, CollisionShape, PhysicalProperties, PhysicsBody, PhysicsObject,
+};
 use super::fields::{FieldSource, ForceField};
 use super::groups::GroupId;
 use super::world::PhysicsWorld;
+use crate::geometry::{NodeId, Point, Rect, Vector2D};
 
 /// State of a physics drag operation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -327,7 +329,10 @@ impl InteractionApi for PhysicsWorld {
             None => return false,
         };
         body.wake_up();
-        body.apply_impulse(Vector2D::new(direction.x * strength, direction.y * strength));
+        body.apply_impulse(Vector2D::new(
+            direction.x * strength,
+            direction.y * strength,
+        ));
         true
     }
 
@@ -503,10 +508,9 @@ impl InteractionApi for PhysicsWorld {
     fn cut(&mut self, group: GroupId, position: Point) -> Option<CutResult> {
         // Find bodies tagged with this group
         let group_tag = format!("group:{}", group.as_u64());
-        let bodies: Vec<BodyId> = self.iter_bodies()
-            .filter(|(_, body)| {
-                body.enabled && body.tag.as_deref() == Some(&group_tag)
-            })
+        let bodies: Vec<BodyId> = self
+            .iter_bodies()
+            .filter(|(_, body)| body.enabled && body.tag.as_deref() == Some(&group_tag))
             .map(|(id, _)| *id)
             .collect();
 
@@ -544,9 +548,11 @@ impl InteractionApi for PhysicsWorld {
         let tag_a = format!("group:{}", group_a.as_u64());
         let tag_b = format!("group:{}", group_b.as_u64());
 
-        let all_bodies: Vec<(BodyId, Rect)> = self.iter_bodies()
+        let all_bodies: Vec<(BodyId, Rect)> = self
+            .iter_bodies()
             .filter(|(_, body)| {
-                body.enabled && (body.tag.as_deref() == Some(&tag_a) || body.tag.as_deref() == Some(&tag_b))
+                body.enabled
+                    && (body.tag.as_deref() == Some(&tag_a) || body.tag.as_deref() == Some(&tag_b))
             })
             .map(|(id, body)| (*id, body.bounding_rect()))
             .collect();
@@ -970,7 +976,10 @@ mod tests {
         );
         world.add_body(body);
 
-        assert_eq!(world.hit_test(&Point::new(50.0, 50.0)), Some(BodyId::new(1)));
+        assert_eq!(
+            world.hit_test(&Point::new(50.0, 50.0)),
+            Some(BodyId::new(1))
+        );
         assert_eq!(world.hit_test(&Point::new(200.0, 200.0)), None);
     }
 
@@ -1024,11 +1033,8 @@ mod tests {
     #[test]
     fn test_static_body_cannot_drag() {
         let mut world = PhysicsWorld::new();
-        let body = PhysicsBody::static_body(
-            BodyId::new(1),
-            Point::ORIGIN,
-            CollisionShape::circle(10.0),
-        );
+        let body =
+            PhysicsBody::static_body(BodyId::new(1), Point::ORIGIN, CollisionShape::circle(10.0));
         world.add_body(body);
 
         let state = world.drag(BodyId::new(1), Point::new(100.0, 100.0));
@@ -1057,11 +1063,8 @@ mod tests {
     #[test]
     fn test_physics_object_creation() {
         let node = NodeId::new(42);
-        let obj = PhysicsObject::dock_icon(
-            node,
-            Point::new(100.0, 100.0),
-            CollisionShape::circle(25.0),
-        );
+        let obj =
+            PhysicsObject::dock_icon(node, Point::new(100.0, 100.0), CollisionShape::circle(25.0));
 
         assert_eq!(obj.node, node);
         assert_eq!(obj.body_id(), BodyId::new(42));
@@ -1072,11 +1075,7 @@ mod tests {
     #[test]
     fn test_physics_object_disable() {
         let node = NodeId::new(1);
-        let mut obj = PhysicsObject::dock_icon(
-            node,
-            Point::ORIGIN,
-            CollisionShape::circle(10.0),
-        );
+        let mut obj = PhysicsObject::dock_icon(node, Point::ORIGIN, CollisionShape::circle(10.0));
 
         obj.disable();
         assert!(!obj.enabled);

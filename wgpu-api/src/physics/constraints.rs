@@ -33,8 +33,8 @@
 
 use std::collections::HashMap;
 
-use crate::geometry::{Point, Rect, Vector2D};
 use super::body::{BodyId, PhysicsBody};
+use crate::geometry::{Point, Rect, Vector2D};
 
 /// A constraint that anchors a body to a fixed point.
 #[derive(Debug, Clone)]
@@ -91,12 +91,7 @@ pub struct HingeJoint {
 
 impl HingeJoint {
     /// Create a new hinge joint.
-    pub fn new(
-        body_a: BodyId,
-        body_b: BodyId,
-        anchor_a: Point,
-        anchor_b: Point,
-    ) -> Self {
+    pub fn new(body_a: BodyId, body_b: BodyId, anchor_a: Point, anchor_b: Point) -> Self {
         Self {
             body_a,
             body_b,
@@ -362,7 +357,10 @@ impl SliderConstraint {
         let ndir = Vector2D::new(dir.x / dir_len, dir.y / dir_len);
 
         // Project body position onto the line
-        let rel = Vector2D::new(body.position.x - self.start.x, body.position.y - self.start.y);
+        let rel = Vector2D::new(
+            body.position.x - self.start.x,
+            body.position.y - self.start.y,
+        );
         let proj = rel.dot(&ndir);
         let clamped_proj = proj.clamp(0.0, dir_len);
 
@@ -386,7 +384,10 @@ impl SliderConstraint {
             return 0.0;
         }
         let ndir = Vector2D::new(dir.x / dir_len, dir.y / dir_len);
-        let rel = Vector2D::new(body.position.x - self.start.x, body.position.y - self.start.y);
+        let rel = Vector2D::new(
+            body.position.x - self.start.x,
+            body.position.y - self.start.y,
+        );
         let proj = rel.dot(&ndir);
         (proj / dir_len).clamp(0.0, 1.0)
     }
@@ -622,7 +623,10 @@ impl AxisConstraint {
         let perp = Vector2D::new(-self.axis.y, self.axis.x);
 
         // Vector from center to body
-        let rel = Vector2D::new(body.position.x - self.center.x, body.position.y - self.center.y);
+        let rel = Vector2D::new(
+            body.position.x - self.center.x,
+            body.position.y - self.center.y,
+        );
         let perp_dist = rel.dot(&perp);
 
         if perp_dist.abs() > 0.001 {
@@ -634,7 +638,10 @@ impl AxisConstraint {
 
     /// Get the body's position along the axis (0.0–1.0 range relative to center).
     pub fn get_position_along(&self, body: &PhysicsBody) -> f32 {
-        let rel = Vector2D::new(body.position.x - self.center.x, body.position.y - self.center.y);
+        let rel = Vector2D::new(
+            body.position.x - self.center.x,
+            body.position.y - self.center.y,
+        );
         rel.dot(&self.axis)
     }
 }
@@ -741,9 +748,12 @@ impl PathConstraint {
             let dist = (dx * dx + dy * dy).sqrt();
             if dist < 5.0 {
                 // Body is close to this segment
-                let seg_len = ((p2.x - p1.x) * (p2.x - p1.x) + (p2.y - p1.y) * (p2.y - p1.y)).sqrt();
+                let seg_len =
+                    ((p2.x - p1.x) * (p2.x - p1.x) + (p2.y - p1.y) * (p2.y - p1.y)).sqrt();
                 let t = if seg_len > 0.001 {
-                    ((body.position.x - p1.x) * (p2.x - p1.x) + (body.position.y - p1.y) * (p2.y - p1.y)) / (seg_len * seg_len)
+                    ((body.position.x - p1.x) * (p2.x - p1.x)
+                        + (body.position.y - p1.y) * (p2.y - p1.y))
+                        / (seg_len * seg_len)
                 } else {
                     0.0
                 };
@@ -990,7 +1000,11 @@ impl GroupConstraint {
     }
 
     /// Apply the group constraint: cohesion toward center + separation between members.
-    pub fn apply(&self, body_map: &HashMap<BodyId, PhysicsBody>, bodies_mut: &mut HashMap<BodyId, PhysicsBody>) {
+    pub fn apply(
+        &self,
+        body_map: &HashMap<BodyId, PhysicsBody>,
+        bodies_mut: &mut HashMap<BodyId, PhysicsBody>,
+    ) {
         if !self.enabled || self.bodies.len() < 2 {
             return;
         }
@@ -1250,7 +1264,8 @@ impl ConstraintSystem {
                     Self::apply_two_bodies(bodies, &ids, c.body_a, c.body_b, |a, b| c.apply(a, b));
                 }
                 Constraint::Group(c) => {
-                    let body_map: HashMap<BodyId, PhysicsBody> = bodies.iter().map(|(k, v)| (*k, v.clone())).collect();
+                    let body_map: HashMap<BodyId, PhysicsBody> =
+                        bodies.iter().map(|(k, v)| (*k, v.clone())).collect();
                     c.apply(&body_map, bodies);
                 }
             }
@@ -1298,17 +1313,25 @@ impl Default for ConstraintSystem {
 impl ConstraintSystem {
     /// Convenience: add a spring constraint.
     pub fn add_spring(&mut self, body_a: BodyId, body_b: BodyId, rest_length: f32) {
-        self.add(Constraint::Spring(SpringConstraint::new(body_a, body_b, rest_length)));
+        self.add(Constraint::Spring(SpringConstraint::new(
+            body_a,
+            body_b,
+            rest_length,
+        )));
     }
 
     /// Convenience: add a fixed constraint.
     pub fn add_fixed(&mut self, body_a: BodyId, body_b: BodyId, a_pos: Point, b_pos: Point) {
-        self.add(Constraint::Fixed(FixedConstraint::new(body_a, body_b, a_pos, b_pos)));
+        self.add(Constraint::Fixed(FixedConstraint::new(
+            body_a, body_b, a_pos, b_pos,
+        )));
     }
 
     /// Convenience: add a distance constraint.
     pub fn add_distance(&mut self, body_a: BodyId, body_b: BodyId, distance: f32) {
-        self.add(Constraint::Distance(DistanceConstraint::new(body_a, body_b, distance)));
+        self.add(Constraint::Distance(DistanceConstraint::new(
+            body_a, body_b, distance,
+        )));
     }
 
     /// Convenience: add an axis constraint.
@@ -1323,17 +1346,34 @@ impl ConstraintSystem {
 
     /// Convenience: add an alignment constraint.
     pub fn add_alignment(&mut self, body_a: BodyId, body_b: BodyId, axis: AlignmentAxis) {
-        self.add(Constraint::Alignment(AlignmentConstraint::new(body_a, body_b, axis)));
+        self.add(Constraint::Alignment(AlignmentConstraint::new(
+            body_a, body_b, axis,
+        )));
     }
 
     /// Convenience: add a separation constraint.
     pub fn add_separation(&mut self, body_a: BodyId, body_b: BodyId, min_distance: f32) {
-        self.add(Constraint::Separation(SeparationConstraint::new(body_a, body_b, min_distance)));
+        self.add(Constraint::Separation(SeparationConstraint::new(
+            body_a,
+            body_b,
+            min_distance,
+        )));
     }
 
     /// Convenience: add an attraction constraint.
-    pub fn add_attraction(&mut self, body_a: BodyId, body_b: BodyId, max_distance: f32, strength: f32) {
-        self.add(Constraint::Attraction(AttractionConstraint::new(body_a, body_b, max_distance, strength)));
+    pub fn add_attraction(
+        &mut self,
+        body_a: BodyId,
+        body_b: BodyId,
+        max_distance: f32,
+        strength: f32,
+    ) {
+        self.add(Constraint::Attraction(AttractionConstraint::new(
+            body_a,
+            body_b,
+            max_distance,
+            strength,
+        )));
     }
 
     /// Convenience: add a group constraint.
@@ -1393,14 +1433,9 @@ impl ConstraintSet {
     }
 
     /// Add a hinge joint.
-    pub fn add_hinge(
-        &mut self,
-        body_a: BodyId,
-        body_b: BodyId,
-        anchor_a: Point,
-        anchor_b: Point,
-    ) {
-        self.hinges.push(HingeJoint::new(body_a, body_b, anchor_a, anchor_b));
+    pub fn add_hinge(&mut self, body_a: BodyId, body_b: BodyId, anchor_a: Point, anchor_b: Point) {
+        self.hinges
+            .push(HingeJoint::new(body_a, body_b, anchor_a, anchor_b));
     }
 
     /// Add a weld joint.
@@ -1423,7 +1458,8 @@ impl ConstraintSet {
         self.anchors.retain(|c| c.body != body);
         self.hinges.retain(|c| c.body_a != body && c.body_b != body);
         self.welds.retain(|c| c.body_a != body && c.body_b != body);
-        self.prismatic.retain(|c| c.body_a != body && c.body_b != body);
+        self.prismatic
+            .retain(|c| c.body_a != body && c.body_b != body);
         self.regions.retain(|c| c.body != body);
         self.sliders.retain(|c| c.body != body);
     }
@@ -1439,7 +1475,7 @@ impl Default for ConstraintSet {
 mod tests {
     use super::*;
     use crate::geometry::{Point, Vector2D};
-    use crate::physics::body::{BodyId, PhysicsBody, CollisionShape};
+    use crate::physics::body::{BodyId, CollisionShape, PhysicsBody};
 
     #[test]
     fn test_anchor_constraint() {
@@ -1471,12 +1507,7 @@ mod tests {
 
     #[test]
     fn test_hinge_joint() {
-        let joint = HingeJoint::new(
-            BodyId::new(1),
-            BodyId::new(2),
-            Point::ORIGIN,
-            Point::ORIGIN,
-        );
+        let joint = HingeJoint::new(BodyId::new(1), BodyId::new(2), Point::ORIGIN, Point::ORIGIN);
         let mut a = PhysicsBody::dynamic_body(
             BodyId::new(1),
             Point::new(0.0, 0.0),
@@ -1497,11 +1528,7 @@ mod tests {
 
     #[test]
     fn test_weld_joint() {
-        let joint = WeldJoint::new(
-            BodyId::new(1),
-            BodyId::new(2),
-            Vector2D::new(50.0, 0.0),
-        );
+        let joint = WeldJoint::new(BodyId::new(1), BodyId::new(2), Vector2D::new(50.0, 0.0));
         let mut a = PhysicsBody::dynamic_body(
             BodyId::new(1),
             Point::new(0.0, 0.0),
@@ -1521,10 +1548,7 @@ mod tests {
 
     #[test]
     fn test_region_constraint() {
-        let constraint = RegionConstraint::new(
-            BodyId::new(1),
-            Rect::new(0.0, 0.0, 100.0, 100.0),
-        );
+        let constraint = RegionConstraint::new(BodyId::new(1), Rect::new(0.0, 0.0, 100.0, 100.0));
         let mut body = PhysicsBody::dynamic_body(
             BodyId::new(1),
             Point::new(150.0, 150.0),
@@ -1538,10 +1562,7 @@ mod tests {
 
     #[test]
     fn test_region_constraint_inside() {
-        let constraint = RegionConstraint::new(
-            BodyId::new(1),
-            Rect::new(0.0, 0.0, 100.0, 100.0),
-        );
+        let constraint = RegionConstraint::new(BodyId::new(1), Rect::new(0.0, 0.0, 100.0, 100.0));
         let mut body = PhysicsBody::dynamic_body(
             BodyId::new(1),
             Point::new(50.0, 50.0),
@@ -1557,11 +1578,8 @@ mod tests {
 
     #[test]
     fn test_slider_constraint() {
-        let constraint = SliderConstraint::new(
-            BodyId::new(1),
-            Point::new(0.0, 0.0),
-            Point::new(100.0, 0.0),
-        );
+        let constraint =
+            SliderConstraint::new(BodyId::new(1), Point::new(0.0, 0.0), Point::new(100.0, 0.0));
         let mut body = PhysicsBody::dynamic_body(
             BodyId::new(1),
             Point::new(50.0, 50.0),
@@ -1575,11 +1593,8 @@ mod tests {
 
     #[test]
     fn test_slider_position() {
-        let constraint = SliderConstraint::new(
-            BodyId::new(1),
-            Point::new(0.0, 0.0),
-            Point::new(100.0, 0.0),
-        );
+        let constraint =
+            SliderConstraint::new(BodyId::new(1), Point::new(0.0, 0.0), Point::new(100.0, 0.0));
         let body = PhysicsBody::dynamic_body(
             BodyId::new(1),
             Point::new(50.0, 0.0),

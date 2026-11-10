@@ -66,21 +66,11 @@ impl GpuAppError {
             GpuAppError::MemoryPressure { .. } => {
                 "Release unused textures and reduce allocation size"
             }
-            GpuAppError::FrameTimeout => {
-                "Reset GPU command encoder and retry frame"
-            }
-            GpuAppError::PresentationFailed(_) => {
-                "Retry presentation or recreate swapchain"
-            }
-            GpuAppError::DmaBufExportFailed(_) => {
-                "Fall back to CPU-based presentation"
-            }
-            GpuAppError::ShaderCacheCorrupted => {
-                "Clear shader cache and recompile"
-            }
-            GpuAppError::TextureFormatNotSupported { .. } => {
-                "Use fallback texture format"
-            }
+            GpuAppError::FrameTimeout => "Reset GPU command encoder and retry frame",
+            GpuAppError::PresentationFailed(_) => "Retry presentation or recreate swapchain",
+            GpuAppError::DmaBufExportFailed(_) => "Fall back to CPU-based presentation",
+            GpuAppError::ShaderCacheCorrupted => "Clear shader cache and recompile",
+            GpuAppError::TextureFormatNotSupported { .. } => "Use fallback texture format",
         }
     }
 }

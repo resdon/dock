@@ -61,7 +61,15 @@ pub fn draw_dashed_block(
     block.cached_content.fill(0);
 
     // Render the dashed block with all config-driven parameters
-    render_dashed_block(&mut block.cached_content, phys_width as u32, phys_height as u32, scale, a, font_manager, config);
+    render_dashed_block(
+        &mut block.cached_content,
+        phys_width as u32,
+        phys_height as u32,
+        scale,
+        a,
+        font_manager,
+        config,
+    );
     block.cached_phys_width = phys_width;
     block.cached_phys_height = phys_height;
 
@@ -80,11 +88,17 @@ pub fn draw_dashed_block(
         return;
     }
 
-    block.surface.wl_surface().set_buffer_scale(scale.round().max(1.0) as i32);
+    block
+        .surface
+        .wl_surface()
+        .set_buffer_scale(scale.round().max(1.0) as i32);
     if buffer.attach_to(block.surface.wl_surface()).is_err() {
         return;
     }
-    block.surface.wl_surface().damage_buffer(0, 0, phys_width, phys_height);
+    block
+        .surface
+        .wl_surface()
+        .damage_buffer(0, 0, phys_width, phys_height);
     block.surface.wl_surface().commit();
     block.current_buffer = Some(buffer);
 }

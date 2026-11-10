@@ -44,8 +44,8 @@
 //! This creates a magnetic or repulsive dock effect without rigid-body
 //! collision detection.
 
-use crate::geometry::{Point, Vector2D, NodeId};
-use crate::physics::{BodyId, PhysicsBody, CollisionShape, BodyType};
+use crate::geometry::{NodeId, Point, Vector2D};
+use crate::physics::{BodyId, BodyType, CollisionShape, PhysicsBody};
 
 // ---------------------------------------------------------------------------
 // Dock axis
@@ -404,7 +404,11 @@ impl Dock {
         };
 
         let dragged_body = drag.body_id;
-        let dragged_slot = match self.items.iter().position(|item| item.body_id == dragged_body) {
+        let dragged_slot = match self
+            .items
+            .iter()
+            .position(|item| item.body_id == dragged_body)
+        {
             Some(slot) => slot,
             None => return None,
         };
@@ -459,7 +463,8 @@ impl Dock {
 
     /// Compute the target 1D position for a given slot.
     pub fn compute_target_position(&self, slot: usize) -> f32 {
-        self.config.padding + slot as f32 * (self.items.first().map_or(48.0, |i| i.size) + self.config.spacing)
+        self.config.padding
+            + slot as f32 * (self.items.first().map_or(48.0, |i| i.size) + self.config.spacing)
     }
 
     /// Recalculate all target positions based on current ordering.
@@ -493,11 +498,7 @@ impl Dock {
     pub fn apply_springs_dt(&mut self, dt: f32) {
         for item in self.items.iter_mut() {
             if !item.is_dragged {
-                item.integrate(
-                    self.config.spring_stiffness,
-                    self.config.spring_damping,
-                    dt,
-                );
+                item.integrate(self.config.spring_stiffness, self.config.spring_damping, dt);
             }
         }
     }
@@ -519,15 +520,18 @@ impl Dock {
 
     /// Create physics bodies for all dock items.
     pub fn create_bodies(&self) -> Vec<PhysicsBody> {
-        self.items.iter().map(|item| {
-            let pos = item.position(self.config.axis);
-            let shape = CollisionShape::AABB {
-                half_extents: crate::geometry::Size::new(item.size / 2.0, item.size / 2.0),
-            };
-            let mut body = PhysicsBody::dynamic_body(item.body_id, pos, shape, 1.0);
-            body.set_rest_position(pos);
-            body
-        }).collect()
+        self.items
+            .iter()
+            .map(|item| {
+                let pos = item.position(self.config.axis);
+                let shape = CollisionShape::AABB {
+                    half_extents: crate::geometry::Size::new(item.size / 2.0, item.size / 2.0),
+                };
+                let mut body = PhysicsBody::dynamic_body(item.body_id, pos, shape, 1.0);
+                body.set_rest_position(pos);
+                body
+            })
+            .collect()
     }
 
     // ---------------------------------------------------------------------
@@ -566,7 +570,11 @@ impl Dock {
         );
 
         // Update dragged item's position to follow the spring
-        if let Some(item) = self.items.iter_mut().find(|item| item.body_id == drag.body_id) {
+        if let Some(item) = self
+            .items
+            .iter_mut()
+            .find(|item| item.body_id == drag.body_id)
+        {
             item.set_position(drag.spring_position, self.config.axis);
         }
 
@@ -588,7 +596,11 @@ impl Dock {
             dt,
         );
 
-        if let Some(item) = self.items.iter_mut().find(|item| item.body_id == drag.body_id) {
+        if let Some(item) = self
+            .items
+            .iter_mut()
+            .find(|item| item.body_id == drag.body_id)
+        {
             item.set_position(drag.spring_position, self.config.axis);
         }
 
@@ -600,7 +612,11 @@ impl Dock {
     /// The dragged item will spring to its new target position.
     pub fn end_drag(&mut self) {
         if let Some(ref drag) = self.drag {
-            if let Some(item) = self.items.iter_mut().find(|item| item.body_id == drag.body_id) {
+            if let Some(item) = self
+                .items
+                .iter_mut()
+                .find(|item| item.body_id == drag.body_id)
+            {
                 item.is_dragged = false;
             }
         }
@@ -659,7 +675,8 @@ impl Dock {
     ///
     /// Returns the total force applied to each item.
     pub fn apply_proximity_repulsion(&self, pointer: Point) -> Vec<Vector2D> {
-        self.items.iter()
+        self.items
+            .iter()
             .map(|item| self.proximity_force(item, pointer))
             .collect()
     }
@@ -668,7 +685,8 @@ impl Dock {
     ///
     /// Opposite of repulsion — pulls items toward the pointer.
     pub fn apply_proximity_attraction(&self, pointer: Point) -> Vec<Vector2D> {
-        self.items.iter()
+        self.items
+            .iter()
             .map(|item| {
                 let force = self.proximity_force(item, pointer);
                 Vector2D::new(-force.x, -force.y)
@@ -684,19 +702,22 @@ impl Dock {
         let max_magnification = 1.3;
         let radius = self.config.interaction_radius;
 
-        self.items.iter().map(|item| {
-            let pos = item.position(self.config.axis);
-            let dx = pos.x - pointer.x;
-            let dy = pos.y - pointer.y;
-            let dist = (dx * dx + dy * dy).sqrt();
+        self.items
+            .iter()
+            .map(|item| {
+                let pos = item.position(self.config.axis);
+                let dx = pos.x - pointer.x;
+                let dy = pos.y - pointer.y;
+                let dist = (dx * dx + dy * dy).sqrt();
 
-            if dist > radius {
-                1.0
-            } else {
-                let t = 1.0 - dist / radius;
-                1.0 + (max_magnification - 1.0) * t * t
-            }
-        }).collect()
+                if dist > radius {
+                    1.0
+                } else {
+                    let t = 1.0 - dist / radius;
+                    1.0 + (max_magnification - 1.0) * t * t
+                }
+            })
+            .collect()
     }
 
     // ---------------------------------------------------------------------
@@ -753,22 +774,18 @@ impl Dock {
         }
 
         match self.config.axis {
-            DockAxis::Horizontal => {
-                crate::geometry::Rect::new(
-                    min_1d,
-                    self.config.perpendicular_center - self.items[0].size / 2.0,
-                    max_1d - min_1d,
-                    self.items[0].size,
-                )
-            }
-            DockAxis::Vertical => {
-                crate::geometry::Rect::new(
-                    self.config.perpendicular_center - self.items[0].size / 2.0,
-                    min_1d,
-                    self.items[0].size,
-                    max_1d - min_1d,
-                )
-            }
+            DockAxis::Horizontal => crate::geometry::Rect::new(
+                min_1d,
+                self.config.perpendicular_center - self.items[0].size / 2.0,
+                max_1d - min_1d,
+                self.items[0].size,
+            ),
+            DockAxis::Vertical => crate::geometry::Rect::new(
+                self.config.perpendicular_center - self.items[0].size / 2.0,
+                min_1d,
+                self.items[0].size,
+                max_1d - min_1d,
+            ),
         }
     }
 
@@ -1113,7 +1130,10 @@ mod tests {
         let item1 = dock.get_item_at(1).unwrap();
 
         // Y positions should differ, X should be the same
-        assert!((item0.position(DockAxis::Vertical).x - item1.position(DockAxis::Vertical).x).abs() < f32::EPSILON);
+        assert!(
+            (item0.position(DockAxis::Vertical).x - item1.position(DockAxis::Vertical).x).abs()
+                < f32::EPSILON
+        );
         assert!(item1.target_position > item0.target_position);
     }
 

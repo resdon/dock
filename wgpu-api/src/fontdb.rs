@@ -8,9 +8,9 @@
 //! - Font property matching (weight, style, stretch)
 //! - System font discovery
 
-use crate::text::{Font, FontWeight, FontStyle};
-use std::path::{Path, PathBuf};
+use crate::text::{Font, FontStyle, FontWeight};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
 // ---------------------------------------------------------------------------
 // Font properties
@@ -110,9 +110,9 @@ impl FontEntry {
 
     /// Check if this font matches the given properties.
     pub fn matches(&self, props: &FontProperties) -> bool {
-        self.properties.weight == props.weight &&
-        self.properties.style == props.style &&
-        self.properties.stretch == props.stretch
+        self.properties.weight == props.weight
+            && self.properties.style == props.style
+            && self.properties.stretch == props.stretch
     }
 
     /// Calculate how closely this font matches the desired properties.
@@ -195,8 +195,7 @@ impl FontDatabase {
     /// Load a font from a file path.
     pub fn load_font<P: AsRef<Path>>(&mut self, path: P) -> Result<u32, String> {
         let path = path.as_ref().to_path_buf();
-        let data = std::fs::read(&path)
-            .map_err(|e| format!("Failed to read font file: {}", e))?;
+        let data = std::fs::read(&path).map_err(|e| format!("Failed to read font file: {}", e))?;
 
         self.load_font_from_data(data, path)
     }
@@ -211,39 +210,45 @@ impl FontDatabase {
         // Use fontdb to parse the font and extract metadata
         let db = fontdb::Database::default();
 
-        let (family, weight, style) = db.query(&fontdb::Query {
-            families: &[],
-            style: fontdb::Style::Normal,
-            weight: fontdb::Weight(400),
-            stretch: fontdb::Stretch::Normal,
-        }).map(|id| {
-            for face in db.faces() {
-                if face.id == id {
-                    let family = face.families.first().map(|f| f.0.clone())
-                        .unwrap_or_else(|| "Unknown".to_string());
-                    let weight = match face.weight.0 {
-                        100..=149 => FontWeight::Thin,
-                        150..=249 => FontWeight::ExtraLight,
-                        250..=349 => FontWeight::Light,
-                        350..=449 => FontWeight::Normal,
-                        450..=549 => FontWeight::Medium,
-                        550..=649 => FontWeight::SemiBold,
-                        650..=749 => FontWeight::Bold,
-                        750..=849 => FontWeight::ExtraBold,
-                        _ => FontWeight::Black,
-                    };
-                    let style = if face.style == fontdb::Style::Italic {
-                        FontStyle::Italic
-                    } else if face.style == fontdb::Style::Oblique {
-                        FontStyle::Oblique
-                    } else {
-                        FontStyle::Normal
-                    };
-                    return (family, weight, style);
+        let (family, weight, style) = db
+            .query(&fontdb::Query {
+                families: &[],
+                style: fontdb::Style::Normal,
+                weight: fontdb::Weight(400),
+                stretch: fontdb::Stretch::Normal,
+            })
+            .map(|id| {
+                for face in db.faces() {
+                    if face.id == id {
+                        let family = face
+                            .families
+                            .first()
+                            .map(|f| f.0.clone())
+                            .unwrap_or_else(|| "Unknown".to_string());
+                        let weight = match face.weight.0 {
+                            100..=149 => FontWeight::Thin,
+                            150..=249 => FontWeight::ExtraLight,
+                            250..=349 => FontWeight::Light,
+                            350..=449 => FontWeight::Normal,
+                            450..=549 => FontWeight::Medium,
+                            550..=649 => FontWeight::SemiBold,
+                            650..=749 => FontWeight::Bold,
+                            750..=849 => FontWeight::ExtraBold,
+                            _ => FontWeight::Black,
+                        };
+                        let style = if face.style == fontdb::Style::Italic {
+                            FontStyle::Italic
+                        } else if face.style == fontdb::Style::Oblique {
+                            FontStyle::Oblique
+                        } else {
+                            FontStyle::Normal
+                        };
+                        return (family, weight, style);
+                    }
                 }
-            }
-            ("Unknown".to_string(), FontWeight::Normal, FontStyle::Normal)
-        }).unwrap_or(("Unknown".to_string(), FontWeight::Normal, FontStyle::Normal));
+                ("Unknown".to_string(), FontWeight::Normal, FontStyle::Normal)
+            })
+            .unwrap_or(("Unknown".to_string(), FontWeight::Normal, FontStyle::Normal));
 
         let properties = FontProperties::new(weight, style);
         let id = self.next_id;
@@ -335,7 +340,8 @@ impl FontDatabase {
                 .collect()
         } else {
             // Try case-insensitive match
-            self.entries.iter()
+            self.entries
+                .iter()
                 .filter(|e| e.family.eq_ignore_ascii_case(family))
                 .collect()
         }
@@ -352,8 +358,7 @@ impl FontDatabase {
         }
 
         // Find the best match by score
-        candidates.into_iter()
-            .min_by_key(|e| e.match_score(props))
+        candidates.into_iter().min_by_key(|e| e.match_score(props))
     }
 
     /// Get all available font families.
@@ -373,7 +378,8 @@ impl FontDatabase {
 
     /// Get the font data for a font entry.
     pub fn get_data(&self, id: u32) -> Option<&[u8]> {
-        self.entries.iter()
+        self.entries
+            .iter()
             .find(|e| e.id == id)
             .and_then(|e| e.data.as_deref())
     }
@@ -388,7 +394,9 @@ impl FontDatabase {
 
     /// Estimate memory usage of loaded fonts.
     pub fn estimate_memory_mb(&self) -> f32 {
-        let total_bytes: usize = self.entries.iter()
+        let total_bytes: usize = self
+            .entries
+            .iter()
             .filter_map(|e| e.data.as_ref())
             .map(|d| d.len())
             .sum();
@@ -458,13 +466,19 @@ impl FontResolver {
     /// Resolve the best font for a character.
     pub fn resolve_for_char(&self, _ch: char) -> Option<&FontEntry> {
         // Try the default family first
-        if let Some(entry) = self.database.find_best_match(&self.default_family, &self.default_properties) {
+        if let Some(entry) = self
+            .database
+            .find_best_match(&self.default_family, &self.default_properties)
+        {
             return Some(entry);
         }
 
         // Try fallback families
         for family in &self.fallback_families {
-            if let Some(entry) = self.database.find_best_match(family, &self.default_properties) {
+            if let Some(entry) = self
+                .database
+                .find_best_match(family, &self.default_properties)
+            {
                 return Some(entry);
             }
         }
@@ -616,7 +630,9 @@ mod tests {
     fn test_font_resolver_fallback() {
         let mut resolver = FontResolver::new();
         resolver.add_fallback("Custom Fallback".to_string());
-        assert!(resolver.fallback_families.contains(&"Custom Fallback".to_string()));
+        assert!(resolver
+            .fallback_families
+            .contains(&"Custom Fallback".to_string()));
     }
 
     #[test]

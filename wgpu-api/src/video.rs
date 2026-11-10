@@ -46,11 +46,11 @@
 //!    unless explicitly acquired or copied safely.
 
 use std::collections::HashMap;
-use std::time::{Instant, Duration};
+use std::time::{Duration, Instant};
 
-use crate::geometry::{Size, Rect};
-use crate::texture::{TextureId, TextureFormat};
 use crate::color::Color;
+use crate::geometry::{Rect, Size};
+use crate::texture::{TextureFormat, TextureId};
 
 // ---------------------------------------------------------------------------
 // Opaque handles
@@ -334,7 +334,7 @@ impl VideoFrame {
                     out.push(chunk[2]); // R
                     out.push(chunk[1]); // G
                     out.push(chunk[0]); // B
-                    out.push(255);      // A
+                    out.push(255); // A
                 }
                 Some(out)
             }
@@ -348,7 +348,7 @@ impl VideoFrame {
                     out.push(chunk[0]); // R
                     out.push(chunk[1]); // G
                     out.push(chunk[2]); // B
-                    out.push(255);      // A
+                    out.push(255); // A
                 }
                 Some(out)
             }
@@ -433,13 +433,7 @@ impl FrameBuffer {
 
     /// Create a new DMA-BUF frame buffer (stub for future implementation).
     #[allow(unused_variables)]
-    pub fn dma_buf(
-        fd: i32,
-        width: u32,
-        height: u32,
-        format: VideoFormat,
-        modifier: u64,
-    ) -> Self {
+    pub fn dma_buf(fd: i32, width: u32, height: u32, format: VideoFormat, modifier: u64) -> Self {
         Self {
             source: FrameBufferSource::DmaBuf,
             data: None,
@@ -553,11 +547,7 @@ impl VideoStream {
         }
 
         self.latest_frame_data = Some(frame.clone());
-        self.latest_frame = Some(FrameHandle::new(
-            self.id,
-            frame.sequence,
-            frame.timestamp,
-        ));
+        self.latest_frame = Some(FrameHandle::new(self.id, frame.sequence, frame.timestamp));
         self.last_frame_at = Some(Instant::now());
 
         if self.state == StreamState::Ready {
@@ -856,7 +846,10 @@ impl VideoManager {
 
     /// Get the number of active streams (Ready or Active state).
     pub fn active_stream_count(&self) -> usize {
-        self.streams.values().filter(|s| s.state.is_usable()).count()
+        self.streams
+            .values()
+            .filter(|s| s.state.is_usable())
+            .count()
     }
 
     // -----------------------------------------------------------------------
@@ -934,10 +927,7 @@ impl VideoManager {
     ///
     /// Reuses existing textures when dimensions and format haven't changed.
     /// Returns the texture ID and whether it was reused from cache.
-    pub fn get_or_create_texture(
-        &mut self,
-        stream_id: StreamId,
-    ) -> Option<(TextureId, bool)> {
+    pub fn get_or_create_texture(&mut self, stream_id: StreamId) -> Option<(TextureId, bool)> {
         // Copy stream info to avoid holding immutable borrow
         let (width, height, format) = {
             let stream = self.streams.get(&stream_id)?;
@@ -966,13 +956,16 @@ impl VideoManager {
             self.evict_oldest_texture();
         }
 
-        self.texture_cache.insert(stream_id, VideoTextureCacheEntry {
-            texture: texture_id,
-            width,
-            height,
-            format,
-            last_upload: Instant::now(),
-        });
+        self.texture_cache.insert(
+            stream_id,
+            VideoTextureCacheEntry {
+                texture: texture_id,
+                width,
+                height,
+                format,
+                last_upload: Instant::now(),
+            },
+        );
 
         Some((texture_id, false))
     }
@@ -997,7 +990,8 @@ impl VideoManager {
 
     /// Evict the oldest texture from the cache.
     fn evict_oldest_texture(&mut self) {
-        if let Some(oldest_id) = self.texture_cache
+        if let Some(oldest_id) = self
+            .texture_cache
             .iter()
             .min_by_key(|(_, entry)| entry.last_upload.elapsed().as_nanos())
             .map(|(id, _)| *id)
@@ -1016,7 +1010,10 @@ impl VideoManager {
     /// handle that the renderer can use to draw the video frame.
     pub fn get_video_texture(&mut self) -> Option<VideoTexture> {
         let stream_id = self.active_stream?;
-        let frame = self.streams.get(&stream_id).and_then(|s| s.latest_frame())?;
+        let frame = self
+            .streams
+            .get(&stream_id)
+            .and_then(|s| s.latest_frame())?;
         let width = frame.width;
         let height = frame.height;
         let timestamp = frame.timestamp;
@@ -1034,7 +1031,10 @@ impl VideoManager {
 
     /// Create a VideoTexture handle for a specific stream.
     pub fn get_video_texture_for(&mut self, stream_id: StreamId) -> Option<VideoTexture> {
-        let frame = self.streams.get(&stream_id).and_then(|s| s.latest_frame())?;
+        let frame = self
+            .streams
+            .get(&stream_id)
+            .and_then(|s| s.latest_frame())?;
         let width = frame.width;
         let height = frame.height;
         let timestamp = frame.timestamp;
@@ -1067,7 +1067,8 @@ impl VideoManager {
     pub fn remove_disconnected_streams(&mut self) {
         self.streams.retain(|_, s| !s.state.is_terminated());
         // Clean up cache for removed streams
-        self.texture_cache.retain(|id, _| self.streams.contains_key(id));
+        self.texture_cache
+            .retain(|id, _| self.streams.contains_key(id));
 
         // Clear active stream if it was removed
         if let Some(active_id) = self.active_stream {
@@ -1297,7 +1298,7 @@ pub fn convert_bgfx_to_rgba(data: &[u8]) -> Vec<u8> {
         out.push(chunk[2]); // R
         out.push(chunk[1]); // G
         out.push(chunk[0]); // B
-        out.push(255);      // A
+        out.push(255); // A
     }
     out
 }
@@ -1331,7 +1332,7 @@ pub fn convert_rgb_to_rgba(data: &[u8]) -> Vec<u8> {
         out.push(chunk[0]); // R
         out.push(chunk[1]); // G
         out.push(chunk[2]); // B
-        out.push(255);      // A
+        out.push(255); // A
     }
     out
 }
@@ -1410,9 +1411,15 @@ mod tests {
     #[test]
     fn test_video_format_buffer_size() {
         // 1920x1080 RGBA
-        assert_eq!(VideoFormat::Rgba.estimate_buffer_size(1920, 1080), 1920 * 1080 * 4);
+        assert_eq!(
+            VideoFormat::Rgba.estimate_buffer_size(1920, 1080),
+            1920 * 1080 * 4
+        );
         // 1920x1080 NV12 (1.5 bytes per pixel)
-        assert_eq!(VideoFormat::Nv12.estimate_buffer_size(1920, 1080), 1920 * 1080 * 3 / 2);
+        assert_eq!(
+            VideoFormat::Nv12.estimate_buffer_size(1920, 1080),
+            1920 * 1080 * 3 / 2
+        );
     }
 
     #[test]
@@ -1466,7 +1473,7 @@ mod tests {
         let rgba = frame.to_rgba().unwrap();
         assert_eq!(rgba[0], 150); // R
         assert_eq!(rgba[1], 100); // G
-        assert_eq!(rgba[2], 50);  // B
+        assert_eq!(rgba[2], 50); // B
         assert_eq!(rgba[3], 255); // A (filled in)
     }
 
@@ -1498,14 +1505,26 @@ mod tests {
         assert_eq!(VideoFormat::from_pw_format(16), VideoFormat::I420);
         assert_eq!(VideoFormat::from_pw_format(17), VideoFormat::Nv16);
         assert_eq!(VideoFormat::from_pw_format(18), VideoFormat::Yuy2);
-        assert!(matches!(VideoFormat::from_pw_format(999), VideoFormat::Unknown(999)));
+        assert!(matches!(
+            VideoFormat::from_pw_format(999),
+            VideoFormat::Unknown(999)
+        ));
     }
 
     #[test]
     fn test_video_format_to_texture_format() {
-        assert_eq!(VideoFormat::Rgba.to_texture_format(), TextureFormat::Rgba8Unorm);
-        assert_eq!(VideoFormat::BGRx.to_texture_format(), TextureFormat::Rgba8Unorm);
-        assert_eq!(VideoFormat::Nv12.to_texture_format(), TextureFormat::Rgba8Unorm);
+        assert_eq!(
+            VideoFormat::Rgba.to_texture_format(),
+            TextureFormat::Rgba8Unorm
+        );
+        assert_eq!(
+            VideoFormat::BGRx.to_texture_format(),
+            TextureFormat::Rgba8Unorm
+        );
+        assert_eq!(
+            VideoFormat::Nv12.to_texture_format(),
+            TextureFormat::Rgba8Unorm
+        );
     }
 
     #[test]
@@ -1765,7 +1784,7 @@ mod tests {
     #[test]
     fn test_video_fit_mode_contain_wide() {
         let src = Size::new(1920.0, 1080.0); // 16:9
-        let tgt = Size::new(100.0, 100.0);  // 1:1
+        let tgt = Size::new(100.0, 100.0); // 1:1
         let rect = VideoFitMode::Contain.calculate_dest_rect(src, tgt);
         // Should fit to width, letterbox vertically
         assert_eq!(rect.width, 100.0);
@@ -1775,7 +1794,7 @@ mod tests {
     #[test]
     fn test_video_fit_mode_contain_tall() {
         let src = Size::new(1080.0, 1920.0); // 9:16
-        let tgt = Size::new(100.0, 100.0);   // 1:1
+        let tgt = Size::new(100.0, 100.0); // 1:1
         let rect = VideoFitMode::Contain.calculate_dest_rect(src, tgt);
         // Should fit to height, pillarbox horizontally
         assert_eq!(rect.height, 100.0);

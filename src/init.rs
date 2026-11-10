@@ -273,7 +273,8 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
         sys_scanner: sysinfo::System::new_with_specifics(
             sysinfo::RefreshKind::nothing()
                 .with_processes(sysinfo::ProcessRefreshKind::everything()),
-        ).expect("Failed to create sysinfo System"),
+        )
+        .expect("Failed to create sysinfo System"),
         last_process_scan: Instant::now() - std::time::Duration::from_secs(1),
         current_output: None,
         docks: Vec::new(),
@@ -436,7 +437,9 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
 
         // Create dashed block as a separate layer surface to the left of the dock.
         // The block displays status icons and keyboard layout.
-        let output_size = state.output_state.info(&output)
+        let output_size = state
+            .output_state
+            .info(&output)
             .and_then(|info| info.logical_size)
             .unwrap_or((1920, 1080));
         let output_width = output_size.0 as i32;

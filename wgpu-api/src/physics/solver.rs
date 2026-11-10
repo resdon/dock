@@ -3,9 +3,9 @@
 //! The solver runs multiple iterations per frame to resolve collisions and
 //! constraints, producing stable stacking and realistic behavior.
 
-use crate::geometry::{Point, Vector2D};
 use super::body::{BodyId, PhysicsBody};
 use super::collision::{self, Collision};
+use crate::geometry::{Point, Vector2D};
 
 /// Configuration for the solver.
 #[derive(Debug, Clone, Copy)]
@@ -105,10 +105,7 @@ impl PhysicsSolver {
                     None => continue,
                 };
 
-                self.stats.max_penetration = self
-                    .stats
-                    .max_penetration
-                    .max(collision.penetration);
+                self.stats.max_penetration = self.stats.max_penetration.max(collision.penetration);
 
                 collisions.push((i, j, collision));
             }
@@ -120,16 +117,8 @@ impl PhysicsSolver {
                 }
                 let (left, right) = if i < j { (i, j) } else { (j, i) };
                 let (a, b) = bodies.split_at_mut(right);
-                let (a, b) = (
-                    a.get_mut(left).unwrap(),
-                    b.get_mut(0).unwrap(),
-                );
-                collision::resolve_collision(
-                    &collision,
-                    a,
-                    b,
-                    position_correction,
-                );
+                let (a, b) = (a.get_mut(left).unwrap(), b.get_mut(0).unwrap());
+                collision::resolve_collision(&collision, a, b, position_correction);
             }
         }
 
@@ -137,10 +126,7 @@ impl PhysicsSolver {
     }
 
     /// Solve collisions with a HashMap-based body store.
-    pub fn solve_map(
-        &mut self,
-        bodies: &mut std::collections::HashMap<BodyId, PhysicsBody>,
-    ) {
+    pub fn solve_map(&mut self, bodies: &mut std::collections::HashMap<BodyId, PhysicsBody>) {
         self.stats = SolverStats::new();
         let iterations = self.config.iterations;
         let position_correction = self.config.position_correction;
@@ -286,7 +272,7 @@ pub struct ContactPoint {
 mod tests {
     use super::*;
     use crate::geometry::{Point, Vector2D};
-    use crate::physics::body::{BodyId, PhysicsBody, CollisionShape};
+    use crate::physics::body::{BodyId, CollisionShape, PhysicsBody};
 
     #[test]
     fn test_solver_resolves_overlap() {
@@ -388,14 +374,12 @@ mod tests {
     #[test]
     fn test_sleep_threshold() {
         let solver = PhysicsSolver::new();
-        let mut bodies = vec![
-            PhysicsBody::dynamic_body(
-                BodyId::new(1),
-                Point::ORIGIN,
-                CollisionShape::circle(10.0),
-                1.0,
-            ),
-        ];
+        let mut bodies = vec![PhysicsBody::dynamic_body(
+            BodyId::new(1),
+            Point::ORIGIN,
+            CollisionShape::circle(10.0),
+            1.0,
+        )];
         // Zero velocity should trigger sleep
         solver.apply_sleep_threshold(&mut bodies);
         assert!(bodies[0].is_sleeping);

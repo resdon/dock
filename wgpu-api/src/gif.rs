@@ -152,10 +152,7 @@ impl GifInfo {
 
     /// Estimate total memory for all frames in RGBA8 format.
     pub fn estimated_memory_bytes(&self) -> usize {
-        (self.width as usize)
-            * (self.height as usize)
-            * 4
-            * (self.frame_count as usize)
+        (self.width as usize) * (self.height as usize) * 4 * (self.frame_count as usize)
     }
 }
 
@@ -263,11 +260,7 @@ impl GifDecoder {
                 padded
             };
 
-            let frame_data = ImageData::from_rgba(
-                f_width as u32,
-                f_height as u32,
-                pixel_data,
-            );
+            let frame_data = ImageData::from_rgba(f_width as u32, f_height as u32, pixel_data);
 
             // Save previous canvas for RestoreToPrevious
             if frames.len() > 0 {
@@ -284,11 +277,7 @@ impl GifDecoder {
             );
 
             // Store the composite canvas as this frame's image
-            let composite = ImageData::from_rgba(
-                width as u32,
-                height as u32,
-                canvas.clone(),
-            );
+            let composite = ImageData::from_rgba(width as u32, height as u32, canvas.clone());
 
             frames.push(composite);
             frame_infos.push(frame_info);
@@ -485,7 +474,10 @@ impl GifAnimation {
         let frame_count = self.decoder.frame_count();
 
         for i in 0..frame_count {
-            let delay = self.decoder.frame_infos().get(i as usize)
+            let delay = self
+                .decoder
+                .frame_infos()
+                .get(i as usize)
                 .map(|fi| fi.delay_ms)
                 .unwrap_or(100);
 
@@ -601,7 +593,10 @@ impl GifAnimation {
         self.decoder.set_frame(frame);
         let mut accumulated = 0u32;
         for i in 0..frame {
-            let delay = self.decoder.frame_infos().get(i as usize)
+            let delay = self
+                .decoder
+                .frame_infos()
+                .get(i as usize)
                 .map(|fi| fi.delay_ms)
                 .unwrap_or(100);
             accumulated += delay;
@@ -706,18 +701,19 @@ mod tests {
     fn create_test_gif() -> Vec<u8> {
         let mut output = Vec::new();
         {
-            let mut encoder = gif::Encoder::new(
-                &mut output,
-                64,
-                64,
-                &[],
-            ).unwrap();
+            let mut encoder = gif::Encoder::new(&mut output, 64, 64, &[]).unwrap();
 
-            let mut red_frame = vec![(255u8, 0, 0, 255); 64 * 64].into_iter().flat_map(|(a,b,c,d)| vec![a,b,c,d]).collect::<Vec<u8>>();
+            let mut red_frame = vec![(255u8, 0, 0, 255); 64 * 64]
+                .into_iter()
+                .flat_map(|(a, b, c, d)| vec![a, b, c, d])
+                .collect::<Vec<u8>>();
             let red_data = gif::Frame::from_rgba_speed(64, 64, &mut red_frame, 1);
             encoder.write_frame(&red_data).unwrap();
 
-            let mut green_frame = vec![(0u8, 255, 0, 255); 64 * 64].into_iter().flat_map(|(a,b,c,d)| vec![a,b,c,d]).collect::<Vec<u8>>();
+            let mut green_frame = vec![(0u8, 255, 0, 255); 64 * 64]
+                .into_iter()
+                .flat_map(|(a, b, c, d)| vec![a, b, c, d])
+                .collect::<Vec<u8>>();
             let green_data = gif::Frame::from_rgba_speed(64, 64, &mut green_frame, 1);
             encoder.write_frame(&green_data).unwrap();
         }
@@ -840,12 +836,13 @@ mod tests {
         let canvas_width = 4;
         let mut canvas = vec![0u8; canvas_width * canvas_width * 4];
 
-        let frame = ImageData::from_rgba(2, 2, vec![
-            255, 0, 0, 255,
-            0, 255, 0, 255,
-            0, 0, 255, 255,
-            255, 255, 0, 128,
-        ]);
+        let frame = ImageData::from_rgba(
+            2,
+            2,
+            vec![
+                255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 128,
+            ],
+        );
 
         composite_frame(&mut canvas, canvas_width, &frame, 1, 1);
         // Check that the composite area has non-zero values (red pixel at position 1,1)
@@ -871,7 +868,10 @@ mod tests {
 
     #[test]
     fn test_disposal_method_conversion() {
-        assert_eq!(GifDisposalMethod::from(gif::DisposalMethod::Any), GifDisposalMethod::None);
+        assert_eq!(
+            GifDisposalMethod::from(gif::DisposalMethod::Any),
+            GifDisposalMethod::None
+        );
         assert_eq!(
             GifDisposalMethod::from(gif::DisposalMethod::Keep),
             GifDisposalMethod::DoNotDispose

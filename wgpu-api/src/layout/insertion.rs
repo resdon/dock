@@ -3,9 +3,9 @@
 //! Handles inserting new items into a dock, computing where they should go,
 //! and triggering the physics forces to make room.
 
+use super::dock::DockLayout;
 use crate::geometry::Point;
 use crate::physics::BodyId;
-use super::dock::DockLayout;
 
 /// Strategy for inserting a new item.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,10 +79,7 @@ impl InsertionManager {
         } else {
             // Estimate position beyond last icon
             let last = positions.last().copied().unwrap_or(Point::ORIGIN);
-            Point::new(
-                last.x + icon_size.width + layout.config.spacing,
-                last.y,
-            )
+            Point::new(last.x + icon_size.width + layout.config.spacing, last.y)
         };
 
         // Find displaced bodies (those after the insertion point)
@@ -100,11 +97,7 @@ impl InsertionManager {
     }
 
     /// Remove an item from the dock layout.
-    pub fn remove(
-        &mut self,
-        layout: &mut DockLayout,
-        index: usize,
-    ) -> Option<BodyId> {
+    pub fn remove(&mut self, layout: &mut DockLayout, index: usize) -> Option<BodyId> {
         if index >= layout.icon_count {
             return None;
         }
@@ -114,12 +107,10 @@ impl InsertionManager {
     }
 
     /// Compute the drop position for a dragged item (preview, does not modify layout).
-    pub fn compute_drop_position(
-        &self,
-        layout: &DockLayout,
-        drop_point: Point,
-    ) -> InsertResult {
-        let index = layout.find_nearest_slot(&drop_point).unwrap_or(layout.icon_count);
+    pub fn compute_drop_position(&self, layout: &DockLayout, drop_point: Point) -> InsertResult {
+        let index = layout
+            .find_nearest_slot(&drop_point)
+            .unwrap_or(layout.icon_count);
         let body_id = BodyId::new(self.next_id);
 
         // Compute positions with one extra icon
@@ -149,8 +140,8 @@ impl Default for InsertionManager {
 mod tests {
     use super::*;
     use crate::geometry::{Point, Size};
-    use crate::physics::BodyId;
     use crate::layout::DockLayoutConfig;
+    use crate::physics::BodyId;
 
     #[test]
     fn test_insert_append() {

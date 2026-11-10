@@ -18,8 +18,7 @@
 ///
 /// # Dependencies
 /// Depends on `wgpu_api::error` for subsystem-specific error types.
-
-use thiserror:: Error;
+use thiserror::Error;
 
 // ---------------------------------------------------------------------------
 // Application-level error type
@@ -102,7 +101,7 @@ pub type AppResult<T> = Result<T, AppError>;
 // ---------------------------------------------------------------------------
 
 impl miette::Diagnostic for AppError {
-    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt:: Display + 'a>> {
+    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         Some(Box::new(match self {
             AppError::WgpuApi(_) => "WGPU_API_ERROR",
             AppError::InitFailed(_) => "INIT_FAILED",
@@ -129,13 +128,19 @@ impl miette::Diagnostic for AppError {
         })
     }
 
-    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt:: Display + 'a>> {
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         Some(Box::new(match self {
             AppError::InitFailed(msg) => {
-                format!("Initialization failed: {}. Check system requirements and permissions.", msg)
+                format!(
+                    "Initialization failed: {}. Check system requirements and permissions.",
+                    msg
+                )
             }
             AppError::ConfigurationError(msg) => {
-                format!("Configuration error: {}. Check your configuration files.", msg)
+                format!(
+                    "Configuration error: {}. Check your configuration files.",
+                    msg
+                )
             }
             AppError::DbusError(msg) => {
                 format!("D-Bus error: {}. Ensure D-Bus session is running.", msg)
@@ -172,7 +177,10 @@ impl miette::Diagnostic for AppError {
 pub fn init_error_reporter() -> anyhow::Result<()> {
     match color_eyre::install() {
         Ok(()) => Ok(()),
-        Err(e) => Err(anyhow::anyhow!("Failed to install color-eyre error reporter: {}", e)),
+        Err(e) => Err(anyhow::anyhow!(
+            "Failed to install color-eyre error reporter: {}",
+            e
+        )),
     }
 }
 
@@ -243,7 +251,7 @@ pub fn init_development() -> anyhow::Result<()> {
 ///     Ok(data)
 /// }
 /// ```
-pub fn log_and_context<T, E: std::error::Error + std::fmt:: Debug + Send + Sync + 'static>(
+pub fn log_and_context<T, E: std::error::Error + std::fmt::Debug + Send + Sync + 'static>(
     result: Result<T, E>,
     context: impl Into<String>,
 ) -> Result<T, anyhow::Error> {
@@ -269,7 +277,9 @@ mod tests {
     fn test_app_error_to_anyhow() {
         let app_err = AppError::InitFailed("test".to_string());
         let anyhow_err: anyhow::Error = app_err.into();
-        assert!(anyhow_err.to_string().contains("Application initialization failed"));
+        assert!(anyhow_err
+            .to_string()
+            .contains("Application initialization failed"));
     }
 
     #[test]
@@ -295,7 +305,10 @@ mod tests {
     #[test]
     fn test_miette_severity_init_failed() {
         let err = AppError::InitFailed("test".into());
-        assert!(matches!(miette::Diagnostic::severity(&err), Some(miette::Severity::Error)));
+        assert!(matches!(
+            miette::Diagnostic::severity(&err),
+            Some(miette::Severity::Error)
+        ));
     }
 
     #[test]
@@ -323,7 +336,10 @@ mod tests {
 
     #[test]
     fn test_log_and_context_err() {
-        let result: Result<i32, anyhow::Error> = log_and_context(Err(std::io::Error::new(std::io::ErrorKind::Other, "fail")), "test context");
+        let result: Result<i32, anyhow::Error> = log_and_context(
+            Err(std::io::Error::new(std::io::ErrorKind::Other, "fail")),
+            "test context",
+        );
         assert!(result.is_err());
     }
 }

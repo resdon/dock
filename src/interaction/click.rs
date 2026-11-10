@@ -9,8 +9,8 @@ use wayland_client::backend::ObjectId;
 
 use crate::geometry::popup::{PopupGeometry, PopupType};
 use crate::handlers::dock::{get_windows_for_app, handle_dock_press, handle_dock_release};
-use crate::models::system::WindowId;
 use crate::handlers::popup::{execute_menu_action, open_context_menu, open_tray_context_menu};
+use crate::models::system::WindowId;
 use crate::pointer::coordinates::calculate_popup_anchor;
 use smithay_client_toolkit::shell::WaylandSurface;
 
@@ -143,20 +143,19 @@ pub fn handle_click_events(
                     continue;
                 }
 
-                let event_on_dashed_block_surface = state
-                    .docks
-                    .iter()
-                    .any(|dock| {
-                        dock.dashed_block_surface
-                            .as_ref()
-                            .is_some_and(|block| block.surface.wl_surface() == &event.surface)
-                    });
+                let event_on_dashed_block_surface = state.docks.iter().any(|dock| {
+                    dock.dashed_block_surface
+                        .as_ref()
+                        .is_some_and(|block| block.surface.wl_surface() == &event.surface)
+                });
 
                 // Click on the Bluetooth icon toggles the bluetooth-widget-complete
                 // application. If it's already running, sends SIGTERM to close it.
                 // If not, spawns a new process. Works from both the widget bar
                 // and the dashed block.
-                if (event_on_dock_surface || event_on_widget_bar_surface || event_on_dashed_block_surface)
+                if (event_on_dock_surface
+                    || event_on_widget_bar_surface
+                    || event_on_dashed_block_surface)
                     && button == BTN_LEFT
                     && (state.bluetooth_button_at_surface(
                         &event.surface,
@@ -179,7 +178,10 @@ pub fn handle_click_events(
                         // Spawn a new widget process and track its PID
                         let (bt_x, bt_y) = state.bluetooth_widget_position();
                         if let Ok(child) = std::process::Command::new("sh")
-                            .args(&["-c", "~/m.2/Rust/bluetooth-widget-complete/target/release/widget-test"])
+                            .args(&[
+                                "-c",
+                                "~/m.2/Rust/bluetooth-widget-complete/target/release/widget-test",
+                            ])
                             .env("BT_WIDGET_X", bt_x.to_string())
                             .env("BT_WIDGET_Y", bt_y.to_string())
                             .spawn()
@@ -195,7 +197,6 @@ pub fn handle_click_events(
                     layer_changed = true;
                     continue;
                 }
-
 
                 if (event_on_dock_surface || event_on_widget_bar_surface)
                     && button == BTN_LEFT
@@ -287,11 +288,10 @@ pub fn handle_click_events(
                 // Only clicks outside the popup dismiss it.
                 // Only dismiss if the context menu popup actually exists (rendered).
                 if state.menu_state.is_open && button == BTN_LEFT {
-                    let context_popup_exists = state.docks.iter().any(|dock| {
-                        dock.context_menu_popup
-                            .as_ref()
-                            .is_some()
-                    });
+                    let context_popup_exists = state
+                        .docks
+                        .iter()
+                        .any(|dock| dock.context_menu_popup.as_ref().is_some());
                     let on_context_popup = state.docks.iter().any(|dock| {
                         dock.context_menu_popup
                             .as_ref()
@@ -337,11 +337,13 @@ pub fn handle_click_events(
 
                         if state.window_list_state.is_open {
                             // Use the actual popup's dimensions for bounds checking.
-                            if let Some((menu_x, menu_y, menu_width, menu_height)) = state.docks.iter()
-                                .find_map(|dock| {
+                            if let Some((menu_x, menu_y, menu_width, menu_height)) =
+                                state.docks.iter().find_map(|dock| {
                                     dock.window_list_popup.as_ref().map(|popup| {
-                                        let px = (popup.position.0 as f64 * dock_scale).round() as i32;
-                                        let py = (popup.position.1 as f64 * dock_scale).round() as i32;
+                                        let px =
+                                            (popup.position.0 as f64 * dock_scale).round() as i32;
+                                        let py =
+                                            (popup.position.1 as f64 * dock_scale).round() as i32;
                                         let pw = (popup.width as f64 * dock_scale).round() as i32;
                                         let ph = (popup.height as f64 * dock_scale).round() as i32;
                                         (px, py, pw, ph)
@@ -751,7 +753,8 @@ pub fn handle_click_events(
                             && ptr_phys_y <= menu_y + menu_height)
                     {
                         let clicked_idx = ((ptr_phys_y - menu_y) / item_h.max(1))
-                            .clamp(0, (item_count - 1).max(0)) as usize;
+                            .clamp(0, (item_count - 1).max(0))
+                            as usize;
                         let item_type_opt = state
                             .menu_state
                             .items
@@ -777,21 +780,40 @@ pub fn handle_click_events(
                         // Sort by title to match the popup row order in window_list.rs.
                         // The popup sorts windows by title, so the click handler must use
                         // the same order for clicked_idx to index the correct window.
-                        let titles: std::collections::HashMap<ObjectId, String> = windows.iter()
-                            .map(|id| (id.clone(), state.windows.get(&WindowId(id.clone())).map(|w| w.title.clone()).unwrap_or_default()))
+                        let titles: std::collections::HashMap<ObjectId, String> = windows
+                            .iter()
+                            .map(|id| {
+                                (
+                                    id.clone(),
+                                    state
+                                        .windows
+                                        .get(&WindowId(id.clone()))
+                                        .map(|w| w.title.clone())
+                                        .unwrap_or_default(),
+                                )
+                            })
                             .collect();
-                        windows.sort_by(|a, b| titles.get(a).unwrap_or(&String::new()).cmp(titles.get(b).unwrap_or(&String::new())));
+                        windows.sort_by(|a, b| {
+                            titles
+                                .get(a)
+                                .unwrap_or(&String::new())
+                                .cmp(titles.get(b).unwrap_or(&String::new()))
+                        });
                         if !windows.is_empty() {
                             let item_count = windows.len() as i32;
 
                             // Use the actual popup's position and dimensions instead of
                             // recomputing them — the popup calculates frame height dynamically
                             // based on stream aspect ratio, so a fixed constant would be wrong.
-                            let (menu_x, menu_y, menu_width, menu_height) = state.docks.iter()
+                            let (menu_x, menu_y, menu_width, menu_height) = state
+                                .docks
+                                .iter()
                                 .find_map(|dock| {
                                     dock.window_list_popup.as_ref().map(|popup| {
-                                        let px = (popup.position.0 as f64 * dock_scale).round() as i32;
-                                        let py = (popup.position.1 as f64 * dock_scale).round() as i32;
+                                        let px =
+                                            (popup.position.0 as f64 * dock_scale).round() as i32;
+                                        let py =
+                                            (popup.position.1 as f64 * dock_scale).round() as i32;
                                         let pw = (popup.width as f64 * dock_scale).round() as i32;
                                         let ph = (popup.height as f64 * dock_scale).round() as i32;
                                         (px, py, pw, ph)
@@ -799,14 +821,24 @@ pub fn handle_click_events(
                                 })
                                 .unwrap_or_else(|| {
                                     let anchor_x = calculate_popup_anchor(
-                                        state, app_id, apps_in_dock, phys_width,
-                                        scale_factor as f64, layout,
+                                        state,
+                                        app_id,
+                                        apps_in_dock,
+                                        phys_width,
+                                        scale_factor as f64,
+                                        layout,
                                     );
                                     let geom = PopupGeometry::compute_bounds(
-                                        PopupType::WindowList, anchor_x, 0, phys_width,
-                                        phys_dock_height, item_count, dock_scale as f32,
+                                        PopupType::WindowList,
+                                        anchor_x,
+                                        0,
+                                        phys_width,
+                                        phys_dock_height,
+                                        item_count,
+                                        dock_scale as f32,
                                     );
-                                    let mw = (geom.logical_width as f64 * dock_scale).round() as i32;
+                                    let mw =
+                                        (geom.logical_width as f64 * dock_scale).round() as i32;
                                     (geom.x, geom.y, mw, geom.phys_height)
                                 });
 
@@ -847,7 +879,9 @@ pub fn handle_click_events(
                                 // The popup geometry uses the first stream's aspect ratio, so we must
                                 // use the same frame height — not the active stream's — to avoid
                                 // rows_y mismatch when hovering over different rows.
-                                let phys_item_h = (state.config.popup_row_height as f32 * dock_scale as f32).round() as i32;
+                                let phys_item_h =
+                                    (state.config.popup_row_height as f32 * dock_scale as f32)
+                                        .round() as i32;
                                 let rows_phys_h = item_count * phys_item_h;
                                 let frame_phys_h = menu_height - rows_phys_h;
                                 let rows_y = menu_y + frame_phys_h;
@@ -857,13 +891,15 @@ pub fn handle_click_events(
                                 if ptr_phys_y >= rows_y && ptr_phys_y <= rows_y + rows_height {
                                     // Calculate row index the same way window_list.rs does for hover:
                                     // divide the Y offset from the rows area start by the physical row height.
-                                    let clicked_idx = ((ptr_phys_y - rows_y).max(0) / phys_item_h.max(1))
-                                        .clamp(0, item_count.saturating_sub(1))
+                                    let clicked_idx = ((ptr_phys_y - rows_y).max(0)
+                                        / phys_item_h.max(1))
+                                    .clamp(0, item_count.saturating_sub(1))
                                         as usize;
                                     let mut should_close_window_list = true;
 
                                     if let Some(handle_id) = windows.get(clicked_idx) {
-                                        let close_btn_size = (16.0 * dock_scale as f32).round() as i32;
+                                        let close_btn_size =
+                                            (16.0 * dock_scale as f32).round() as i32;
                                         let close_btn_right_padding =
                                             (8.0 * dock_scale as f32).round() as i32;
                                         let close_box_x_start = menu_x + menu_width
@@ -874,13 +910,18 @@ pub fn handle_click_events(
                                         match button {
                                             BTN_LEFT => {
                                                 if is_on_close_box {
-                                                    if let Some(win) = state.window_handle(handle_id) {
+                                                    if let Some(win) =
+                                                        state.window_handle(handle_id)
+                                                    {
                                                         win.close();
                                                         // Keep the popup open after closing a window
                                                         should_close_window_list = false;
                                                     }
                                                 } else if let Some(seat) = &state.wl_seat {
-                                                    let win = state.window_handles.get(handle_id).cloned();
+                                                    let win = state
+                                                        .window_handles
+                                                        .get(handle_id)
+                                                        .cloned();
                                                     if let Some(win) = win {
                                                         win.activate(seat);
                                                     }

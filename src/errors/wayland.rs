@@ -52,9 +52,7 @@ impl WaylandAppError {
     /// Returns the recovery strategy description.
     pub fn recovery_strategy(&self) -> &'static str {
         match self {
-            WaylandAppError::ConnectionLost(_) => {
-                "Attempt to reconnect to Wayland display"
-            }
+            WaylandAppError::ConnectionLost(_) => "Attempt to reconnect to Wayland display",
             WaylandAppError::SurfaceDestroyedByCompositor => {
                 "Recreate Wayland surface and reconfigure GPU"
             }

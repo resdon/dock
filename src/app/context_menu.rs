@@ -3,10 +3,10 @@
 //! Builds and renders the right-click context menu popup with items
 //! for Launch, Focus, Unpin, and Quit actions.
 
+use smithay_client_toolkit::dmabuf::DmabufState;
 use smithay_client_toolkit::{
     compositor::CompositorState, shell::WaylandSurface, shm::slot::SlotPool,
 };
-use smithay_client_toolkit::dmabuf::DmabufState;
 use wayland_client::protocol::wl_shm;
 use wayland_client::QueueHandle;
 
@@ -106,7 +106,7 @@ pub fn draw_context_menu_popup(
                 cached_content: Vec::new(),
                 cached_phys_width: 0,
                 cached_phys_height: 0,
-            input_region_key: 0,
+                input_region_key: 0,
             }
         });
 

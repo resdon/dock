@@ -17,7 +17,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Catch panics and print the location so crashes can be diagnosed
     std::panic::set_hook(Box::new(|info| {
         if let Some(location) = info.location() {
-            eprintln!("[PANIC] {}:{}:{}", location.file(), location.line(), location.column());
+            eprintln!(
+                "[PANIC] {}:{}:{}",
+                location.file(),
+                location.line(),
+                location.column()
+            );
         }
         if let Some(msg) = info.payload().downcast_ref::<&str>() {
             eprintln!("[PANIC] Message: {}", msg);
@@ -43,7 +48,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } = context;
 
     // Keep the tokio runtime for GPU init, PipeWire and other async tasks
-    let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(2)
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
         .enable_all()
         .build()
         .map_err(|e| format!("Failed to create tokio runtime: {}", e))?;
@@ -72,9 +78,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 1. `init_capture_service` — one-time capture of all windows on startup
     // 2. `start_monitor_inner` — background monitor that adds/removes streams
     //    when windows open/close (reacts to probe_signal notifications)
-    let pipewire_service = std::sync::Arc::new(
-        library::services::pipewire_capture::PipewireCaptureService::new()
-    );
+    let pipewire_service =
+        std::sync::Arc::new(library::services::pipewire_capture::PipewireCaptureService::new());
     pipewire_service.set_scale_factor(state.config.pipewire_scale_factor);
     let max_windows = 20;
     let (connection, desktop) = rt.block_on(async {
@@ -88,7 +93,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "org.freedesktop.portal.Desktop",
             "/org/freedesktop/portal/desktop",
             "org.freedesktop.portal.ScreenCast",
-        ).await {
+        )
+        .await
+        {
             Ok(d) => d,
             Err(_e) => return (None, None),
         };
@@ -105,11 +112,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let init_conn = conn.clone();
         let init_dsk = dsk.clone();
         rt.spawn(async move {
-            let _ = library::services::pipewire_capture::init_capture_service(&init_service, &init_conn, &init_dsk, max_windows).await;
+            let _ = library::services::pipewire_capture::init_capture_service(
+                &init_service,
+                &init_conn,
+                &init_dsk,
+                max_windows,
+            )
+            .await;
         });
         let monitor_service = pipewire_service.clone();
         rt.spawn(async move {
-            library::services::pipewire_capture::start_monitor_inner(&monitor_service, conn, dsk, max_windows).await;
+            library::services::pipewire_capture::start_monitor_inner(
+                &monitor_service,
+                conn,
+                dsk,
+                max_windows,
+            )
+            .await;
         });
     }
 
@@ -341,7 +360,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // Check if Slint animations are active — force redraw to advance animation frames
-        let slint_animations_active = state.slint_renderer.as_ref()
+        let slint_animations_active = state
+            .slint_renderer
+            .as_ref()
             .map(|r| r.has_active_animation())
             .unwrap_or(false);
         if slint_animations_active {
@@ -362,8 +383,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // that first buffer, always render the complete dock surface.
             // All animations disabled — popup_only_animation always false
             let popup_only_animation = false;
-            if initial_dock_frame_due {
-            }
+            if initial_dock_frame_due {}
             state.draw(&qh, !popup_only_animation && !status_sidebars_only);
             // AppState::draw owns redraw invalidation. Do not clear the flag
             // here: a surface can still be awaiting its first layer configure.

@@ -43,8 +43,7 @@ impl MemoryAppError {
     pub fn is_recoverable(&self) -> bool {
         matches!(
             self,
-            MemoryAppError::TextureCacheOverflow { .. }
-                | MemoryAppError::BufferPoolExhausted
+            MemoryAppError::TextureCacheOverflow { .. } | MemoryAppError::BufferPoolExhausted
         )
     }
 
@@ -60,15 +59,9 @@ impl MemoryAppError {
             MemoryAppError::TextureCacheOverflow { .. } => {
                 "Evict least-recently-used textures from cache"
             }
-            MemoryAppError::LeakDetected { .. } => {
-                "Investigate and fix the memory leak source"
-            }
-            MemoryAppError::BufferPoolExhausted => {
-                "Wait for buffers to be returned or expand pool"
-            }
-            MemoryAppError::DmaBufMappingFailed(_) => {
-                "Fall back to CPU-based buffer handling"
-            }
+            MemoryAppError::LeakDetected { .. } => "Investigate and fix the memory leak source",
+            MemoryAppError::BufferPoolExhausted => "Wait for buffers to be returned or expand pool",
+            MemoryAppError::DmaBufMappingFailed(_) => "Fall back to CPU-based buffer handling",
         }
     }
 }

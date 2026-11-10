@@ -107,11 +107,16 @@ pub fn render_dock_items(canvas: &mut [u8], state: &DockState, res: &mut DockRen
 
             if src_w > 0 && src_h > 0 && dst_w > 0 && dst_h > 0 {
                 // Create source image from raw RGBA bytes
-                let src_img = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(src_w, src_h, icon_pixels.to_vec());
+                let src_img = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(
+                    src_w,
+                    src_h,
+                    icon_pixels.to_vec(),
+                );
                 if let Some(src) = src_img {
                     // Create destination image buffer
                     let mut dst = fast_image_resize::images::Image::new(
-                        dst_w, dst_h,
+                        dst_w,
+                        dst_h,
                         fast_image_resize::pixels::PixelType::U8x4,
                     );
                     // Resize using SIMD-optimized Lanczos-3
@@ -138,8 +143,9 @@ pub fn render_dock_items(canvas: &mut [u8], state: &DockState, res: &mut DockRen
                                     let canvas_idx = (canvas_y * phys_width + canvas_x) * 4;
                                     if canvas_idx + 3 < canvas.len() {
                                         // Wayland ARGB8888 little-endian canvas is [B,G,R,A].
-                                        canvas[canvas_idx] =
-                                            (src_b * alpha + canvas[canvas_idx] as f32 * (1.0 - alpha)) as u8;
+                                        canvas[canvas_idx] = (src_b * alpha
+                                            + canvas[canvas_idx] as f32 * (1.0 - alpha))
+                                            as u8;
                                         canvas[canvas_idx + 1] = (src_g * alpha
                                             + canvas[canvas_idx + 1] as f32 * (1.0 - alpha))
                                             as u8;
@@ -242,12 +248,12 @@ pub fn render_dock_items(canvas: &mut [u8], state: &DockState, res: &mut DockRen
                                     if canvas_idx + 3 < canvas.len() {
                                         if is_app_active {
                                             // Active apps use cyan accent (#00E5FF) - BGRA bytes
-                                            canvas[canvas_idx] = 0xFF;     // B
+                                            canvas[canvas_idx] = 0xFF; // B
                                             canvas[canvas_idx + 1] = 0xE5; // G
                                             canvas[canvas_idx + 2] = 0x00; // R
                                         } else {
                                             // Inactive running apps use silver (#9CA3AF) - BGRA bytes
-                                            canvas[canvas_idx] = 0xAF;     // B
+                                            canvas[canvas_idx] = 0xAF; // B
                                             canvas[canvas_idx + 1] = 0xA3; // G
                                             canvas[canvas_idx + 2] = 0x9C; // R
                                         }

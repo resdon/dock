@@ -115,7 +115,11 @@ fn draw_button(
         y,
         w,
         h,
-        if active { theme::YELLOW_ARGB } else { theme::INSET_ARGB },
+        if active {
+            theme::YELLOW_ARGB
+        } else {
+            theme::INSET_ARGB
+        },
     );
 }
 
@@ -201,7 +205,16 @@ pub fn render_rclone_surface(
         s(31.0),
         theme::MUTED,
     );
-    rect(canvas, w, h, 0, s(37.0), w, s(1.0).max(1), theme::HAIRLINE_ARGB);
+    rect(
+        canvas,
+        w,
+        h,
+        0,
+        s(37.0),
+        w,
+        s(1.0).max(1),
+        theme::HAIRLINE_ARGB,
+    );
 
     if let Some(error) = snapshot.error.as_deref() {
         label(

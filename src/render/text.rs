@@ -190,10 +190,10 @@ impl World {
                 // Canvas is Argb8888 little-endian: [B, G, R, A], color is passed as [R, G, B]
                 let alpha = opacity_u8 as u16;
                 if alpha == 255 {
-                    frame[pixel_index] = color[2];     // B
+                    frame[pixel_index] = color[2]; // B
                     frame[pixel_index + 1] = color[1]; // G
                     frame[pixel_index + 2] = color[0]; // R
-                    frame[pixel_index + 3] = 255;      // A
+                    frame[pixel_index + 3] = 255; // A
                 } else {
                     let inv_alpha = 255u16 - alpha;
                     // Integer blending avoids three floating-point operations
@@ -210,10 +210,9 @@ impl World {
                         + frame[pixel_index + 2] as u16 * inv_alpha
                         + 127)
                         / 255) as u8; // R
-                    frame[pixel_index + 3] = ((255u16 * alpha
-                        + frame[pixel_index + 3] as u16 * inv_alpha
-                        + 127)
-                        / 255) as u8; // A
+                    frame[pixel_index + 3] =
+                        ((255u16 * alpha + frame[pixel_index + 3] as u16 * inv_alpha + 127) / 255)
+                            as u8; // A
                 }
             }
         }

@@ -15,14 +15,14 @@
 //! - `tracing`: Structured logging backend.
 //! - `wgpu_api::error`: Subsystem-specific error types.
 
-mod logger;
 mod crash_report;
-mod performance;
 mod gpu_validation;
 mod health_monitor;
+mod logger;
+mod performance;
 
-pub use logger::*;
 pub use crash_report::*;
-pub use performance::*;
 pub use gpu_validation::*;
 pub use health_monitor::*;
+pub use logger::*;
+pub use performance::*;

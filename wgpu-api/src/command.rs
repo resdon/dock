@@ -4,13 +4,13 @@
 //! The Renderer compiles these commands into GPU command buffers and submits
 //! them to the GPU queue.
 
+use crate::color::{BlendMode, Color, Gradient};
 use crate::geometry::{Point, Rect, Size};
-use crate::color::{Color, Gradient, BlendMode};
-use crate::primitives::{Path, Shape, StrokeStyle, FillRule, FillStyle};
-use crate::transform::Transform;
 use crate::image::Image;
-use crate::texture::TextureId;
+use crate::primitives::{FillRule, FillStyle, Path, Shape, StrokeStyle};
 use crate::text::{Text, TextStyle};
+use crate::texture::TextureId;
+use crate::transform::Transform;
 
 /// Trait for frame rendering callbacks.
 pub trait FrameCallback: FnOnce(&mut CommandBuffer) {}
@@ -87,10 +87,7 @@ pub enum Command {
         opacity: f32,
     },
     /// Draw text.
-    Text {
-        text: Text,
-        position: Point,
-    },
+    Text { text: Text, position: Point },
     /// Draw a shape (path + fill + stroke).
     Shape(Shape),
     /// Draw a pixel buffer (raw BGRA8888 data).
@@ -100,10 +97,7 @@ pub enum Command {
         dest: Rect,
     },
     /// Draw a gradient rectangle.
-    GradientRect {
-        rect: Rect,
-        gradient: Gradient,
-    },
+    GradientRect { rect: Rect, gradient: Gradient },
     /// Draw a dashed line.
     DashedLine {
         start: Point,
@@ -120,9 +114,7 @@ pub enum Command {
         color: Color,
     },
     /// Draw a clip region.
-    Clip {
-        path: Path,
-    },
+    Clip { path: Path },
     /// Reset the clip region.
     ResetClip,
     /// Push a transform.
@@ -271,11 +263,7 @@ pub enum Command {
         intensity: f32,
     },
     /// Draw a noise overlay.
-    Noise {
-        rect: Rect,
-        opacity: f32,
-        seed: u64,
-    },
+    Noise { rect: Rect, opacity: f32, seed: u64 },
     /// Draw a scanline effect.
     Scanlines {
         rect: Rect,
@@ -314,20 +302,11 @@ pub enum Command {
         amount: f32,
     },
     /// Draw an invert effect.
-    Invert {
-        source: TextureId,
-        dest: Rect,
-    },
+    Invert { source: TextureId, dest: Rect },
     /// Draw a grayscale effect.
-    Grayscale {
-        source: TextureId,
-        dest: Rect,
-    },
+    Grayscale { source: TextureId, dest: Rect },
     /// Draw a sepia effect.
-    Sepia {
-        source: TextureId,
-        dest: Rect,
-    },
+    Sepia { source: TextureId, dest: Rect },
     /// Draw an opacity mask.
     OpacityMask {
         source: TextureId,
@@ -348,11 +327,7 @@ pub enum Command {
         color: Color,
     },
     /// Draw an inner shadow on a rectangle.
-    InnerShadow {
-        rect: Rect,
-        blur: f32,
-        color: Color,
-    },
+    InnerShadow { rect: Rect, blur: f32, color: Color },
     /// Draw an outline/stroke around a shape.
     Outline {
         path: Path,
@@ -486,20 +461,11 @@ pub enum Command {
         amount: f32,
     },
     /// Draw a text with an invert effect.
-    TextInvert {
-        text: Text,
-        position: Point,
-    },
+    TextInvert { text: Text, position: Point },
     /// Draw a text with a grayscale effect.
-    TextGrayscale {
-        text: Text,
-        position: Point,
-    },
+    TextGrayscale { text: Text, position: Point },
     /// Draw a text with a sepia effect.
-    TextSepia {
-        text: Text,
-        position: Point,
-    },
+    TextSepia { text: Text, position: Point },
     /// Draw a text with an opacity mask.
     TextOpacityMask {
         text: Text,
@@ -664,8 +630,8 @@ impl CommandBuffer {
 
     /// Draw text.
     pub fn text(&mut self, content: &str, size: f32, color: &Color) {
-        let text = Text::new(content)
-            .with_style(TextStyle::new().with_size(size).with_color(*color));
+        let text =
+            Text::new(content).with_style(TextStyle::new().with_size(size).with_color(*color));
         self.commands.push(Command::Text {
             text,
             position: Point::ORIGIN,
@@ -674,12 +640,9 @@ impl CommandBuffer {
 
     /// Draw text at a position.
     pub fn text_at(&mut self, content: &str, position: Point, size: f32, color: &Color) {
-        let text = Text::new(content)
-            .with_style(TextStyle::new().with_size(size).with_color(*color));
-        self.commands.push(Command::Text {
-            text,
-            position,
-        });
+        let text =
+            Text::new(content).with_style(TextStyle::new().with_size(size).with_color(*color));
+        self.commands.push(Command::Text { text, position });
     }
 
     /// Draw a shape.

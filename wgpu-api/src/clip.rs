@@ -19,7 +19,7 @@
 
 use std::cell::RefCell;
 
-use crate::geometry::{Rect, Point, Size};
+use crate::geometry::{Point, Rect, Size};
 
 // ---------------------------------------------------------------------------
 // Clip rectangle
@@ -306,7 +306,13 @@ impl RoundedClip {
     }
 
     /// Create with per-corner radii.
-    pub fn with_corners(rect: Rect, top_left: f32, top_right: f32, bottom_right: f32, bottom_left: f32) -> Self {
+    pub fn with_corners(
+        rect: Rect,
+        top_left: f32,
+        top_right: f32,
+        bottom_right: f32,
+        bottom_left: f32,
+    ) -> Self {
         Self {
             rect,
             top_left,
@@ -462,7 +468,12 @@ pub struct ScissorRect {
 impl ScissorRect {
     /// Create a new scissor rectangle.
     pub fn new(x: i32, y: i32, width: u32, height: u32) -> Self {
-        Self { x, y, width, height }
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     /// Create from a ClipRect and scale factor.
@@ -761,10 +772,8 @@ mod tests {
 
     #[test]
     fn test_rounded_clip_per_corner() {
-        let clip = RoundedClip::with_corners(
-            Rect::new(0.0, 0.0, 100.0, 100.0),
-            10.0, 20.0, 30.0, 40.0,
-        );
+        let clip =
+            RoundedClip::with_corners(Rect::new(0.0, 0.0, 100.0, 100.0), 10.0, 20.0, 30.0, 40.0);
         assert!((clip.top_left() - 10.0).abs() < f32::EPSILON);
         assert!((clip.top_right() - 20.0).abs() < f32::EPSILON);
         assert!((clip.bottom_right() - 30.0).abs() < f32::EPSILON);

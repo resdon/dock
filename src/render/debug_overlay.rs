@@ -6,7 +6,6 @@
 ///
 /// Enabled by setting the `DOCK_DEBUG` environment variable (e.g., `DOCK_DEBUG=1`).
 /// Stats are printed to stderr once per second (throttled) to avoid spamming the terminal.
-
 use sysinfo::System;
 
 /// Collects system stats from the sysinfo scanner.
@@ -125,7 +124,11 @@ pub fn print_debug_stats(sys: &mut sysinfo::System, gpu_active: bool) {
     };
     let _ram_warn = if stats.ram_percent > 80.0 { "⚠ " } else { "" };
     let _vram_line = if stats.vram_total_mb > 0 {
-        let vram_warn = if stats.vram_percent > 80.0 { "⚠ " } else { "" };
+        let vram_warn = if stats.vram_percent > 80.0 {
+            "⚠ "
+        } else {
+            ""
+        };
         format!(
             "VRAM: {}{}/{} MB ({:.0}%)",
             vram_warn, stats.vram_used_mb, stats.vram_total_mb, stats.vram_percent

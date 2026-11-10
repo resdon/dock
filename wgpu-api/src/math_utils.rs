@@ -31,9 +31,9 @@
 //! - **animation.rs**: Property interpolation with glam vectors
 //! - **gif.rs**: Frame compositing with glam-based operations
 
-pub use glam::{Vec2, Mat2, Mat3, Mat3A, Mat4, Quat, Vec3, Vec4};
+pub use glam::{Mat2, Mat3, Mat3A, Mat4, Quat, Vec2, Vec3, Vec4};
 
-use crate::geometry::{Vector2D, Point, Size, Rect};
+use crate::geometry::{Point, Rect, Size, Vector2D};
 use crate::transform::Matrix3;
 
 // ---------------------------------------------------------------------------
@@ -146,9 +146,8 @@ impl From<Mat3> for Matrix3 {
         let cols = m.to_cols_array_2d();
         Self {
             elements: [
-                cols[0][0], cols[1][0], cols[2][0],
-                cols[0][1], cols[1][1], cols[2][1],
-                cols[0][2], cols[1][2], cols[2][2],
+                cols[0][0], cols[1][0], cols[2][0], cols[0][1], cols[1][1], cols[2][1], cols[0][2],
+                cols[1][2], cols[2][2],
             ],
         }
     }
@@ -159,9 +158,8 @@ impl From<Mat3A> for Matrix3 {
         let cols = m.to_cols_array_2d();
         Self {
             elements: [
-                cols[0][0], cols[1][0], cols[2][0],
-                cols[0][1], cols[1][1], cols[2][1],
-                cols[0][2], cols[1][2], cols[2][2],
+                cols[0][0], cols[1][0], cols[2][0], cols[0][1], cols[1][1], cols[2][1], cols[0][2],
+                cols[1][2], cols[2][2],
             ],
         }
     }
@@ -389,11 +387,7 @@ pub fn orthographic_topleft(width: f32, height: f32) -> Mat3 {
 pub fn orthographic_topleft_a(width: f32, height: f32) -> Mat3A {
     let inv_w = 2.0 / width;
     let inv_h = 2.0 / height;
-    Mat3A::from_cols_array_2d(&[
-        [inv_w, 0.0, 0.0],
-        [0.0, -inv_h, 0.0],
-        [-1.0, 1.0, 1.0],
-    ])
+    Mat3A::from_cols_array_2d(&[[inv_w, 0.0, 0.0], [0.0, -inv_h, 0.0], [-1.0, 1.0, 1.0]])
 }
 
 /// Build a combined 2D transform: translation + rotation + scale.
@@ -509,12 +503,10 @@ pub fn catmull_rom(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, t: f32) -> Vec2 {
     let t2 = t * t;
     let t3 = t2 * t;
 
-    0.5 * (
-        (2.0 * p1)
-            + (-p0 + p2) * t
-            + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
-            + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3
-    )
+    0.5 * ((2.0 * p1)
+        + (-p0 + p2) * t
+        + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+        + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3)
 }
 
 // ---------------------------------------------------------------------------
@@ -523,8 +515,14 @@ pub fn catmull_rom(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, t: f32) -> Vec2 {
 
 /// Simple hash for deterministic random values.
 pub fn hash_f32(x: u32, y: u32) -> f32 {
-    let n = x.wrapping_mul(374761393u32).wrapping_add(y.wrapping_mul(668265263u32));
-    let n = n.wrapping_mul(n.wrapping_mul(n).wrapping_add(n).wrapping_add(3344567289u32));
+    let n = x
+        .wrapping_mul(374761393u32)
+        .wrapping_add(y.wrapping_mul(668265263u32));
+    let n = n.wrapping_mul(
+        n.wrapping_mul(n)
+            .wrapping_add(n)
+            .wrapping_add(3344567289u32),
+    );
     let frac = ((n >> 16) as f32 / 32768.0).fract();
     frac.abs()
 }
@@ -806,11 +804,7 @@ mod tests {
 
     #[test]
     fn test_mat4_transform_2d() {
-        let m = transform_2d_mat4(
-            Vec2::new(10.0, 20.0),
-            0.0,
-            Vec2::new(1.0, 1.0),
-        );
+        let m = transform_2d_mat4(Vec2::new(10.0, 20.0), 0.0, Vec2::new(1.0, 1.0));
         assert!(m.is_finite());
     }
 
@@ -833,7 +827,7 @@ mod tests {
     fn test_transform_2d_mat3() {
         let m = transform_2d_mat3(Vec2::new(5.0, 10.0), 0.0, Vec2::new(2.0, 3.0));
         let p = m.transform_point(Vec2::new(1.0, 1.0));
-        assert!((p.x - 7.0).abs() < 0.0001);  // 1*2 + 5
+        assert!((p.x - 7.0).abs() < 0.0001); // 1*2 + 5
         assert!((p.y - 13.0).abs() < 0.0001); // 1*3 + 10
     }
 

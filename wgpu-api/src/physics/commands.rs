@@ -53,11 +53,11 @@
 
 use std::collections::VecDeque;
 
-use crate::geometry::{NodeId, Point, Rect, Vector2D};
 use super::body::{BodyId, CollisionShape};
 use super::groups::GroupId;
 use super::interaction::{InteractionApi, ProjectionAxis};
 use super::world::PhysicsWorld;
+use crate::geometry::{NodeId, Point, Rect, Vector2D};
 
 // ---------------------------------------------------------------------------
 // Interaction Command Enum
@@ -73,17 +73,11 @@ pub enum InteractionCommand {
     // ---------------------------------------------------------------------
     // Pointer interactions
     // ---------------------------------------------------------------------
-
     /// Start dragging a body at the given pointer position.
-    BeginDrag {
-        target: NodeId,
-        pointer: Point,
-    },
+    BeginDrag { target: NodeId, pointer: Point },
 
     /// Continue dragging to a new pointer position.
-    MoveDrag {
-        pointer: Point,
-    },
+    MoveDrag { pointer: Point },
 
     /// End the current drag operation.
     EndDrag,
@@ -91,7 +85,6 @@ pub enum InteractionCommand {
     // ---------------------------------------------------------------------
     // Force-based interactions
     // ---------------------------------------------------------------------
-
     /// Push a body in a direction with a given strength.
     Push {
         target: NodeId,
@@ -107,39 +100,23 @@ pub enum InteractionCommand {
     },
 
     /// Apply a raw force vector to a body.
-    ApplyForce {
-        target: NodeId,
-        force: Vector2D,
-    },
+    ApplyForce { target: NodeId, force: Vector2D },
 
     /// Apply a raw impulse (instantaneous force) to a body.
-    ApplyImpulse {
-        target: NodeId,
-        impulse: Vector2D,
-    },
+    ApplyImpulse { target: NodeId, impulse: Vector2D },
 
     /// Set a body's velocity directly.
-    SetVelocity {
-        target: NodeId,
-        velocity: Vector2D,
-    },
+    SetVelocity { target: NodeId, velocity: Vector2D },
 
     /// Attract all bodies in a region toward the region's center.
-    Attract {
-        region: Rect,
-        strength: f32,
-    },
+    Attract { region: Rect, strength: f32 },
 
     /// Repel all bodies in a region away from the region's center.
-    Repel {
-        region: Rect,
-        strength: f32,
-    },
+    Repel { region: Rect, strength: f32 },
 
     // ---------------------------------------------------------------------
     // Structural interactions
     // ---------------------------------------------------------------------
-
     /// Insert a new body at the given position with the given shape.
     Insert {
         target: NodeId,
@@ -148,26 +125,17 @@ pub enum InteractionCommand {
     },
 
     /// Remove a body from the world.
-    Remove {
-        target: NodeId,
-    },
+    Remove { target: NodeId },
 
     /// Cut a group at the given position, splitting bodies to the right.
-    Cut {
-        group: GroupId,
-        position: Point,
-    },
+    Cut { group: GroupId, position: Point },
 
     /// Merge two groups into one.
-    Merge {
-        first: GroupId,
-        second: GroupId,
-    },
+    Merge { first: GroupId, second: GroupId },
 
     // ---------------------------------------------------------------------
     // Group operations
     // ---------------------------------------------------------------------
-
     /// Concentrate bodies in a region toward a center point.
     Concentrate {
         region: Rect,
@@ -176,10 +144,7 @@ pub enum InteractionCommand {
     },
 
     /// Disperse bodies in a region, pushing them apart.
-    Disperse {
-        region: Rect,
-        strength: f32,
-    },
+    Disperse { region: Rect, strength: f32 },
 
     /// Project a body's target position onto an axis.
     Project {
@@ -189,29 +154,19 @@ pub enum InteractionCommand {
     },
 
     /// Pin a body to a fixed position.
-    Anchor {
-        target: NodeId,
-        position: Point,
-    },
+    Anchor { target: NodeId, position: Point },
 
     /// Release a previously anchored body.
-    ReleaseAnchor {
-        target: NodeId,
-    },
+    ReleaseAnchor { target: NodeId },
 
     // ---------------------------------------------------------------------
     // Simulation control
     // ---------------------------------------------------------------------
-
     /// Pause or resume the physics simulation.
-    SetSimulationActive {
-        active: bool,
-    },
+    SetSimulationActive { active: bool },
 
     /// Step the physics simulation by the given amount of time.
-    StepSimulation {
-        dt: f32,
-    },
+    StepSimulation { dt: f32 },
 
     /// Clear all bodies and reset the world.
     ResetWorld,
@@ -219,7 +174,6 @@ pub enum InteractionCommand {
     // ---------------------------------------------------------------------
     // Input source commands (for keyboard, touch, gestures)
     // ---------------------------------------------------------------------
-
     /// A keyboard interaction command.
     Keyboard {
         key: KeyboardKey,
@@ -439,7 +393,11 @@ impl InteractionManager {
     }
 
     /// Execute a single command immediately (without queuing).
-    pub fn execute(&mut self, world: &mut PhysicsWorld, command: &InteractionCommand) -> CommandResult {
+    pub fn execute(
+        &mut self,
+        world: &mut PhysicsWorld,
+        command: &InteractionCommand,
+    ) -> CommandResult {
         if !self.enabled {
             return CommandResult::Ignored("Commands are disabled".to_string());
         }
@@ -449,12 +407,15 @@ impl InteractionManager {
     }
 
     /// Internal command execution.
-    fn execute_command(&mut self, world: &mut PhysicsWorld, command: &InteractionCommand) -> CommandResult {
+    fn execute_command(
+        &mut self,
+        world: &mut PhysicsWorld,
+        command: &InteractionCommand,
+    ) -> CommandResult {
         match command {
             // ---------------------------------------------------------------------
             // Pointer interactions
             // ---------------------------------------------------------------------
-
             InteractionCommand::BeginDrag { target, pointer } => {
                 let body_id = BodyId::from(target.as_u64());
                 match world.drag(body_id, *pointer) {
@@ -496,8 +457,11 @@ impl InteractionManager {
             // ---------------------------------------------------------------------
             // Force-based interactions
             // ---------------------------------------------------------------------
-
-            InteractionCommand::Push { target, direction, strength } => {
+            InteractionCommand::Push {
+                target,
+                direction,
+                strength,
+            } => {
                 let body_id = BodyId::from(target.as_u64());
                 if world.push(body_id, *direction, *strength) {
                     CommandResult::Success
@@ -506,7 +470,11 @@ impl InteractionManager {
                 }
             }
 
-            InteractionCommand::Pull { target, destination, strength } => {
+            InteractionCommand::Pull {
+                target,
+                destination,
+                strength,
+            } => {
                 let body_id = BodyId::from(target.as_u64());
                 if world.pull(body_id, *destination, *strength) {
                     CommandResult::Success
@@ -555,8 +523,11 @@ impl InteractionManager {
             // ---------------------------------------------------------------------
             // Structural interactions
             // ---------------------------------------------------------------------
-
-            InteractionCommand::Insert { target, position, shape } => {
+            InteractionCommand::Insert {
+                target,
+                position,
+                shape,
+            } => {
                 let result = world.insert(*target, *position, *shape);
                 CommandResult::Success
             }
@@ -574,25 +545,24 @@ impl InteractionManager {
                 }
             }
 
-            InteractionCommand::Cut { group, position } => {
-                match world.cut(*group, *position) {
-                    Some(_) => CommandResult::Success,
-                    None => CommandResult::Ignored(format!("Group {:?} not found or empty", group)),
-                }
-            }
+            InteractionCommand::Cut { group, position } => match world.cut(*group, *position) {
+                Some(_) => CommandResult::Success,
+                None => CommandResult::Ignored(format!("Group {:?} not found or empty", group)),
+            },
 
-            InteractionCommand::Merge { first, second } => {
-                match world.merge(*first, *second) {
-                    Some(_) => CommandResult::Success,
-                    None => CommandResult::Ignored("One or both groups not found".to_string()),
-                }
-            }
+            InteractionCommand::Merge { first, second } => match world.merge(*first, *second) {
+                Some(_) => CommandResult::Success,
+                None => CommandResult::Ignored("One or both groups not found".to_string()),
+            },
 
             // ---------------------------------------------------------------------
             // Group operations
             // ---------------------------------------------------------------------
-
-            InteractionCommand::Concentrate { region, center, strength } => {
+            InteractionCommand::Concentrate {
+                region,
+                center,
+                strength,
+            } => {
                 world.concentrate(region, *center, *strength);
                 CommandResult::Success
             }
@@ -602,7 +572,11 @@ impl InteractionManager {
                 CommandResult::Success
             }
 
-            InteractionCommand::Project { target, axis, target_position } => {
+            InteractionCommand::Project {
+                target,
+                axis,
+                target_position,
+            } => {
                 let body_id = BodyId::from(target.as_u64());
                 if world.project(body_id, *axis, *target_position) {
                     CommandResult::Success
@@ -632,7 +606,6 @@ impl InteractionManager {
             // ---------------------------------------------------------------------
             // Simulation control
             // ---------------------------------------------------------------------
-
             InteractionCommand::SetSimulationActive { active } => {
                 // This would typically be handled by the FixedTimestepSimulator
                 // For now, we just return success
@@ -656,19 +629,32 @@ impl InteractionManager {
             // ---------------------------------------------------------------------
             // Input source commands
             // ---------------------------------------------------------------------
-
-            InteractionCommand::Keyboard { key, modifiers, is_press } => {
+            InteractionCommand::Keyboard {
+                key,
+                modifiers,
+                is_press,
+            } => {
                 // Keyboard commands are translated to physics operations
                 // based on the key and current context
                 self.handle_keyboard(world, *key, *modifiers, *is_press)
             }
 
-            InteractionCommand::Touch { touch_id: _touch_id, position, phase } => {
+            InteractionCommand::Touch {
+                touch_id: _touch_id,
+                position,
+                phase,
+            } => {
                 // Touch commands are translated to drag/pointer operations
                 self.handle_touch(world, *position, *phase)
             }
 
-            InteractionCommand::Gesture { gesture_type, position, delta, scale, rotation } => {
+            InteractionCommand::Gesture {
+                gesture_type,
+                position,
+                delta,
+                scale,
+                rotation,
+            } => {
                 // Gesture commands are translated to physics operations
                 self.handle_gesture(world, *gesture_type, *position, *delta, *scale, *rotation)
             }
@@ -700,7 +686,8 @@ impl InteractionManager {
         }
 
         // Find the first dynamic body as the target
-        let target = world.iter_bodies()
+        let target = world
+            .iter_bodies()
             .find(|(_, body)| body.enabled)
             .map(|(id, _)| *id);
 
@@ -773,9 +760,7 @@ impl InteractionManager {
                 // Cycle focus (would need external focus state)
                 CommandResult::Success
             }
-            KeyboardKey::Key(_) => {
-                CommandResult::Ignored("Unmapped key".to_string())
-            }
+            KeyboardKey::Key(_) => CommandResult::Ignored("Unmapped key".to_string()),
         }
     }
 
@@ -849,12 +834,7 @@ impl InteractionManager {
         match gesture_type {
             PhysicsGestureType::Pan => {
                 // Pan: push bodies in the pan direction
-                let region = Rect::new(
-                    position.x - 100.0,
-                    position.y - 100.0,
-                    200.0,
-                    200.0,
-                );
+                let region = Rect::new(position.x - 100.0, position.y - 100.0, 200.0, 200.0);
                 let bodies = world.bodies_in_region(&region);
                 let neg_delta = Vector2D::new(-delta.x, -delta.y);
                 for body_id in bodies {
@@ -864,12 +844,7 @@ impl InteractionManager {
             }
             PhysicsGestureType::Pinch => {
                 // Pinch: concentrate or disperse based on scale
-                let region = Rect::new(
-                    position.x - 100.0,
-                    position.y - 100.0,
-                    200.0,
-                    200.0,
-                );
+                let region = Rect::new(position.x - 100.0, position.y - 100.0, 200.0, 200.0);
                 if scale > 1.0 {
                     // Zoom in: concentrate
                     world.concentrate(&region, position, (scale - 1.0) * 100.0);
@@ -881,12 +856,7 @@ impl InteractionManager {
             }
             PhysicsGestureType::Rotate => {
                 // Rotate: apply rotational force around the gesture center
-                let region = Rect::new(
-                    position.x - 100.0,
-                    position.y - 100.0,
-                    200.0,
-                    200.0,
-                );
+                let region = Rect::new(position.x - 100.0, position.y - 100.0, 200.0, 200.0);
                 let bodies = world.bodies_in_region(&region);
                 for body_id in bodies {
                     if let Some(body) = world.get_body(body_id) {
@@ -896,7 +866,11 @@ impl InteractionManager {
                         let rx = -dy;
                         let ry = dx;
                         let len = (rx * rx + ry * ry).sqrt().max(0.01);
-                        world.push(body_id, Vector2D::new(rx / len, ry / len), rotation.abs() * 50.0);
+                        world.push(
+                            body_id,
+                            Vector2D::new(rx / len, ry / len),
+                            rotation.abs() * 50.0,
+                        );
                     }
                 }
                 CommandResult::Success
@@ -916,12 +890,7 @@ impl InteractionManager {
             }
             PhysicsGestureType::Swipe => {
                 // Swipe: push bodies in the swipe direction
-                let region = Rect::new(
-                    position.x - 100.0,
-                    position.y - 100.0,
-                    200.0,
-                    200.0,
-                );
+                let region = Rect::new(position.x - 100.0, position.y - 100.0, 200.0, 200.0);
                 let bodies = world.bodies_in_region(&region);
                 for body_id in bodies {
                     world.push(body_id, delta, delta.length() * 0.5);
@@ -946,11 +915,25 @@ impl InteractionManager {
     ) -> CommandResult {
         match name {
             "push_all" => {
-                let direction = parameters.iter()
-                    .find_map(|p| if let ScriptParameter::Vector(_, v) = p { Some(*v) } else { None })
+                let direction = parameters
+                    .iter()
+                    .find_map(|p| {
+                        if let ScriptParameter::Vector(_, v) = p {
+                            Some(*v)
+                        } else {
+                            None
+                        }
+                    })
                     .unwrap_or(Vector2D::new(1.0, 0.0));
-                let strength = parameters.iter()
-                    .find_map(|p| if let ScriptParameter::Float(_, f) = p { Some(*f) } else { None })
+                let strength = parameters
+                    .iter()
+                    .find_map(|p| {
+                        if let ScriptParameter::Float(_, f) = p {
+                            Some(*f)
+                        } else {
+                            None
+                        }
+                    })
                     .unwrap_or(100.0);
 
                 let ids: Vec<BodyId> = world.iter_bodies().map(|(id, _)| *id).collect();
@@ -960,11 +943,25 @@ impl InteractionManager {
                 CommandResult::Success
             }
             "attract_to" => {
-                let center = parameters.iter()
-                    .find_map(|p| if let ScriptParameter::Point(_, p) = p { Some(*p) } else { None })
+                let center = parameters
+                    .iter()
+                    .find_map(|p| {
+                        if let ScriptParameter::Point(_, p) = p {
+                            Some(*p)
+                        } else {
+                            None
+                        }
+                    })
                     .unwrap_or(Point::ORIGIN);
-                let strength = parameters.iter()
-                    .find_map(|p| if let ScriptParameter::Float(_, f) = p { Some(*f) } else { None })
+                let strength = parameters
+                    .iter()
+                    .find_map(|p| {
+                        if let ScriptParameter::Float(_, f) = p {
+                            Some(*f)
+                        } else {
+                            None
+                        }
+                    })
                     .unwrap_or(100.0);
 
                 let region = Rect::new(-1000.0, -1000.0, 2000.0, 2000.0);
@@ -977,11 +974,25 @@ impl InteractionManager {
                 CommandResult::Success
             }
             "animate_insert" => {
-                let node = parameters.iter()
-                    .find_map(|p| if let ScriptParameter::NodeId(_, n) = p { Some(*n) } else { None })
+                let node = parameters
+                    .iter()
+                    .find_map(|p| {
+                        if let ScriptParameter::NodeId(_, n) = p {
+                            Some(*n)
+                        } else {
+                            None
+                        }
+                    })
                     .unwrap_or(NodeId::new(0));
-                let position = parameters.iter()
-                    .find_map(|p| if let ScriptParameter::Point(_, p) = p { Some(*p) } else { None })
+                let position = parameters
+                    .iter()
+                    .find_map(|p| {
+                        if let ScriptParameter::Point(_, p) = p {
+                            Some(*p)
+                        } else {
+                            None
+                        }
+                    })
                     .unwrap_or(Point::ORIGIN);
 
                 let shape = CollisionShape::circle(25.0);
@@ -1072,14 +1083,20 @@ mod tests {
         let mut manager = InteractionManager::new();
         let mut world = create_test_world();
 
-        manager.execute(&mut world, &InteractionCommand::BeginDrag {
-            target: NodeId::new(1),
-            pointer: Point::new(100.0, 100.0),
-        });
+        manager.execute(
+            &mut world,
+            &InteractionCommand::BeginDrag {
+                target: NodeId::new(1),
+                pointer: Point::new(100.0, 100.0),
+            },
+        );
         assert_eq!(
-            manager.execute(&mut world, &InteractionCommand::MoveDrag {
-                pointer: Point::new(200.0, 200.0),
-            }),
+            manager.execute(
+                &mut world,
+                &InteractionCommand::MoveDrag {
+                    pointer: Point::new(200.0, 200.0),
+                }
+            ),
             CommandResult::Success
         );
     }
@@ -1089,11 +1106,17 @@ mod tests {
         let mut manager = InteractionManager::new();
         let mut world = create_test_world();
 
-        manager.execute(&mut world, &InteractionCommand::BeginDrag {
-            target: NodeId::new(1),
-            pointer: Point::new(100.0, 100.0),
-        });
-        assert_eq!(manager.execute(&mut world, &InteractionCommand::EndDrag), CommandResult::Success);
+        manager.execute(
+            &mut world,
+            &InteractionCommand::BeginDrag {
+                target: NodeId::new(1),
+                pointer: Point::new(100.0, 100.0),
+            },
+        );
+        assert_eq!(
+            manager.execute(&mut world, &InteractionCommand::EndDrag),
+            CommandResult::Success
+        );
         assert!(!manager.is_dragging());
     }
 
@@ -1112,11 +1135,14 @@ mod tests {
         let mut manager = InteractionManager::new();
         let mut world = create_test_world();
         assert_eq!(
-            manager.execute(&mut world, &InteractionCommand::Push {
-                target: NodeId::new(1),
-                direction: Vector2D::new(1.0, 0.0),
-                strength: 100.0,
-            }),
+            manager.execute(
+                &mut world,
+                &InteractionCommand::Push {
+                    target: NodeId::new(1),
+                    direction: Vector2D::new(1.0, 0.0),
+                    strength: 100.0,
+                }
+            ),
             CommandResult::Success
         );
     }
@@ -1126,11 +1152,14 @@ mod tests {
         let mut manager = InteractionManager::new();
         let mut world = create_test_world();
         assert_eq!(
-            manager.execute(&mut world, &InteractionCommand::Pull {
-                target: NodeId::new(1),
-                destination: Point::new(200.0, 200.0),
-                strength: 50.0,
-            }),
+            manager.execute(
+                &mut world,
+                &InteractionCommand::Pull {
+                    target: NodeId::new(1),
+                    destination: Point::new(200.0, 200.0),
+                    strength: 50.0,
+                }
+            ),
             CommandResult::Success
         );
     }
@@ -1140,11 +1169,14 @@ mod tests {
         let mut manager = InteractionManager::new();
         let mut world = PhysicsWorld::new();
         assert_eq!(
-            manager.execute(&mut world, &InteractionCommand::Insert {
-                target: NodeId::new(1),
-                position: Point::new(100.0, 100.0),
-                shape: CollisionShape::circle(25.0),
-            }),
+            manager.execute(
+                &mut world,
+                &InteractionCommand::Insert {
+                    target: NodeId::new(1),
+                    position: Point::new(100.0, 100.0),
+                    shape: CollisionShape::circle(25.0),
+                }
+            ),
             CommandResult::Success
         );
     }
@@ -1154,9 +1186,12 @@ mod tests {
         let mut manager = InteractionManager::new();
         let mut world = create_test_world();
         assert_eq!(
-            manager.execute(&mut world, &InteractionCommand::Remove {
-                target: NodeId::new(1),
-            }),
+            manager.execute(
+                &mut world,
+                &InteractionCommand::Remove {
+                    target: NodeId::new(1),
+                }
+            ),
             CommandResult::Success
         );
     }
@@ -1166,11 +1201,14 @@ mod tests {
         let mut manager = InteractionManager::new();
         let mut world = create_test_world();
         assert_eq!(
-            manager.execute(&mut world, &InteractionCommand::Concentrate {
-                region: Rect::new(0.0, 0.0, 200.0, 200.0),
-                center: Point::new(100.0, 100.0),
-                strength: 100.0,
-            }),
+            manager.execute(
+                &mut world,
+                &InteractionCommand::Concentrate {
+                    region: Rect::new(0.0, 0.0, 200.0, 200.0),
+                    center: Point::new(100.0, 100.0),
+                    strength: 100.0,
+                }
+            ),
             CommandResult::Success
         );
     }
@@ -1180,10 +1218,13 @@ mod tests {
         let mut manager = InteractionManager::new();
         let mut world = create_test_world();
         assert_eq!(
-            manager.execute(&mut world, &InteractionCommand::Disperse {
-                region: Rect::new(0.0, 0.0, 200.0, 200.0),
-                strength: 100.0,
-            }),
+            manager.execute(
+                &mut world,
+                &InteractionCommand::Disperse {
+                    region: Rect::new(0.0, 0.0, 200.0, 200.0),
+                    strength: 100.0,
+                }
+            ),
             CommandResult::Success
         );
     }
@@ -1193,10 +1234,13 @@ mod tests {
         let mut manager = InteractionManager::new();
         let mut world = create_test_world();
         assert_eq!(
-            manager.execute(&mut world, &InteractionCommand::Anchor {
-                target: NodeId::new(1),
-                position: Point::new(100.0, 100.0),
-            }),
+            manager.execute(
+                &mut world,
+                &InteractionCommand::Anchor {
+                    target: NodeId::new(1),
+                    position: Point::new(100.0, 100.0),
+                }
+            ),
             CommandResult::Success
         );
     }
@@ -1205,14 +1249,20 @@ mod tests {
     fn test_command_release_anchor() {
         let mut manager = InteractionManager::new();
         let mut world = create_test_world();
-        manager.execute(&mut world, &InteractionCommand::Anchor {
-            target: NodeId::new(1),
-            position: Point::new(100.0, 100.0),
-        });
-        assert_eq!(
-            manager.execute(&mut world, &InteractionCommand::ReleaseAnchor {
+        manager.execute(
+            &mut world,
+            &InteractionCommand::Anchor {
                 target: NodeId::new(1),
-            }),
+                position: Point::new(100.0, 100.0),
+            },
+        );
+        assert_eq!(
+            manager.execute(
+                &mut world,
+                &InteractionCommand::ReleaseAnchor {
+                    target: NodeId::new(1),
+                }
+            ),
             CommandResult::Success
         );
     }
@@ -1222,9 +1272,10 @@ mod tests {
         let mut manager = InteractionManager::new();
         let mut world = create_test_world();
         assert_eq!(
-            manager.execute(&mut world, &InteractionCommand::StepSimulation {
-                dt: 1.0 / 60.0,
-            }),
+            manager.execute(
+                &mut world,
+                &InteractionCommand::StepSimulation { dt: 1.0 / 60.0 }
+            ),
             CommandResult::Success
         );
     }
@@ -1234,7 +1285,10 @@ mod tests {
         let mut manager = InteractionManager::new();
         let mut world = create_test_world();
         assert!(world.iter_bodies().count() > 0);
-        assert_eq!(manager.execute(&mut world, &InteractionCommand::ResetWorld), CommandResult::Success);
+        assert_eq!(
+            manager.execute(&mut world, &InteractionCommand::ResetWorld),
+            CommandResult::Success
+        );
         assert_eq!(world.iter_bodies().count(), 0);
     }
 
@@ -1308,11 +1362,14 @@ mod tests {
         manager.set_max_history(10);
         let mut world = create_test_world();
 
-        manager.execute(&mut world, &InteractionCommand::Push {
-            target: NodeId::new(1),
-            direction: Vector2D::new(1.0, 0.0),
-            strength: 100.0,
-        });
+        manager.execute(
+            &mut world,
+            &InteractionCommand::Push {
+                target: NodeId::new(1),
+                direction: Vector2D::new(1.0, 0.0),
+                strength: 100.0,
+            },
+        );
         assert_eq!(manager.history().len(), 1);
     }
 
@@ -1323,11 +1380,14 @@ mod tests {
         let mut world = create_test_world();
 
         for i in 0..5 {
-            manager.execute(&mut world, &InteractionCommand::Push {
-                target: NodeId::new(1),
-                direction: Vector2D::new(i as f32, 0.0),
-                strength: 100.0,
-            });
+            manager.execute(
+                &mut world,
+                &InteractionCommand::Push {
+                    target: NodeId::new(1),
+                    direction: Vector2D::new(i as f32, 0.0),
+                    strength: 100.0,
+                },
+            );
         }
         assert_eq!(manager.history().len(), 2);
     }
@@ -1405,10 +1465,13 @@ mod tests {
         let mut manager = InteractionManager::new();
         let mut world = create_test_world();
 
-        manager.execute(&mut world, &InteractionCommand::BeginDrag {
-            target: NodeId::new(1),
-            pointer: Point::new(100.0, 100.0),
-        });
+        manager.execute(
+            &mut world,
+            &InteractionCommand::BeginDrag {
+                target: NodeId::new(1),
+                pointer: Point::new(100.0, 100.0),
+            },
+        );
         assert!(manager.is_dragging());
 
         let cmd = InteractionCommand::Keyboard {
@@ -1430,7 +1493,10 @@ mod tests {
             modifiers: KeyboardModifiers::default(),
             is_press: false,
         };
-        assert!(matches!(manager.execute(&mut world, &cmd), CommandResult::Ignored(_)));
+        assert!(matches!(
+            manager.execute(&mut world, &cmd),
+            CommandResult::Ignored(_)
+        ));
     }
 
     // ---------------------------------------------------------------------
@@ -1456,17 +1522,23 @@ mod tests {
         let mut manager = InteractionManager::new();
         let mut world = create_test_world();
 
-        manager.execute(&mut world, &InteractionCommand::Touch {
-            touch_id: 1,
-            position: Point::new(100.0, 100.0),
-            phase: TouchPhase::Started,
-        });
-        assert_eq!(
-            manager.execute(&mut world, &InteractionCommand::Touch {
+        manager.execute(
+            &mut world,
+            &InteractionCommand::Touch {
                 touch_id: 1,
-                position: Point::new(200.0, 200.0),
-                phase: TouchPhase::Moved,
-            }),
+                position: Point::new(100.0, 100.0),
+                phase: TouchPhase::Started,
+            },
+        );
+        assert_eq!(
+            manager.execute(
+                &mut world,
+                &InteractionCommand::Touch {
+                    touch_id: 1,
+                    position: Point::new(200.0, 200.0),
+                    phase: TouchPhase::Moved,
+                }
+            ),
             CommandResult::Success
         );
     }
@@ -1476,17 +1548,23 @@ mod tests {
         let mut manager = InteractionManager::new();
         let mut world = create_test_world();
 
-        manager.execute(&mut world, &InteractionCommand::Touch {
-            touch_id: 1,
-            position: Point::new(100.0, 100.0),
-            phase: TouchPhase::Started,
-        });
-        assert_eq!(
-            manager.execute(&mut world, &InteractionCommand::Touch {
+        manager.execute(
+            &mut world,
+            &InteractionCommand::Touch {
                 touch_id: 1,
-                position: Point::new(200.0, 200.0),
-                phase: TouchPhase::Ended,
-            }),
+                position: Point::new(100.0, 100.0),
+                phase: TouchPhase::Started,
+            },
+        );
+        assert_eq!(
+            manager.execute(
+                &mut world,
+                &InteractionCommand::Touch {
+                    touch_id: 1,
+                    position: Point::new(200.0, 200.0),
+                    phase: TouchPhase::Ended,
+                }
+            ),
             CommandResult::Success
         );
         assert!(!manager.is_dragging());
@@ -1582,7 +1660,10 @@ mod tests {
             name: "unknown_script".to_string(),
             parameters: vec![],
         };
-        assert!(matches!(manager.execute(&mut world, &cmd), CommandResult::Ignored(_)));
+        assert!(matches!(
+            manager.execute(&mut world, &cmd),
+            CommandResult::Ignored(_)
+        ));
     }
 
     #[test]
@@ -1611,10 +1692,13 @@ mod tests {
 
         assert_eq!(manager.dragged_body(), None);
 
-        manager.execute(&mut world, &InteractionCommand::BeginDrag {
-            target: NodeId::new(1),
-            pointer: Point::new(100.0, 100.0),
-        });
+        manager.execute(
+            &mut world,
+            &InteractionCommand::BeginDrag {
+                target: NodeId::new(1),
+                pointer: Point::new(100.0, 100.0),
+            },
+        );
         assert_eq!(manager.dragged_body(), Some(BodyId::new(1)));
 
         manager.execute(&mut world, &InteractionCommand::EndDrag);
@@ -1626,15 +1710,21 @@ mod tests {
         let mut manager = InteractionManager::new();
         let mut world = create_test_world();
 
-        manager.execute(&mut world, &InteractionCommand::BeginDrag {
-            target: NodeId::new(1),
-            pointer: Point::new(100.0, 100.0),
-        });
+        manager.execute(
+            &mut world,
+            &InteractionCommand::BeginDrag {
+                target: NodeId::new(1),
+                pointer: Point::new(100.0, 100.0),
+            },
+        );
         assert!(manager.is_dragging());
 
-        manager.execute(&mut world, &InteractionCommand::Remove {
-            target: NodeId::new(1),
-        });
+        manager.execute(
+            &mut world,
+            &InteractionCommand::Remove {
+                target: NodeId::new(1),
+            },
+        );
         assert!(!manager.is_dragging());
     }
 
@@ -1688,11 +1778,14 @@ mod tests {
         let mut world = PhysicsWorld::new();
 
         assert!(matches!(
-            manager.execute(&mut world, &InteractionCommand::Push {
-                target: NodeId::new(999),
-                direction: Vector2D::new(1.0, 0.0),
-                strength: 100.0,
-            }),
+            manager.execute(
+                &mut world,
+                &InteractionCommand::Push {
+                    target: NodeId::new(999),
+                    direction: Vector2D::new(1.0, 0.0),
+                    strength: 100.0,
+                }
+            ),
             CommandResult::Ignored(_)
         ));
     }
@@ -1703,9 +1796,12 @@ mod tests {
         let mut world = PhysicsWorld::new();
 
         assert!(matches!(
-            manager.execute(&mut world, &InteractionCommand::Remove {
-                target: NodeId::new(999),
-            }),
+            manager.execute(
+                &mut world,
+                &InteractionCommand::Remove {
+                    target: NodeId::new(999),
+                }
+            ),
             CommandResult::Ignored(_)
         ));
     }
@@ -1716,10 +1812,13 @@ mod tests {
         let mut world = PhysicsWorld::new();
 
         assert!(matches!(
-            manager.execute(&mut world, &InteractionCommand::BeginDrag {
-                target: NodeId::new(999),
-                pointer: Point::new(100.0, 100.0),
-            }),
+            manager.execute(
+                &mut world,
+                &InteractionCommand::BeginDrag {
+                    target: NodeId::new(999),
+                    pointer: Point::new(100.0, 100.0),
+                }
+            ),
             CommandResult::Ignored(_)
         ));
     }
@@ -1735,18 +1834,24 @@ mod tests {
 
         // Begin drag
         assert_eq!(
-            manager.execute(&mut world, &InteractionCommand::BeginDrag {
-                target: NodeId::new(1),
-                pointer: Point::new(100.0, 100.0),
-            }),
+            manager.execute(
+                &mut world,
+                &InteractionCommand::BeginDrag {
+                    target: NodeId::new(1),
+                    pointer: Point::new(100.0, 100.0),
+                }
+            ),
             CommandResult::Success
         );
 
         // Move drag
         assert_eq!(
-            manager.execute(&mut world, &InteractionCommand::MoveDrag {
-                pointer: Point::new(200.0, 200.0),
-            }),
+            manager.execute(
+                &mut world,
+                &InteractionCommand::MoveDrag {
+                    pointer: Point::new(200.0, 200.0),
+                }
+            ),
             CommandResult::Success
         );
 
@@ -1764,10 +1869,13 @@ mod tests {
         let mut manager = InteractionManager::new();
         let mut world = create_test_world();
         assert_eq!(
-            manager.execute(&mut world, &InteractionCommand::Attract {
-                region: Rect::new(0.0, 0.0, 200.0, 200.0),
-                strength: 100.0,
-            }),
+            manager.execute(
+                &mut world,
+                &InteractionCommand::Attract {
+                    region: Rect::new(0.0, 0.0, 200.0, 200.0),
+                    strength: 100.0,
+                }
+            ),
             CommandResult::Success
         );
     }
@@ -1777,10 +1885,13 @@ mod tests {
         let mut manager = InteractionManager::new();
         let mut world = create_test_world();
         assert_eq!(
-            manager.execute(&mut world, &InteractionCommand::Repel {
-                region: Rect::new(0.0, 0.0, 200.0, 200.0),
-                strength: 100.0,
-            }),
+            manager.execute(
+                &mut world,
+                &InteractionCommand::Repel {
+                    region: Rect::new(0.0, 0.0, 200.0, 200.0),
+                    strength: 100.0,
+                }
+            ),
             CommandResult::Success
         );
     }
@@ -1790,10 +1901,13 @@ mod tests {
         let mut manager = InteractionManager::new();
         let mut world = create_test_world();
         assert_eq!(
-            manager.execute(&mut world, &InteractionCommand::ApplyForce {
-                target: NodeId::new(1),
-                force: Vector2D::new(10.0, 0.0),
-            }),
+            manager.execute(
+                &mut world,
+                &InteractionCommand::ApplyForce {
+                    target: NodeId::new(1),
+                    force: Vector2D::new(10.0, 0.0),
+                }
+            ),
             CommandResult::Success
         );
     }
@@ -1803,10 +1917,13 @@ mod tests {
         let mut manager = InteractionManager::new();
         let mut world = create_test_world();
         assert_eq!(
-            manager.execute(&mut world, &InteractionCommand::ApplyImpulse {
-                target: NodeId::new(1),
-                impulse: Vector2D::new(5.0, 3.0),
-            }),
+            manager.execute(
+                &mut world,
+                &InteractionCommand::ApplyImpulse {
+                    target: NodeId::new(1),
+                    impulse: Vector2D::new(5.0, 3.0),
+                }
+            ),
             CommandResult::Success
         );
     }
@@ -1816,10 +1933,13 @@ mod tests {
         let mut manager = InteractionManager::new();
         let mut world = create_test_world();
         assert_eq!(
-            manager.execute(&mut world, &InteractionCommand::SetVelocity {
-                target: NodeId::new(1),
-                velocity: Vector2D::new(100.0, -50.0),
-            }),
+            manager.execute(
+                &mut world,
+                &InteractionCommand::SetVelocity {
+                    target: NodeId::new(1),
+                    velocity: Vector2D::new(100.0, -50.0),
+                }
+            ),
             CommandResult::Success
         );
     }
@@ -1829,11 +1949,14 @@ mod tests {
         let mut manager = InteractionManager::new();
         let mut world = create_test_world();
         assert_eq!(
-            manager.execute(&mut world, &InteractionCommand::Project {
-                target: NodeId::new(1),
-                axis: ProjectionAxis::X,
-                target_position: Point::new(300.0, 0.0),
-            }),
+            manager.execute(
+                &mut world,
+                &InteractionCommand::Project {
+                    target: NodeId::new(1),
+                    axis: ProjectionAxis::X,
+                    target_position: Point::new(300.0, 0.0),
+                }
+            ),
             CommandResult::Success
         );
     }
@@ -1874,17 +1997,23 @@ mod tests {
         let mut manager = InteractionManager::new();
         let mut world = create_test_world();
 
-        manager.execute(&mut world, &InteractionCommand::Touch {
-            touch_id: 1,
-            position: Point::new(100.0, 100.0),
-            phase: TouchPhase::Started,
-        });
-        assert_eq!(
-            manager.execute(&mut world, &InteractionCommand::Touch {
+        manager.execute(
+            &mut world,
+            &InteractionCommand::Touch {
                 touch_id: 1,
-                position: Point::new(200.0, 200.0),
-                phase: TouchPhase::Cancelled,
-            }),
+                position: Point::new(100.0, 100.0),
+                phase: TouchPhase::Started,
+            },
+        );
+        assert_eq!(
+            manager.execute(
+                &mut world,
+                &InteractionCommand::Touch {
+                    touch_id: 1,
+                    position: Point::new(200.0, 200.0),
+                    phase: TouchPhase::Cancelled,
+                }
+            ),
             CommandResult::Success
         );
         assert!(!manager.is_dragging());
@@ -1959,7 +2088,10 @@ mod tests {
             position: Point::new(9999.0, 9999.0),
             phase: TouchPhase::Started,
         };
-        assert!(matches!(manager.execute(&mut world, &cmd), CommandResult::Ignored(_)));
+        assert!(matches!(
+            manager.execute(&mut world, &cmd),
+            CommandResult::Ignored(_)
+        ));
     }
 
     #[test]
@@ -2007,9 +2139,10 @@ mod tests {
         let mut manager = InteractionManager::new();
         let mut world = create_test_world();
         assert_eq!(
-            manager.execute(&mut world, &InteractionCommand::SetSimulationActive {
-                active: true,
-            }),
+            manager.execute(
+                &mut world,
+                &InteractionCommand::SetSimulationActive { active: true }
+            ),
             CommandResult::Success
         );
     }

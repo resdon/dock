@@ -60,27 +60,13 @@ impl PipeWireAppError {
             PipeWireAppError::StreamDisconnected(_) => {
                 "Reconnect to PipeWire and recreate capture stream"
             }
-            PipeWireAppError::BufferUnavailable => {
-                "Wait for next frame or skip this frame"
-            }
-            PipeWireAppError::FormatNegotiationFailed(_) => {
-                "Try alternative format or resolution"
-            }
-            PipeWireAppError::PermissionDenied => {
-                "Grant screen capture permission via portal"
-            }
-            PipeWireAppError::NodeNotFound { .. } => {
-                "List available nodes and select alternative"
-            }
-            PipeWireAppError::MainLoopError(_) => {
-                "Restart PipeWire main loop"
-            }
-            PipeWireAppError::DmaBufFallback => {
-                "Continue with CPU upload path"
-            }
-            PipeWireAppError::StreamUnderrun => {
-                "Reduce frame rate or increase buffer size"
-            }
+            PipeWireAppError::BufferUnavailable => "Wait for next frame or skip this frame",
+            PipeWireAppError::FormatNegotiationFailed(_) => "Try alternative format or resolution",
+            PipeWireAppError::PermissionDenied => "Grant screen capture permission via portal",
+            PipeWireAppError::NodeNotFound { .. } => "List available nodes and select alternative",
+            PipeWireAppError::MainLoopError(_) => "Restart PipeWire main loop",
+            PipeWireAppError::DmaBufFallback => "Continue with CPU upload path",
+            PipeWireAppError::StreamUnderrun => "Reduce frame rate or increase buffer size",
         }
     }
 }

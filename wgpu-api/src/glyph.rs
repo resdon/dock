@@ -320,12 +320,7 @@ pub struct ShapedLine {
 
 impl ShapedLine {
     /// Create a new shaped line.
-    pub fn new(
-        clusters: Vec<GlyphCluster>,
-        width: f32,
-        ascent: f32,
-        descent: f32,
-    ) -> Self {
+    pub fn new(clusters: Vec<GlyphCluster>, width: f32, ascent: f32, descent: f32) -> Self {
         let height = ascent + descent;
         Self {
             clusters,
@@ -513,7 +508,15 @@ impl GlyphAtlas {
         // Allocate space in the atlas
         let region = self.allocate(width, height)?;
 
-        let info = GlyphInfo::new(region, advance_x, advance_y, bearing_x, bearing_y, width as f32, height as f32);
+        let info = GlyphInfo::new(
+            region,
+            advance_x,
+            advance_y,
+            bearing_x,
+            bearing_y,
+            width as f32,
+            height as f32,
+        );
         self.cache.insert(key, info);
         Some(info)
     }
@@ -639,7 +642,8 @@ impl GlyphCache {
         }
 
         // Check VRAM budget before allocating
-        let estimated_vram = self.atlas.estimate_vram_mb() + (glyph_width * glyph_height) as f32 / (1024.0 * 1024.0);
+        let estimated_vram =
+            self.atlas.estimate_vram_mb() + (glyph_width * glyph_height) as f32 / (1024.0 * 1024.0);
         if estimated_vram > self.max_vram_mb {
             // In a real implementation, evict least-recently-used glyphs
             log::warn!("Glyph cache VRAM budget exceeded, consider increasing max_vram_mb");
@@ -722,12 +726,7 @@ mod tests {
 
     #[test]
     fn test_glyph_cache_key() {
-        let key = GlyphCacheKey::new(
-            1,
-            65,
-            Size::new(16.0, 16.0),
-            RasterizationMode::Grayscale,
-        );
+        let key = GlyphCacheKey::new(1, 65, Size::new(16.0, 16.0), RasterizationMode::Grayscale);
         assert_eq!(key.font_id, 1);
         assert_eq!(key.glyph_id, 65);
         assert_eq!(key.mode, RasterizationMode::Grayscale);
@@ -770,7 +769,10 @@ mod tests {
         // Second call with the same key should return the cached info
         let info2 = atlas.cache_glyph(key, 16, 16, 10.0, 0.0, 2.0, 12.0);
         assert!(info2.is_some());
-        assert_eq!(info.unwrap().texture_region.pixel_min, info2.unwrap().texture_region.pixel_min);
+        assert_eq!(
+            info.unwrap().texture_region.pixel_min,
+            info2.unwrap().texture_region.pixel_min
+        );
     }
 
     #[test]

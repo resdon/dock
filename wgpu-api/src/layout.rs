@@ -9,16 +9,16 @@
 // Submodules
 // ---------------------------------------------------------------------------
 
-pub mod dock;
 pub mod arrangement;
+pub mod dock;
 pub mod insertion;
 pub mod projection;
 
 // Re-export submodule types
-pub use dock::{DockLayout, DockLayoutConfig, DockLayoutDirection, DockAlignment};
 pub use arrangement::{ArrangementManager, RedistributionMode};
-pub use insertion::{InsertionManager, InsertStrategy, InsertResult};
-pub use projection::{ProjectionMode, ProjectionConfig, ProjectionData, Projector};
+pub use dock::{DockAlignment, DockLayout, DockLayoutConfig, DockLayoutDirection};
+pub use insertion::{InsertResult, InsertStrategy, InsertionManager};
+pub use projection::{ProjectionConfig, ProjectionData, ProjectionMode, Projector};
 
 use crate::geometry::Size;
 
@@ -157,7 +157,11 @@ impl Default for Insets {
 
 impl std::fmt::Display for Insets {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Insets(top={}, right={}, bottom={}, left={})", self.top, self.right, self.bottom, self.left)
+        write!(
+            f,
+            "Insets(top={}, right={}, bottom={}, left={})",
+            self.top, self.right, self.bottom, self.left
+        )
     }
 }
 

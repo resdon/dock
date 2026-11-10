@@ -5,9 +5,9 @@
 
 use std::collections::HashMap;
 
-use crate::geometry::{Point, Size, NodeId};
+use crate::geometry::{NodeId, Point, Size};
 use crate::physics::{BodyId, PhysicsBody};
-use crate::scene::{Node, NodeStyle, NodeContent};
+use crate::scene::{Node, NodeContent, NodeStyle};
 
 /// Projection mode for physics-to-scene mapping.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -157,7 +157,6 @@ impl Projector {
             .collect()
     }
 
-
     /// Create scene nodes from physics bodies.
     pub fn create_nodes(
         &mut self,
@@ -213,7 +212,7 @@ impl Default for Projector {
 mod tests {
     use super::*;
     use crate::geometry::{Point, Size, Vector2D};
-    use crate::physics::{BodyId, PhysicsBody, CollisionShape};
+    use crate::physics::{BodyId, CollisionShape, PhysicsBody};
     use crate::scene::{NodeContent, Rectangle};
 
     #[test]

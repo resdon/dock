@@ -105,7 +105,11 @@ fn button(canvas: &mut [u8], width: i32, height: i32, hitbox: (i32, i32, i32, i3
         hitbox.2,
         hitbox.3,
         7,
-        if active { theme::YELLOW_ARGB } else { theme::INSET_ARGB },
+        if active {
+            theme::YELLOW_ARGB
+        } else {
+            theme::INSET_ARGB
+        },
     );
     theme::stroke_rounded(
         canvas,
@@ -172,7 +176,16 @@ pub fn render_process_surface(
         s(1.0).max(1),
         theme::BORDER_ARGB,
     );
-    rect(canvas, w, h, s(8.0), s(7.0), s(24.0), s(3.0), theme::YELLOW_ARGB);
+    rect(
+        canvas,
+        w,
+        h,
+        s(8.0),
+        s(7.0),
+        s(24.0),
+        s(3.0),
+        theme::YELLOW_ARGB,
+    );
     label(
         canvas,
         w,

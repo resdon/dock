@@ -257,8 +257,7 @@ pub async fn start_status_notifier_listener(
         if let Err(_e) = watcher
             .call_noreply("RegisterStatusNotifierHost", &(host_name.as_str(),))
             .await
-        {
-        }
+        {}
     }
 
     // External watcher implementations do not all emit host-visible change
@@ -315,8 +314,7 @@ async fn refresh_all_items(
             .await
         {
             Ok(list) => registered.extend(list),
-            Err(_error) if std::env::var_os("DOCK_TRAY_DEBUG").is_some() => {
-            }
+            Err(_error) if std::env::var_os("DOCK_TRAY_DEBUG").is_some() => {}
             Err(_) => {}
         }
     }
@@ -702,8 +700,7 @@ async fn perform_action(connection: &Connection, action: &TrayAction) {
             Ok(()) => {
                 return;
             }
-            Err(_e) => {
-            }
+            Err(_e) => {}
         }
     }
 }
@@ -774,8 +771,7 @@ async fn discover_sni_object_paths(connection: &Connection, service_name: &str) 
     }
     discovered.sort();
     discovered.dedup();
-    if std::env::var_os("DOCK_TRAY_DEBUG").is_some() && !discovered.is_empty() {
-    }
+    if std::env::var_os("DOCK_TRAY_DEBUG").is_some() && !discovered.is_empty() {}
     discovered
 }
 

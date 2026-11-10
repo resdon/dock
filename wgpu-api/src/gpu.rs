@@ -68,10 +68,10 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use crate::geometry::{Size, Rect};
-use crate::surface::SurfaceFormat;
-use crate::texture::{TextureId, TextureFormat as TexFormat};
+use crate::geometry::{Rect, Size};
 use crate::render::RenderError;
+use crate::surface::SurfaceFormat;
+use crate::texture::{TextureFormat as TexFormat, TextureId};
 
 // ---------------------------------------------------------------------------
 // Quad instance data for instanced rendering
@@ -271,10 +271,7 @@ impl OrthographicProjection {
     pub fn identity() -> Self {
         Self {
             matrix: [
-                1.0, 0.0, 0.0, 0.0,
-                0.0, 1.0, 0.0, 0.0,
-                0.0, 0.0, 1.0, 0.0,
-                0.0, 0.0, 0.0, 1.0,
+                1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
             ],
         }
     }
@@ -293,10 +290,8 @@ impl OrthographicProjection {
 
         Self {
             matrix: [
-                inv_width, 0.0,     0.0, 0.0,
-                0.0,       inv_height, 0.0, 0.0,
-                0.0,       0.0,     1.0, 0.0,
-                -1.0,      1.0,     0.0, 1.0,
+                inv_width, 0.0, 0.0, 0.0, 0.0, inv_height, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 1.0,
+                0.0, 1.0,
             ],
         }
     }
@@ -315,10 +310,22 @@ impl OrthographicProjection {
 
         Self {
             matrix: [
-                inv_width, 0.0,     0.0, 0.0,
-                0.0,       inv_height, 0.0, 0.0,
-                0.0,       0.0,     1.0, 0.0,
-                -1.0 + origin[0], 1.0 + origin[1], 0.0, 1.0,
+                inv_width,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                inv_height,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                1.0,
+                0.0,
+                -1.0 + origin[0],
+                1.0 + origin[1],
+                0.0,
+                1.0,
             ],
         }
     }
@@ -326,10 +333,7 @@ impl OrthographicProjection {
     /// Transform a point from logical coordinates to NDC.
     pub fn transform_point(&self, x: f32, y: f32) -> [f32; 2] {
         let m = &self.matrix;
-        [
-            m[0] * x + m[4] * y + m[12],
-            m[1] * x + m[5] * y + m[13],
-        ]
+        [m[0] * x + m[4] * y + m[12], m[1] * x + m[5] * y + m[13]]
     }
 
     /// Check if the projection is valid (non-degenerate).
@@ -521,7 +525,8 @@ impl TextureCache {
     fn evict_if_needed(&mut self) {
         while self.memory_used > self.memory_budget && !self.textures.is_empty() {
             // Find the least recently used unused texture
-            let lru_id = self.textures
+            let lru_id = self
+                .textures
                 .iter()
                 .filter(|(_, t)| !t.in_use)
                 .min_by_key(|(_, t)| t.last_access)
@@ -737,11 +742,11 @@ impl BufferType {
     /// Element size in bytes for this buffer type.
     pub fn element_size(&self) -> u32 {
         match self {
-            BufferType::Vertex => 24,       // TexturedVertex: 2+2+4 = 8 floats
+            BufferType::Vertex => 24, // TexturedVertex: 2+2+4 = 8 floats
             BufferType::Instance => QuadInstance::SIZE,
-            BufferType::Index => 4,         // u32 indices
+            BufferType::Index => 4, // u32 indices
             BufferType::Uniform => GpuUniformBuffer::SIZE as u32,
-            BufferType::Staging => 4,       // Variable
+            BufferType::Staging => 4, // Variable
         }
     }
 }
@@ -768,7 +773,11 @@ impl BufferCache {
     }
 
     /// Get or create a buffer of the given type with the required capacity.
-    pub fn get_or_create(&mut self, buffer_type: BufferType, required_capacity: u32) -> &CachedBuffer {
+    pub fn get_or_create(
+        &mut self,
+        buffer_type: BufferType,
+        required_capacity: u32,
+    ) -> &CachedBuffer {
         let element_size = buffer_type.element_size();
 
         // Check if buffer exists and has enough capacity
@@ -793,12 +802,15 @@ impl BufferCache {
         } else {
             let capacity = required_capacity.max(256);
             let memory = CachedBuffer::estimate_memory(capacity, element_size);
-            self.buffers.insert(buffer_type, CachedBuffer {
+            self.buffers.insert(
                 buffer_type,
-                capacity,
-                len: 0,
-                gpu_memory_bytes: memory,
-            });
+                CachedBuffer {
+                    buffer_type,
+                    capacity,
+                    len: 0,
+                    gpu_memory_bytes: memory,
+                },
+            );
         }
 
         self.buffers.get(&buffer_type).unwrap()
@@ -1179,9 +1191,10 @@ impl SurfacePresenter {
     /// 5. Submit and present
     pub fn present_frame(&mut self) -> Result<(), RenderError> {
         if !self.is_ready() {
-            return Err(RenderError::PresentationFailed(
-                format!("surface state: {:?}", self.state),
-            ));
+            return Err(RenderError::PresentationFailed(format!(
+                "surface state: {:?}",
+                self.state
+            )));
         }
 
         // Check for zero-sized surface
@@ -1235,17 +1248,13 @@ impl SurfacePresenter {
     pub fn needs_recreate(&self) -> bool {
         matches!(
             self.state,
-            SurfacePresentationState::Lost
-                | SurfacePresentationState::OutOfMemory
+            SurfacePresentationState::Lost | SurfacePresentationState::OutOfMemory
         )
     }
 
     /// Check if the surface needs to be reconfigured.
     pub fn needs_reconfigure(&self) -> bool {
-        matches!(
-            self.state,
-            SurfacePresentationState::Outdated
-        )
+        matches!(self.state, SurfacePresentationState::Outdated)
     }
 }
 
@@ -1405,8 +1414,10 @@ mod tests {
     #[test]
     fn test_quad_instance_textured() {
         let inst = QuadInstance::textured(
-            [0.0, 0.0], [200.0, 100.0],
-            [0.0, 0.0], [1.0, 1.0],
+            [0.0, 0.0],
+            [200.0, 100.0],
+            [0.0, 0.0],
+            [1.0, 1.0],
             [1.0, 1.0, 1.0, 0.5],
         );
         assert_eq!(inst.uv_min, [0.0, 0.0]);
@@ -1525,10 +1536,7 @@ mod tests {
 
     #[test]
     fn test_texture_cache_estimate_memory() {
-        let memory = CachedTexture::estimate_memory(
-            Size::new(256.0, 256.0),
-            TexFormat::Rgba8Unorm,
-        );
+        let memory = CachedTexture::estimate_memory(Size::new(256.0, 256.0), TexFormat::Rgba8Unorm);
         assert_eq!(memory, 256 * 256 * 4);
     }
 
@@ -1626,11 +1634,8 @@ mod tests {
 
     #[test]
     fn test_surface_presentation_config() {
-        let config = SurfacePresentationConfig::new(
-            SurfaceFormat::Rgba8,
-            Size::new(800.0, 600.0),
-            2.0,
-        );
+        let config =
+            SurfacePresentationConfig::new(SurfaceFormat::Rgba8, Size::new(800.0, 600.0), 2.0);
         let physical = config.physical_size();
         assert!((physical.width - 1600.0).abs() < 0.01);
         assert!((physical.height - 1200.0).abs() < 0.01);
@@ -1641,11 +1646,8 @@ mod tests {
         let mut presenter = SurfacePresenter::new();
         assert!(presenter.is_ready());
 
-        let config = SurfacePresentationConfig::new(
-            SurfaceFormat::Rgba8,
-            Size::new(800.0, 600.0),
-            1.0,
-        );
+        let config =
+            SurfacePresentationConfig::new(SurfaceFormat::Rgba8, Size::new(800.0, 600.0), 1.0);
         presenter.configure(config);
         assert!(presenter.present_frame().is_ok());
     }
@@ -1653,11 +1655,7 @@ mod tests {
     #[test]
     fn test_surface_presenter_zero_sized() {
         let mut presenter = SurfacePresenter::new();
-        let config = SurfacePresentationConfig::new(
-            SurfaceFormat::Rgba8,
-            Size::new(0.0, 0.0),
-            1.0,
-        );
+        let config = SurfacePresentationConfig::new(SurfaceFormat::Rgba8, Size::new(0.0, 0.0), 1.0);
         presenter.configure(config);
         assert!(presenter.present_frame().is_err());
         assert_eq!(presenter.state(), SurfacePresentationState::ZeroSized);
@@ -1716,17 +1714,23 @@ mod tests {
 
     #[test]
     fn test_orthographic_projection_with_origin() {
-        let proj = OrthographicProjection::from_viewport_with_origin(
-            800.0, 600.0, [0.5, -0.5]
-        );
+        let proj = OrthographicProjection::from_viewport_with_origin(800.0, 600.0, [0.5, -0.5]);
         assert!(proj.is_valid());
     }
 
     #[test]
     fn test_texture_cache_clear() {
         let mut cache = TextureCache::new(1024 * 1024);
-        cache.insert(TextureId::new(1), Size::new(64.0, 64.0), TexFormat::Rgba8Unorm);
-        cache.insert(TextureId::new(2), Size::new(64.0, 64.0), TexFormat::Rgba8Unorm);
+        cache.insert(
+            TextureId::new(1),
+            Size::new(64.0, 64.0),
+            TexFormat::Rgba8Unorm,
+        );
+        cache.insert(
+            TextureId::new(2),
+            Size::new(64.0, 64.0),
+            TexFormat::Rgba8Unorm,
+        );
         assert_eq!(cache.len(), 2);
 
         cache.clear();

@@ -3,8 +3,7 @@
 //! Right-side utility widget cluster: rclone, process monitor, audio, Bluetooth.
 
 use smithay_client_toolkit::{
-    dmabuf::DmabufState,
-    compositor::CompositorState, shell::WaylandSurface, shm::slot::SlotPool,
+    compositor::CompositorState, dmabuf::DmabufState, shell::WaylandSurface, shm::slot::SlotPool,
 };
 use wayland_client::{protocol::wl_shm, QueueHandle};
 

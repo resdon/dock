@@ -521,7 +521,6 @@ fn default_popup_frame_bg_color() -> String {
     "#000000".to_string()
 }
 
-
 /// Default color for popup window list text labels.
 /// Green (#00FF00) provides high contrast against dark backgrounds.
 fn default_popup_text_color() -> String {
@@ -556,96 +555,200 @@ fn default_popup_quit_color() -> String {
     "#00FF00".to_string()
 }
 
-fn default_border_radius() -> u32 { 0 }
-fn default_hover_border_thickness() -> u32 { 2 }
-fn default_dash_thickness() -> u32 { 2 }
-fn default_dash_segment_length() -> u32 { 4 }
-fn default_dash_gap_length() -> u32 { 4 }
-fn default_popup_text_padding() -> u32 { 12 }
-fn default_popup_row_padding() -> u32 { 3 }
-fn default_popup_text_truncate() -> u32 { 22 }
-fn default_popup_frame_border() -> u32 { 4 }
-fn default_popup_close_button_margin() -> u32 { 8 }
-fn default_popup_dash_gap() -> u32 { 4 }
-fn default_context_menu_width() -> u32 { 144 }
-fn default_context_menu_row_height() -> u32 { 29 }
-pub fn default_popup_fade_in() -> f32 { 0.15 }
-fn default_context_menu_fade_in() -> f32 { 0.25 }
-fn default_popup_timeout() -> u64 { 5000 }
-fn default_context_menu_timeout() -> u64 { 1000 }
-fn default_hard_timeout() -> u64 { 10000 }
+fn default_border_radius() -> u32 {
+    0
+}
+fn default_hover_border_thickness() -> u32 {
+    2
+}
+fn default_dash_thickness() -> u32 {
+    2
+}
+fn default_dash_segment_length() -> u32 {
+    4
+}
+fn default_dash_gap_length() -> u32 {
+    4
+}
+fn default_popup_text_padding() -> u32 {
+    12
+}
+fn default_popup_row_padding() -> u32 {
+    3
+}
+fn default_popup_text_truncate() -> u32 {
+    22
+}
+fn default_popup_frame_border() -> u32 {
+    4
+}
+fn default_popup_close_button_margin() -> u32 {
+    8
+}
+fn default_popup_dash_gap() -> u32 {
+    4
+}
+fn default_context_menu_width() -> u32 {
+    144
+}
+fn default_context_menu_row_height() -> u32 {
+    29
+}
+pub fn default_popup_fade_in() -> f32 {
+    0.15
+}
+fn default_context_menu_fade_in() -> f32 {
+    0.25
+}
+fn default_popup_timeout() -> u64 {
+    5000
+}
+fn default_context_menu_timeout() -> u64 {
+    1000
+}
+fn default_hard_timeout() -> u64 {
+    10000
+}
 /// Default text color for icon badge notification numbers.
 /// Green (#00FF00) provides high contrast against the red badge background.
-fn default_badge_text_color() -> String { "#00FF00".to_string() }
-fn default_badge_bg_color() -> String { "#DC2626".to_string() }
-fn default_badge_font_size() -> u32 { 10 }
-fn default_pipewire_scale_factor() -> f32 { 0.5 }
+fn default_badge_text_color() -> String {
+    "#00FF00".to_string()
+}
+fn default_badge_bg_color() -> String {
+    "#DC2626".to_string()
+}
+fn default_badge_font_size() -> u32 {
+    10
+}
+fn default_pipewire_scale_factor() -> f32 {
+    0.5
+}
 
 // === Date/time block widget defaults (right side of dock) ===
 
 /// Default: true — the date/time block widget is enabled by default.
-fn default_date_time_block_enabled() -> bool { true }
+fn default_date_time_block_enabled() -> bool {
+    true
+}
 /// Default: 104px — wide enough for time and date text.
-fn default_date_time_block_width() -> u32 { 104 }
+fn default_date_time_block_width() -> u32 {
+    104
+}
 /// Default: 62px — accommodates time, day+month, and year.
-fn default_date_time_block_height() -> u32 { 62 }
+fn default_date_time_block_height() -> u32 {
+    62
+}
 /// Default: #00FF00 (green) — matches the dock's text color scheme.
-fn default_date_time_block_border_color() -> String { "#00FF00".to_string() }
+fn default_date_time_block_border_color() -> String {
+    "#00FF00".to_string()
+}
 /// Default: 2px — visible border without overwhelming the content.
-fn default_date_time_block_border_thickness() -> u32 { 2 }
+fn default_date_time_block_border_thickness() -> u32 {
+    2
+}
 /// Default: 6px — each dash segment is 6 pixels long.
-fn default_date_time_block_dash_length() -> u32 { 6 }
+fn default_date_time_block_dash_length() -> u32 {
+    6
+}
 /// Default: 4px — gap between dash segments.
-fn default_date_time_block_gap_length() -> u32 { 4 }
+fn default_date_time_block_gap_length() -> u32 {
+    4
+}
 /// Default: #007AFF (blue) — used for time, date, and year text.
-fn default_date_time_block_text_color() -> String { "#007AFF".to_string() }
+fn default_date_time_block_text_color() -> String {
+    "#007AFF".to_string()
+}
 /// Default: 32pt — large, prominent time display (HH:MM).
-fn default_date_time_block_time_font_size() -> u32 { 32 }
+fn default_date_time_block_time_font_size() -> u32 {
+    32
+}
 /// Default: 25px — time text below the dashed border.
-fn default_date_time_block_time_text_y() -> u32 { 25 }
+fn default_date_time_block_time_text_y() -> u32 {
+    25
+}
 /// Default: 16pt — half the time font size for date lines.
-fn default_date_time_block_date_font_size() -> u32 { 16 }
+fn default_date_time_block_date_font_size() -> u32 {
+    16
+}
 /// Default: 43px — day+month text below the time.
-fn default_date_time_block_day_month_y() -> u32 { 43 }
+fn default_date_time_block_day_month_y() -> u32 {
+    43
+}
 /// Default: 59px — year text below the day+month.
-fn default_date_time_block_year_y() -> u32 { 59 }
+fn default_date_time_block_year_y() -> u32 {
+    59
+}
 /// Default: 4px — gap from the dock's right edge to the block.
-fn default_date_time_block_gap_from_dock() -> u32 { 4 }
+fn default_date_time_block_gap_from_dock() -> u32 {
+    4
+}
 
 // === Dashed block widget defaults (icons and keyboard layout, left side of dock) ===
 
 /// Default: true — the dashed block widget is enabled by default.
-fn default_dashed_block_enabled() -> bool { true }
+fn default_dashed_block_enabled() -> bool {
+    true
+}
 /// Default: 74px — wide enough for 2×2 icon grid and ENG text.
-fn default_dashed_block_width() -> u32 { 74 }
+fn default_dashed_block_width() -> u32 {
+    74
+}
 /// Default: 48px — accommodates 2×2 icon grid and keyboard layout text.
-fn default_dashed_block_height() -> u32 { 48 }
+fn default_dashed_block_height() -> u32 {
+    48
+}
 /// Default: #00FF00 (green) — matches the dock's text color scheme.
-fn default_dashed_block_border_color() -> String { "#00FF00".to_string() }
+fn default_dashed_block_border_color() -> String {
+    "#00FF00".to_string()
+}
 /// Default: 2px — visible border without overwhelming the content.
-fn default_dashed_block_border_thickness() -> u32 { 2 }
+fn default_dashed_block_border_thickness() -> u32 {
+    2
+}
 /// Default: 6px — each dash segment is 6 pixels long.
-fn default_dashed_block_dash_length() -> u32 { 6 }
+fn default_dashed_block_dash_length() -> u32 {
+    6
+}
 /// Default: 4px — gap between dash segments.
-fn default_dashed_block_gap_length() -> u32 { 4 }
+fn default_dashed_block_gap_length() -> u32 {
+    4
+}
 /// Default: #007AFF (blue) — used for keyboard layout text.
-fn default_dashed_block_text_color() -> String { "#007AFF".to_string() }
+fn default_dashed_block_text_color() -> String {
+    "#007AFF".to_string()
+}
 /// Default: 16px — each status icon is 16×16 pixels.
-fn default_dashed_block_icon_size() -> u32 { 16 }
+fn default_dashed_block_icon_size() -> u32 {
+    16
+}
 /// Default: 4px — horizontal gap between icons in a row.
-fn default_dashed_block_icon_gap() -> u32 { 4 }
+fn default_dashed_block_icon_gap() -> u32 {
+    4
+}
 /// Default: 4px — vertical gap between icon rows.
-fn default_dashed_block_row_gap() -> u32 { 4 }
+fn default_dashed_block_row_gap() -> u32 {
+    4
+}
 /// Default: 4px — top icon row near the top of the block.
-fn default_dashed_block_top_row_y() -> u32 { 4 }
+fn default_dashed_block_top_row_y() -> u32 {
+    4
+}
 /// Default: 16px — icon rows offset 16px to the right from center.
-fn default_dashed_block_row_offset() -> u32 { 16 }
+fn default_dashed_block_row_offset() -> u32 {
+    16
+}
 /// Default: 12pt — smaller font for keyboard layout indicator.
-fn default_dashed_block_kb_font_size() -> u32 { 12 }
+fn default_dashed_block_kb_font_size() -> u32 {
+    12
+}
 /// Default: "ENG" — placeholder keyboard layout text.
-fn default_dashed_block_kb_layout() -> String { "ENG".to_string() }
+fn default_dashed_block_kb_layout() -> String {
+    "ENG".to_string()
+}
 /// Default: 4px — gap from the dock's left edge to the block.
-fn default_dashed_block_gap_from_dock() -> u32 { 4 }
+fn default_dashed_block_gap_from_dock() -> u32 {
+    4
+}
 
 impl Default for DockConfig {
     fn default() -> Self {
@@ -793,7 +896,10 @@ impl DockConfig {
         if Self::parse_hex_color_opt(value).is_some() {
             value.to_string()
         } else {
-            eprintln!("[CONFIG] Invalid color \"{}\" for \"{}\", using default \"{}\"", value, field, default);
+            eprintln!(
+                "[CONFIG] Invalid color \"{}\" for \"{}\", using default \"{}\"",
+                value, field, default
+            );
             default.to_string()
         }
     }
@@ -801,11 +907,17 @@ impl DockConfig {
     /// Validate a size field, clamping to reasonable bounds
     fn validate_size(value: u32, field: &str, min: u32, max: u32, default: u32) -> u32 {
         if value == 0 && min > 0 {
-            eprintln!("[CONFIG] Zero value for \"{}\", using default {}", field, default);
+            eprintln!(
+                "[CONFIG] Zero value for \"{}\", using default {}",
+                field, default
+            );
             return default;
         }
         if value > max {
-            eprintln!("[CONFIG] \"{}\" value {} exceeds max {}, clamping", field, value, max);
+            eprintln!(
+                "[CONFIG] \"{}\" value {} exceeds max {}, clamping",
+                field, value, max
+            );
             max
         } else {
             value
@@ -815,13 +927,22 @@ impl DockConfig {
     /// Validate an alpha value, clamping to [0.0, 1.0]
     fn validate_alpha(value: f32, field: &str, default: f32) -> f32 {
         if value.is_nan() || value.is_infinite() {
-            eprintln!("[CONFIG] Invalid alpha for \"{}\", using default {}", field, default);
+            eprintln!(
+                "[CONFIG] Invalid alpha for \"{}\", using default {}",
+                field, default
+            );
             default
         } else if value < 0.0 {
-            eprintln!("[CONFIG] \"{}\" alpha {} < 0.0, clamping to 0.0", field, value);
+            eprintln!(
+                "[CONFIG] \"{}\" alpha {} < 0.0, clamping to 0.0",
+                field, value
+            );
             0.0
         } else if value > 1.0 {
-            eprintln!("[CONFIG] \"{}\" alpha {} > 1.0, clamping to 1.0", field, value);
+            eprintln!(
+                "[CONFIG] \"{}\" alpha {} > 1.0, clamping to 1.0",
+                field, value
+            );
             1.0
         } else {
             value
@@ -831,7 +952,10 @@ impl DockConfig {
     /// Validate a float duration/scale value
     fn validate_positive_float(value: f32, field: &str, default: f32) -> f32 {
         if value.is_nan() || value.is_infinite() || value <= 0.0 {
-            eprintln!("[CONFIG] Invalid \"{}\" value {}, using default {}", field, value, default);
+            eprintln!(
+                "[CONFIG] Invalid \"{}\" value {}, using default {}",
+                field, value, default
+            );
             default
         } else {
             value
@@ -841,138 +965,457 @@ impl DockConfig {
     /// Validate and fix all config values, returning a corrected config
     fn validate(self) -> Self {
         let default_cfg = Self::default();
-        
+
         Self {
             // Dock layout
             anchor: self.anchor,
-            dock_height: Self::validate_size(self.dock_height, "dock_height", 20, 200, default_cfg.dock_height),
-            icon_size: Self::validate_size(self.icon_size, "icon_size", 16, 128, default_cfg.icon_size),
+            dock_height: Self::validate_size(
+                self.dock_height,
+                "dock_height",
+                20,
+                200,
+                default_cfg.dock_height,
+            ),
+            icon_size: Self::validate_size(
+                self.icon_size,
+                "icon_size",
+                16,
+                128,
+                default_cfg.icon_size,
+            ),
             spacing: self.spacing,
             margin: self.margin,
-            
+
             // Dock appearance
-            background_color: Self::validate_color(&self.background_color, "background_color", &default_cfg.background_color),
-            background_alpha: Self::validate_alpha(self.background_alpha, "background_alpha", default_cfg.background_alpha),
-            border_color: Self::validate_color(&self.border_color, "border_color", &default_cfg.border_color),
-            border_alpha: Self::validate_alpha(self.border_alpha, "border_alpha", default_cfg.border_alpha),
+            background_color: Self::validate_color(
+                &self.background_color,
+                "background_color",
+                &default_cfg.background_color,
+            ),
+            background_alpha: Self::validate_alpha(
+                self.background_alpha,
+                "background_alpha",
+                default_cfg.background_alpha,
+            ),
+            border_color: Self::validate_color(
+                &self.border_color,
+                "border_color",
+                &default_cfg.border_color,
+            ),
+            border_alpha: Self::validate_alpha(
+                self.border_alpha,
+                "border_alpha",
+                default_cfg.border_alpha,
+            ),
             border_radius: self.border_radius,
-            
+
             // Dock hover
             hover_highlight: self.hover_highlight,
-            hover_color: Self::validate_color(&self.hover_color, "hover_color", &default_cfg.hover_color),
-            hover_border_thickness: Self::validate_size(self.hover_border_thickness, "hover_border_thickness", 1, 10, default_cfg.hover_border_thickness),
-            
+            hover_color: Self::validate_color(
+                &self.hover_color,
+                "hover_color",
+                &default_cfg.hover_color,
+            ),
+            hover_border_thickness: Self::validate_size(
+                self.hover_border_thickness,
+                "hover_border_thickness",
+                1,
+                10,
+                default_cfg.hover_border_thickness,
+            ),
+
             // Dock activity dashes
-            dash_focused_color: Self::validate_color(&self.dash_focused_color, "dash_focused_color", &default_cfg.dash_focused_color),
-            dash_inactive_color: Self::validate_color(&self.dash_inactive_color, "dash_inactive_color", &default_cfg.dash_inactive_color),
-            dash_thickness: Self::validate_size(self.dash_thickness, "dash_thickness", 1, 10, default_cfg.dash_thickness),
-            dash_segment_length: Self::validate_size(self.dash_segment_length, "dash_segment_length", 1, 50, default_cfg.dash_segment_length),
-            dash_gap_length: Self::validate_size(self.dash_gap_length, "dash_gap_length", 1, 50, default_cfg.dash_gap_length),
-            
+            dash_focused_color: Self::validate_color(
+                &self.dash_focused_color,
+                "dash_focused_color",
+                &default_cfg.dash_focused_color,
+            ),
+            dash_inactive_color: Self::validate_color(
+                &self.dash_inactive_color,
+                "dash_inactive_color",
+                &default_cfg.dash_inactive_color,
+            ),
+            dash_thickness: Self::validate_size(
+                self.dash_thickness,
+                "dash_thickness",
+                1,
+                10,
+                default_cfg.dash_thickness,
+            ),
+            dash_segment_length: Self::validate_size(
+                self.dash_segment_length,
+                "dash_segment_length",
+                1,
+                50,
+                default_cfg.dash_segment_length,
+            ),
+            dash_gap_length: Self::validate_size(
+                self.dash_gap_length,
+                "dash_gap_length",
+                1,
+                50,
+                default_cfg.dash_gap_length,
+            ),
+
             // Click animation
             click_animation: self.click_animation,
-            click_animation_scale: Self::validate_positive_float(self.click_animation_scale, "click_animation_scale", default_cfg.click_animation_scale),
-            click_animation_up_duration: Self::validate_positive_float(self.click_animation_up_duration, "click_animation_up_duration", default_cfg.click_animation_up_duration),
-            click_animation_down_duration: Self::validate_positive_float(self.click_animation_down_duration, "click_animation_down_duration", default_cfg.click_animation_down_duration),
-            
+            click_animation_scale: Self::validate_positive_float(
+                self.click_animation_scale,
+                "click_animation_scale",
+                default_cfg.click_animation_scale,
+            ),
+            click_animation_up_duration: Self::validate_positive_float(
+                self.click_animation_up_duration,
+                "click_animation_up_duration",
+                default_cfg.click_animation_up_duration,
+            ),
+            click_animation_down_duration: Self::validate_positive_float(
+                self.click_animation_down_duration,
+                "click_animation_down_duration",
+                default_cfg.click_animation_down_duration,
+            ),
+
             // Bounce animation
             bounce_animation: self.bounce_animation,
-            bounce_animation_scale: Self::validate_positive_float(self.bounce_animation_scale, "bounce_animation_scale", default_cfg.bounce_animation_scale),
-            bounce_animation_duration: Self::validate_positive_float(self.bounce_animation_duration, "bounce_animation_duration", default_cfg.bounce_animation_duration),
-            minimize_animation_scale: Self::validate_positive_float(self.minimize_animation_scale, "minimize_animation_scale", default_cfg.minimize_animation_scale),
-            minimize_animation_duration: Self::validate_positive_float(self.minimize_animation_duration, "minimize_animation_duration", default_cfg.minimize_animation_duration),
-            
+            bounce_animation_scale: Self::validate_positive_float(
+                self.bounce_animation_scale,
+                "bounce_animation_scale",
+                default_cfg.bounce_animation_scale,
+            ),
+            bounce_animation_duration: Self::validate_positive_float(
+                self.bounce_animation_duration,
+                "bounce_animation_duration",
+                default_cfg.bounce_animation_duration,
+            ),
+            minimize_animation_scale: Self::validate_positive_float(
+                self.minimize_animation_scale,
+                "minimize_animation_scale",
+                default_cfg.minimize_animation_scale,
+            ),
+            minimize_animation_duration: Self::validate_positive_float(
+                self.minimize_animation_duration,
+                "minimize_animation_duration",
+                default_cfg.minimize_animation_duration,
+            ),
+
             // Popup window list
-            popup_width: Self::validate_size(self.popup_width, "popup_width", 100, 800, default_cfg.popup_width),
-            popup_row_height: Self::validate_size(self.popup_row_height, "popup_row_height", 16, 80, default_cfg.popup_row_height),
-            popup_frame_height: Self::validate_size(self.popup_frame_height, "popup_frame_height", 50, 500, default_cfg.popup_frame_height),
-            popup_font_size: Self::validate_size(self.popup_font_size, "popup_font_size", 8, 32, default_cfg.popup_font_size),
-            popup_close_button_size: Self::validate_size(self.popup_close_button_size, "popup_close_button_size", 8, 40, default_cfg.popup_close_button_size),
+            popup_width: Self::validate_size(
+                self.popup_width,
+                "popup_width",
+                100,
+                800,
+                default_cfg.popup_width,
+            ),
+            popup_row_height: Self::validate_size(
+                self.popup_row_height,
+                "popup_row_height",
+                16,
+                80,
+                default_cfg.popup_row_height,
+            ),
+            popup_frame_height: Self::validate_size(
+                self.popup_frame_height,
+                "popup_frame_height",
+                50,
+                500,
+                default_cfg.popup_frame_height,
+            ),
+            popup_font_size: Self::validate_size(
+                self.popup_font_size,
+                "popup_font_size",
+                8,
+                32,
+                default_cfg.popup_font_size,
+            ),
+            popup_close_button_size: Self::validate_size(
+                self.popup_close_button_size,
+                "popup_close_button_size",
+                8,
+                40,
+                default_cfg.popup_close_button_size,
+            ),
             popup_text_padding: self.popup_text_padding,
             popup_row_padding: self.popup_row_padding,
-            popup_text_truncate: Self::validate_size(self.popup_text_truncate, "popup_text_truncate", 5, 100, default_cfg.popup_text_truncate),
+            popup_text_truncate: Self::validate_size(
+                self.popup_text_truncate,
+                "popup_text_truncate",
+                5,
+                100,
+                default_cfg.popup_text_truncate,
+            ),
             popup_frame_border: self.popup_frame_border,
             popup_close_button_margin: self.popup_close_button_margin,
             pipewire_scale_factor: self.pipewire_scale_factor.clamp(0.01, 1.0),
-            
+
             // Popup colors
-            popup_hover_border_color: Self::validate_color(&self.popup_hover_border_color, "popup_hover_border_color", &default_cfg.popup_hover_border_color),
-            popup_close_hover_color: Self::validate_color(&self.popup_close_hover_color, "popup_close_hover_color", &default_cfg.popup_close_hover_color),
-            popup_close_button_color: Self::validate_color(&self.popup_close_button_color, "popup_close_button_color", &default_cfg.popup_close_button_color),
-            popup_close_button_hover_color: Self::validate_color(&self.popup_close_button_hover_color, "popup_close_button_hover_color", &default_cfg.popup_close_button_hover_color),
-            popup_close_cross_color: Self::validate_color(&self.popup_close_cross_color, "popup_close_cross_color", &default_cfg.popup_close_cross_color),
-            popup_frame_bg_color: Self::validate_color(&self.popup_frame_bg_color, "popup_frame_bg_color", &default_cfg.popup_frame_bg_color),
-            popup_text_color: Self::validate_color(&self.popup_text_color, "popup_text_color", &default_cfg.popup_text_color),
+            popup_hover_border_color: Self::validate_color(
+                &self.popup_hover_border_color,
+                "popup_hover_border_color",
+                &default_cfg.popup_hover_border_color,
+            ),
+            popup_close_hover_color: Self::validate_color(
+                &self.popup_close_hover_color,
+                "popup_close_hover_color",
+                &default_cfg.popup_close_hover_color,
+            ),
+            popup_close_button_color: Self::validate_color(
+                &self.popup_close_button_color,
+                "popup_close_button_color",
+                &default_cfg.popup_close_button_color,
+            ),
+            popup_close_button_hover_color: Self::validate_color(
+                &self.popup_close_button_hover_color,
+                "popup_close_button_hover_color",
+                &default_cfg.popup_close_button_hover_color,
+            ),
+            popup_close_cross_color: Self::validate_color(
+                &self.popup_close_cross_color,
+                "popup_close_cross_color",
+                &default_cfg.popup_close_cross_color,
+            ),
+            popup_frame_bg_color: Self::validate_color(
+                &self.popup_frame_bg_color,
+                "popup_frame_bg_color",
+                &default_cfg.popup_frame_bg_color,
+            ),
+            popup_text_color: Self::validate_color(
+                &self.popup_text_color,
+                "popup_text_color",
+                &default_cfg.popup_text_color,
+            ),
             popup_border_style: self.popup_border_style,
-            popup_border_color: Self::validate_color(&self.popup_border_color, "popup_border_color", &default_cfg.popup_border_color),
+            popup_border_color: Self::validate_color(
+                &self.popup_border_color,
+                "popup_border_color",
+                &default_cfg.popup_border_color,
+            ),
             popup_dash_gap: self.popup_dash_gap,
-            
+
             // Context menu
-            context_menu_width: Self::validate_size(self.context_menu_width, "context_menu_width", 80, 400, default_cfg.context_menu_width),
-            context_menu_row_height: Self::validate_size(self.context_menu_row_height, "context_menu_row_height", 16, 60, default_cfg.context_menu_row_height),
-            popup_focus_color: Self::validate_color(&self.popup_focus_color, "popup_focus_color", &default_cfg.popup_focus_color),
-            popup_unpin_color: Self::validate_color(&self.popup_unpin_color, "popup_unpin_color", &default_cfg.popup_unpin_color),
-            popup_launch_color: Self::validate_color(&self.popup_launch_color, "popup_launch_color", &default_cfg.popup_launch_color),
-            popup_quit_color: Self::validate_color(&self.popup_quit_color, "popup_quit_color", &default_cfg.popup_quit_color),
-            
+            context_menu_width: Self::validate_size(
+                self.context_menu_width,
+                "context_menu_width",
+                80,
+                400,
+                default_cfg.context_menu_width,
+            ),
+            context_menu_row_height: Self::validate_size(
+                self.context_menu_row_height,
+                "context_menu_row_height",
+                16,
+                60,
+                default_cfg.context_menu_row_height,
+            ),
+            popup_focus_color: Self::validate_color(
+                &self.popup_focus_color,
+                "popup_focus_color",
+                &default_cfg.popup_focus_color,
+            ),
+            popup_unpin_color: Self::validate_color(
+                &self.popup_unpin_color,
+                "popup_unpin_color",
+                &default_cfg.popup_unpin_color,
+            ),
+            popup_launch_color: Self::validate_color(
+                &self.popup_launch_color,
+                "popup_launch_color",
+                &default_cfg.popup_launch_color,
+            ),
+            popup_quit_color: Self::validate_color(
+                &self.popup_quit_color,
+                "popup_quit_color",
+                &default_cfg.popup_quit_color,
+            ),
+
             // Fade/timing
-            popup_fade_in: Self::validate_positive_float(self.popup_fade_in, "popup_fade_in", default_cfg.popup_fade_in),
-            context_menu_fade_in: Self::validate_positive_float(self.context_menu_fade_in, "context_menu_fade_in", default_cfg.context_menu_fade_in),
+            popup_fade_in: Self::validate_positive_float(
+                self.popup_fade_in,
+                "popup_fade_in",
+                default_cfg.popup_fade_in,
+            ),
+            context_menu_fade_in: Self::validate_positive_float(
+                self.context_menu_fade_in,
+                "context_menu_fade_in",
+                default_cfg.context_menu_fade_in,
+            ),
             popup_timeout: if self.popup_timeout == 0 {
-                eprintln!("[CONFIG] Zero popup_timeout, using default {}", default_cfg.popup_timeout);
+                eprintln!(
+                    "[CONFIG] Zero popup_timeout, using default {}",
+                    default_cfg.popup_timeout
+                );
                 default_cfg.popup_timeout
             } else {
                 self.popup_timeout
             },
             context_menu_timeout: if self.context_menu_timeout == 0 {
-                eprintln!("[CONFIG] Zero context_menu_timeout, using default {}", default_cfg.context_menu_timeout);
+                eprintln!(
+                    "[CONFIG] Zero context_menu_timeout, using default {}",
+                    default_cfg.context_menu_timeout
+                );
                 default_cfg.context_menu_timeout
             } else {
                 self.context_menu_timeout
             },
             hard_timeout: if self.hard_timeout == 0 {
-                eprintln!("[CONFIG] Zero hard_timeout, using default {}", default_cfg.hard_timeout);
+                eprintln!(
+                    "[CONFIG] Zero hard_timeout, using default {}",
+                    default_cfg.hard_timeout
+                );
                 default_cfg.hard_timeout
             } else {
                 self.hard_timeout
             },
-            
+
             // Icon badge
-            badge_text_color: Self::validate_color(&self.badge_text_color, "badge_text_color", &default_cfg.badge_text_color),
-            badge_bg_color: Self::validate_color(&self.badge_bg_color, "badge_bg_color", &default_cfg.badge_bg_color),
-            badge_font_size: Self::validate_size(self.badge_font_size, "badge_font_size", 6, 24, default_cfg.badge_font_size),
-            
+            badge_text_color: Self::validate_color(
+                &self.badge_text_color,
+                "badge_text_color",
+                &default_cfg.badge_text_color,
+            ),
+            badge_bg_color: Self::validate_color(
+                &self.badge_bg_color,
+                "badge_bg_color",
+                &default_cfg.badge_bg_color,
+            ),
+            badge_font_size: Self::validate_size(
+                self.badge_font_size,
+                "badge_font_size",
+                6,
+                24,
+                default_cfg.badge_font_size,
+            ),
+
             // Date/time block widget (right side of dock)
             date_time_block_enabled: self.date_time_block_enabled,
-            date_time_block_width: Self::validate_size(self.date_time_block_width, "date_time_block_width", 48, 256, default_cfg.date_time_block_width),
-            date_time_block_height: Self::validate_size(self.date_time_block_height, "date_time_block_height", 32, 256, default_cfg.date_time_block_height),
-            date_time_block_border_color: Self::validate_color(&self.date_time_block_border_color, "date_time_block_border_color", &default_cfg.date_time_block_border_color),
-            date_time_block_border_thickness: Self::validate_size(self.date_time_block_border_thickness, "date_time_block_border_thickness", 1, 8, default_cfg.date_time_block_border_thickness),
-            date_time_block_dash_length: Self::validate_size(self.date_time_block_dash_length, "date_time_block_dash_length", 1, 20, default_cfg.date_time_block_dash_length),
-            date_time_block_gap_length: Self::validate_size(self.date_time_block_gap_length, "date_time_block_gap_length", 1, 20, default_cfg.date_time_block_gap_length),
-            date_time_block_text_color: Self::validate_color(&self.date_time_block_text_color, "date_time_block_text_color", &default_cfg.date_time_block_text_color),
-            date_time_block_time_font_size: Self::validate_size(self.date_time_block_time_font_size, "date_time_block_time_font_size", 8, 64, default_cfg.date_time_block_time_font_size),
+            date_time_block_width: Self::validate_size(
+                self.date_time_block_width,
+                "date_time_block_width",
+                48,
+                256,
+                default_cfg.date_time_block_width,
+            ),
+            date_time_block_height: Self::validate_size(
+                self.date_time_block_height,
+                "date_time_block_height",
+                32,
+                256,
+                default_cfg.date_time_block_height,
+            ),
+            date_time_block_border_color: Self::validate_color(
+                &self.date_time_block_border_color,
+                "date_time_block_border_color",
+                &default_cfg.date_time_block_border_color,
+            ),
+            date_time_block_border_thickness: Self::validate_size(
+                self.date_time_block_border_thickness,
+                "date_time_block_border_thickness",
+                1,
+                8,
+                default_cfg.date_time_block_border_thickness,
+            ),
+            date_time_block_dash_length: Self::validate_size(
+                self.date_time_block_dash_length,
+                "date_time_block_dash_length",
+                1,
+                20,
+                default_cfg.date_time_block_dash_length,
+            ),
+            date_time_block_gap_length: Self::validate_size(
+                self.date_time_block_gap_length,
+                "date_time_block_gap_length",
+                1,
+                20,
+                default_cfg.date_time_block_gap_length,
+            ),
+            date_time_block_text_color: Self::validate_color(
+                &self.date_time_block_text_color,
+                "date_time_block_text_color",
+                &default_cfg.date_time_block_text_color,
+            ),
+            date_time_block_time_font_size: Self::validate_size(
+                self.date_time_block_time_font_size,
+                "date_time_block_time_font_size",
+                8,
+                64,
+                default_cfg.date_time_block_time_font_size,
+            ),
             date_time_block_time_text_y: self.date_time_block_time_text_y,
-            date_time_block_date_font_size: Self::validate_size(self.date_time_block_date_font_size, "date_time_block_date_font_size", 8, 32, default_cfg.date_time_block_date_font_size),
+            date_time_block_date_font_size: Self::validate_size(
+                self.date_time_block_date_font_size,
+                "date_time_block_date_font_size",
+                8,
+                32,
+                default_cfg.date_time_block_date_font_size,
+            ),
             date_time_block_day_month_y: self.date_time_block_day_month_y,
             date_time_block_year_y: self.date_time_block_year_y,
             date_time_block_gap_from_dock: self.date_time_block_gap_from_dock,
 
             // Dashed block widget (icons and keyboard layout, left side of dock)
             dashed_block_enabled: self.dashed_block_enabled,
-            dashed_block_width: Self::validate_size(self.dashed_block_width, "dashed_block_width", 32, 256, default_cfg.dashed_block_width),
-            dashed_block_height: Self::validate_size(self.dashed_block_height, "dashed_block_height", 32, 256, default_cfg.dashed_block_height),
-            dashed_block_border_color: Self::validate_color(&self.dashed_block_border_color, "dashed_block_border_color", &default_cfg.dashed_block_border_color),
-            dashed_block_border_thickness: Self::validate_size(self.dashed_block_border_thickness, "dashed_block_border_thickness", 1, 8, default_cfg.dashed_block_border_thickness),
-            dashed_block_dash_length: Self::validate_size(self.dashed_block_dash_length, "dashed_block_dash_length", 1, 20, default_cfg.dashed_block_dash_length),
-            dashed_block_gap_length: Self::validate_size(self.dashed_block_gap_length, "dashed_block_gap_length", 1, 20, default_cfg.dashed_block_gap_length),
-            dashed_block_text_color: Self::validate_color(&self.dashed_block_text_color, "dashed_block_text_color", &default_cfg.dashed_block_text_color),
-            dashed_block_icon_size: Self::validate_size(self.dashed_block_icon_size, "dashed_block_icon_size", 8, 32, default_cfg.dashed_block_icon_size),
+            dashed_block_width: Self::validate_size(
+                self.dashed_block_width,
+                "dashed_block_width",
+                32,
+                256,
+                default_cfg.dashed_block_width,
+            ),
+            dashed_block_height: Self::validate_size(
+                self.dashed_block_height,
+                "dashed_block_height",
+                32,
+                256,
+                default_cfg.dashed_block_height,
+            ),
+            dashed_block_border_color: Self::validate_color(
+                &self.dashed_block_border_color,
+                "dashed_block_border_color",
+                &default_cfg.dashed_block_border_color,
+            ),
+            dashed_block_border_thickness: Self::validate_size(
+                self.dashed_block_border_thickness,
+                "dashed_block_border_thickness",
+                1,
+                8,
+                default_cfg.dashed_block_border_thickness,
+            ),
+            dashed_block_dash_length: Self::validate_size(
+                self.dashed_block_dash_length,
+                "dashed_block_dash_length",
+                1,
+                20,
+                default_cfg.dashed_block_dash_length,
+            ),
+            dashed_block_gap_length: Self::validate_size(
+                self.dashed_block_gap_length,
+                "dashed_block_gap_length",
+                1,
+                20,
+                default_cfg.dashed_block_gap_length,
+            ),
+            dashed_block_text_color: Self::validate_color(
+                &self.dashed_block_text_color,
+                "dashed_block_text_color",
+                &default_cfg.dashed_block_text_color,
+            ),
+            dashed_block_icon_size: Self::validate_size(
+                self.dashed_block_icon_size,
+                "dashed_block_icon_size",
+                8,
+                32,
+                default_cfg.dashed_block_icon_size,
+            ),
             dashed_block_icon_gap: self.dashed_block_icon_gap,
             dashed_block_row_gap: self.dashed_block_row_gap,
             dashed_block_top_row_y: self.dashed_block_top_row_y,
             dashed_block_row_offset: self.dashed_block_row_offset,
-            dashed_block_kb_font_size: Self::validate_size(self.dashed_block_kb_font_size, "dashed_block_kb_font_size", 6, 24, default_cfg.dashed_block_kb_font_size),
+            dashed_block_kb_font_size: Self::validate_size(
+                self.dashed_block_kb_font_size,
+                "dashed_block_kb_font_size",
+                6,
+                24,
+                default_cfg.dashed_block_kb_font_size,
+            ),
             dashed_block_kb_layout: self.dashed_block_kb_layout,
             dashed_block_gap_from_dock: self.dashed_block_gap_from_dock,
         }
@@ -983,9 +1426,7 @@ impl DockConfig {
         let path = get_config_path();
         if let Ok(data) = fs::read_to_string(&path) {
             match serde_json::from_str::<DockConfig>(&data) {
-                Ok(config) => {
-                    config.validate()
-                }
+                Ok(config) => config.validate(),
                 Err(e) => {
                     eprintln!("[CONFIG] Failed to parse config.json: {}", e);
                     eprintln!("[CONFIG] Using default configuration");

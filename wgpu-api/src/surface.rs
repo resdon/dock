@@ -3,8 +3,8 @@
 //! A Surface represents a renderable area (window, offscreen buffer, etc.)
 //! that the Renderer can draw to.
 
-use crate::geometry::Size;
 use crate::color::Color;
+use crate::geometry::Size;
 
 /// Opaque identifier for a surface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

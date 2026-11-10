@@ -342,11 +342,7 @@ impl FrameRateAnalyzer {
     /// Compute the maximum FPS (from the fastest frame).
     pub fn max_fps(&self) -> f64 {
         let times = self.frame_times.borrow();
-        let min_time = times
-            .iter()
-            .cloned()
-            .fold(f64::MAX, f64::min)
-            .max(0.001);
+        let min_time = times.iter().cloned().fold(f64::MAX, f64::min).max(0.001);
         1000.0 / min_time
     }
 
@@ -375,11 +371,8 @@ impl FrameRateAnalyzer {
             return 0.0;
         }
         let mean: f64 = times.iter().sum::<f64>() / times.len() as f64;
-        let variance: f64 = times
-            .iter()
-            .map(|t| (t - mean).powi(2))
-            .sum::<f64>()
-            / times.len() as f64;
+        let variance: f64 =
+            times.iter().map(|t| (t - mean).powi(2)).sum::<f64>() / times.len() as f64;
         variance.sqrt()
     }
 
@@ -587,14 +580,19 @@ impl ProfileSnapshot {
     pub fn slowest_phase(&self) -> Option<(RenderPhase, f64)> {
         self.phases
             .iter()
-            .max_by(|a, b| a.1.duration_ms.partial_cmp(&b.1.duration_ms).unwrap_or(std::cmp::Ordering::Equal))
+            .max_by(|a, b| {
+                a.1.duration_ms
+                    .partial_cmp(&b.1.duration_ms)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
             .map(|(&phase, timing)| (phase, timing.duration_ms))
     }
 
     /// Format as a report.
     pub fn report(&self) -> String {
         let total = self.total_time_ms();
-        let slowest = self.slowest_phase()
+        let slowest = self
+            .slowest_phase()
             .map(|(p, ms)| format!("{} ({:.2}ms)", p.name(), ms))
             .unwrap_or_else(|| "-".to_string());
 
@@ -633,10 +631,7 @@ impl FrameRateData {
     pub fn report(&self) -> String {
         format!(
             "{:.1}fps (avg {:.1}, {:.2}ms, jitter {:.2}ms)",
-            self.current_fps,
-            self.avg_fps,
-            self.frame_time_ms,
-            self.jitter_ms
+            self.current_fps, self.avg_fps, self.frame_time_ms, self.jitter_ms
         )
     }
 }
@@ -832,12 +827,7 @@ impl Profiler {
 
     /// Format a comprehensive report.
     pub fn report(&self) -> String {
-        let phases: Vec<String> = self
-            .phases
-            .borrow()
-            .values()
-            .map(|p| p.report())
-            .collect();
+        let phases: Vec<String> = self.phases.borrow().values().map(|p| p.report()).collect();
 
         let counters: Vec<String> = self
             .counters
@@ -1020,11 +1010,8 @@ impl JitterAnalyzer {
             return 0.0;
         }
         let mean: f64 = times.iter().sum::<f64>() / times.len() as f64;
-        let variance: f64 = times
-            .iter()
-            .map(|t| (t - mean).powi(2))
-            .sum::<f64>()
-            / times.len() as f64;
+        let variance: f64 =
+            times.iter().map(|t| (t - mean).powi(2)).sum::<f64>() / times.len() as f64;
         variance.sqrt()
     }
 

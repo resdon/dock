@@ -73,282 +73,291 @@
 // Module declarations
 // ---------------------------------------------------------------------------
 
-pub mod geometry;
-pub mod color;
-pub mod primitives;
-pub mod transform;
-pub mod image;
-pub mod text;
 pub mod animation;
-pub mod surface;
-pub mod texture;
-pub mod renderer;
-pub mod command;
-pub mod layout;
-pub mod brush;
-pub mod frame;
-pub mod scene;
-pub mod render;
-pub mod shaders;
 pub mod backend;
-pub mod glyph;
-pub mod shaping;
-pub mod fontdb;
-pub mod video;
-pub mod viewport;
-pub mod morphing;
-pub mod clip;
-pub mod wayland;
-pub mod slint;
-pub mod gpu;
 pub mod batching;
+pub mod brush;
+pub mod clip;
+pub mod color;
+pub mod command;
+pub mod error;
+pub mod fontdb;
+pub mod frame;
+pub mod geometry;
 pub mod gif;
+pub mod glyph;
+pub mod gpu;
+pub mod image;
+pub mod layout;
 pub mod math_utils;
 pub mod monitor;
+pub mod morphing;
 pub mod perf;
 pub mod physics;
-pub mod error;
+pub mod primitives;
+pub mod render;
+pub mod renderer;
+pub mod scene;
+pub mod shaders;
+pub mod shaping;
+pub mod slint;
+pub mod surface;
+pub mod text;
+pub mod texture;
+pub mod transform;
+pub mod video;
+pub mod viewport;
+pub mod wayland;
 
 // ---------------------------------------------------------------------------
 // Re-export core types at the crate root for ergonomic imports
 // ---------------------------------------------------------------------------
 
 // Core identifiers
-pub use geometry::{Size, Point, Rect, Vector2D};
-pub use color::{Color, Gradient, GradientType, BlendMode};
-pub use primitives::{Path, Shape, StrokeStyle, FillRule, LineCap, LineJoin, DashPattern};
-pub use transform::{Transform, Matrix3};
-pub use image::{Image, ImageFormat, ImageFilter, ImageData};
-pub use text::{Text, TextStyle, TextAlign, TextBaseline, Font, FontWeight, FontStyle};
 pub use animation::{
-    Animation, AnimationType, Easing, AnimationId, AnimationState,
-    AnimationRepeat, AnimationValue,
-    PulseAnimation, RotateAnimation, FadeAnimation, BounceAnimation, SpringAnimation,
-    KeyframeAnimation, Keyframe,
-    AnimatedProperty, ContinuousAnimation, ContinuousAnimationType,
-    AnimatedNode, AnimationManager,
-    InteractionMouseButton, MouseButtonState, InteractionEvent,
-    HoverState, DragState, GestureType, GestureState,
-    InteractionConfig, InteractionState,
-    StarShape, PolygonShape, RingShape, ProgressRing,
-    Particle, ParticleSystemConfig, ParticleSystem,
+    AnimatedNode, AnimatedProperty, Animation, AnimationId, AnimationManager, AnimationRepeat,
+    AnimationState, AnimationType, AnimationValue, BounceAnimation, ContinuousAnimation,
+    ContinuousAnimationType, DragState, Easing, FadeAnimation, GestureState, GestureType,
+    HoverState, InteractionConfig, InteractionEvent, InteractionMouseButton, InteractionState,
+    Keyframe, KeyframeAnimation, MouseButtonState, Particle, ParticleSystem, ParticleSystemConfig,
+    PolygonShape, ProgressRing, PulseAnimation, RingShape, RotateAnimation, SpringAnimation,
+    StarShape,
 };
-pub use surface::{Surface, SurfaceFormat, SurfaceId, SurfaceConfig, SurfaceDescriptor};
-pub use texture::{Texture, TextureId, TextureFormat, TextureFilter, TextureWrap};
-pub use renderer::{Renderer, RendererConfig, RendererBackend};
+pub use color::{BlendMode, Color, Gradient, GradientType};
 pub use command::{Command, CommandBuffer, FrameCallback};
+pub use geometry::{Point, Rect, Size, Vector2D};
+pub use image::{Image, ImageData, ImageFilter, ImageFormat};
+pub use primitives::{DashPattern, FillRule, LineCap, LineJoin, Path, Shape, StrokeStyle};
+pub use renderer::{Renderer, RendererBackend, RendererConfig};
+pub use surface::{Surface, SurfaceConfig, SurfaceDescriptor, SurfaceFormat, SurfaceId};
+pub use text::{Font, FontStyle, FontWeight, Text, TextAlign, TextBaseline, TextStyle};
+pub use texture::{Texture, TextureFilter, TextureFormat, TextureId, TextureWrap};
+pub use transform::{Matrix3, Transform};
 
 // Opaque handle types (re-exported from their modules)
 pub use geometry::NodeId;
 
 // Layout and styling types
-pub use layout::{Insets, CornerRadius, Shadow};
 pub use brush::Brush;
-pub use frame::{FrameInfo, PointerLocation, MouseButton, PointerEvent};
+pub use frame::{FrameInfo, MouseButton, PointerEvent, PointerLocation};
+pub use layout::{CornerRadius, Insets, Shadow};
 
 // Scene graph types
-pub use scene::{
-    NodeStyle, NodeContent, Node, Scene,
-    Rectangle, SceneImage, SceneText, Group,
-};
+pub use scene::{Group, Node, NodeContent, NodeStyle, Rectangle, Scene, SceneImage, SceneText};
 
 // Rendering pipeline types
-pub use render::{
-    RenderError, RenderTarget, DrawCommand, FrameState, RenderPassInfo,
-};
+pub use render::{DrawCommand, FrameState, RenderError, RenderPassInfo, RenderTarget};
 
 // Glyph atlas and caching types
 pub use glyph::{
-    GlyphInfo, TextureRegion, GlyphCacheKey, GlyphCluster, GlyphRun,
-    ShapedLine, GlyphAtlas, AtlasStats, GlyphCache,
-    RasterizationMode,
+    AtlasStats, GlyphAtlas, GlyphCache, GlyphCacheKey, GlyphCluster, GlyphInfo, GlyphRun,
+    RasterizationMode, ShapedLine, TextureRegion,
 };
 
 // Text shaping pipeline types
 pub use shaping::{
-    ShapedText, ShaperConfig, FontFace, TextShaper,
-    FontFallback, GlyphRasterizer, GlyphRaster,
+    FontFace, FontFallback, GlyphRaster, GlyphRasterizer, ShapedText, ShaperConfig, TextShaper,
 };
 
 // Font database types
-pub use fontdb::{
-    FontProperties, FontStretch, FontEntry, FontDatabase, FontResolver,
-};
+pub use fontdb::{FontDatabase, FontEntry, FontProperties, FontResolver, FontStretch};
 
 // Video and PipeWire integration types
 pub use video::{
-    StreamId, FrameHandle, VideoFormat, StreamState,
-    VideoFrame, VideoStream, StreamStats,
-    VideoTexture, VideoManager, VideoManagerStats,
-    VideoNode, VideoFitMode,
-    FrameBuffer, FrameBufferSource,
-    convert_bgfx_to_rgba, convert_bgra_to_rgba, convert_rgb_to_rgba,
-    estimate_video_vram, estimate_video_memory,
+    convert_bgfx_to_rgba, convert_bgra_to_rgba, convert_rgb_to_rgba, estimate_video_memory,
+    estimate_video_vram, FrameBuffer, FrameBufferSource, FrameHandle, StreamId, StreamState,
+    StreamStats, VideoFitMode, VideoFormat, VideoFrame, VideoManager, VideoManagerStats, VideoNode,
+    VideoStream, VideoTexture,
 };
 
 // Viewport and coordinate system types
 pub use viewport::{
-    Viewport, ResizeEvent, ResourceChanges, TextScalePolicy,
-    compute_resource_changes,
+    compute_resource_changes, ResizeEvent, ResourceChanges, TextScalePolicy, Viewport,
 };
 
 // Geometry morphing and animation types
 pub use morphing::{
-    GeometryAnimation, SizeAnimation, PositionAnimation,
-    MorphType, PopupAnimation, MorphManager,
+    GeometryAnimation, MorphManager, MorphType, PopupAnimation, PositionAnimation, SizeAnimation,
 };
 
 // Clipping types
-pub use clip::{
-    ClipRect, ClipStack, RoundedClip, ScissorRect, ClipMode,
-};
+pub use clip::{ClipMode, ClipRect, ClipStack, RoundedClip, ScissorRect};
 
 // Wayland client integration types
 pub use wayland::{
-    WaylandWindowId, WaylandPopupId,
+    AxisType, InputEvent, KeyEvent, KeyState, ModifiersState, OutputInfo, OutputTransform,
+    PointerButton, PointerButtonState, PointerEventType, PopupAnchor, PopupGravity, PopupShadow,
+    TouchEvent, TouchEventType, TouchId, VisualPopup, WaylandConnection, WaylandPopup,
+    WaylandPopupConfig, WaylandPopupId, WaylandWindow, WaylandWindowConfig, WaylandWindowId,
     WindowState, WindowType,
-    WaylandWindowConfig, WaylandWindow,
-    PopupAnchor, PopupGravity,
-    WaylandPopupConfig, WaylandPopup,
-    KeyState, KeyEvent,
-    PointerButtonState, PointerButton, PointerEventType,
-    AxisType, ModifiersState,
-    TouchId, TouchEventType, TouchEvent,
-    InputEvent,
-    WaylandConnection,
-    VisualPopup, PopupShadow,
-    OutputInfo, OutputTransform,
 };
 
 // Slint integration and widget types
 pub use slint::{
-    WidgetId,
-    DockItem, DockWidget, DashConfig,
-    DeviceEntry, BluetoothAction,
-    BluetoothState, BluetoothWidget,
-    SlintRenderMode, SlintIntegrationConfig,
-    SlintComponent, WidgetRegistry,
-    SlintEvent, SlintMouseButton,
+    BluetoothAction, BluetoothState, BluetoothWidget, DashConfig, DeviceEntry, DockItem,
+    DockWidget, SlintComponent, SlintEvent, SlintIntegrationConfig, SlintMouseButton,
+    SlintRenderMode, WidgetId, WidgetRegistry,
 };
 
 // GPU backend types
 pub use gpu::{
-    QuadInstance, PipelineType, BlendMode as GpuBlendMode, PipelineKey,
-    OrthographicProjection, GpuUniformBuffer,
-    CachedTexture, TextureCache,
-    CachedPipeline, PipelineCache,
-    CachedBuffer, BufferType, BufferCache,
-    CachedGlyph,
-    GpuResources,
-    SurfacePresentationState, SurfacePresentationConfig, SurfaceAlphaMode,
-    SurfacePresenter, PresentationError,
-    FrameStats, GpuBackendConfig,
+    BlendMode as GpuBlendMode, BufferCache, BufferType, CachedBuffer, CachedGlyph, CachedPipeline,
+    CachedTexture, FrameStats, GpuBackendConfig, GpuResources, GpuUniformBuffer,
+    OrthographicProjection, PipelineCache, PipelineKey, PipelineType, PresentationError,
+    QuadInstance, SurfaceAlphaMode, SurfacePresentationConfig, SurfacePresentationState,
+    SurfacePresenter, TextureCache,
 };
 
 // Batching types
 pub use batching::{
-    BatchKey, BatchedCommand, DrawCommandType,
-    Batch, BatchSorter, BatchInfo,
-    InstanceBufferBuilder, DrawCallEstimator,
+    Batch, BatchInfo, BatchKey, BatchSorter, BatchedCommand, DrawCallEstimator, DrawCommandType,
+    InstanceBufferBuilder,
 };
 
 // GIF decoding and animation types
 pub use gif::{
-    GifError, GifFrameInfo, GifDisposalMethod,
-    GifInfo, GifDecoder, GifLoopCount,
-    GifAnimation,
+    GifAnimation, GifDecoder, GifDisposalMethod, GifError, GifFrameInfo, GifInfo, GifLoopCount,
 };
 
 // Math utilities (glam integration)
 pub use math_utils::{
-    Vec2, Mat2, Mat3 as GlamMat3, Mat3A, Mat4, Quat, Vec3, Vec4,
-    ToGlam, FromGlam,
-    Vec2Ext, Mat2DExt,
-    vec2_cross,
-    orthographic_topleft, orthographic_topleft_a,
-    orthographic_topleft_2d,
-    transform_2d_mat3, transform_2d_mat3a, transform_2d_mat4,
-    transform_points, transform_rects,
-    smoothstep, damp, damp_vec2, catmull_rom,
-    hash_f32, value_noise,
+    catmull_rom, damp, damp_vec2, hash_f32, orthographic_topleft, orthographic_topleft_2d,
+    orthographic_topleft_a, smoothstep, transform_2d_mat3, transform_2d_mat3a, transform_2d_mat4,
+    transform_points, transform_rects, value_noise, vec2_cross, FromGlam, Mat2, Mat2DExt,
+    Mat3 as GlamMat3, Mat3A, Mat4, Quat, ToGlam, Vec2, Vec2Ext, Vec3, Vec4,
 };
 
 // Resource monitoring types
 pub use monitor::{
-    MemorySize,
-    GpuMemoryBreakdown, GpuMemoryBudget, GpuMemoryUsage, GpuMemoryCategory,
-    CpuMemoryBreakdown, CpuMemoryUsage, CpuMemoryCategory,
-    CacheStats, AggregateCacheStats,
-    SystemResourceLimits,
-    ResourceSnapshot, ResourceHealth,
-    FrameRenderStats,
-    HistoryEntry, ResourceHistory, HistorySummary,
-    ResourceMonitor,
+    AggregateCacheStats, CacheStats, CpuMemoryBreakdown, CpuMemoryCategory, CpuMemoryUsage,
+    FrameRenderStats, GpuMemoryBreakdown, GpuMemoryBudget, GpuMemoryCategory, GpuMemoryUsage,
+    HistoryEntry, HistorySummary, MemorySize, ResourceHealth, ResourceHistory, ResourceMonitor,
+    ResourceSnapshot, SystemResourceLimits,
 };
 
 // Performance profiling types
 pub use perf::{
-    Stopwatch, TimingScope,
-    RenderPhase, PhaseTiming,
-    FrameRateAnalyzer, FrameRateData,
-    PerfCounter,
-    ProfileSnapshot,
-    Profiler,
-    StressTestConfig, StressTestResult,
-    JitterAnalyzer,
+    FrameRateAnalyzer, FrameRateData, JitterAnalyzer, PerfCounter, PhaseTiming, ProfileSnapshot,
+    Profiler, RenderPhase, Stopwatch, StressTestConfig, StressTestResult, TimingScope,
 };
 
 // Physics engine types
 pub use physics::{
-    // Core
-    BodyId, BodyType, PhysicsBody, CollisionShape, DampingConfig, MaterialProperties,
-    PhysicalProperties, PhysicsObject,
-    PhysicsWorld, PhysicsWorldConfig, PhysicsStats,
-    // System A: Springs
-    SpringConstraint as PhysicsSpringConstraint, DistanceConstraint, SpringChain, RadialSpringSystem,
-    SpringForce, DragForce, RepulsionForce, AttractionForce,
-    WindForce, PushForce, BodyRepulsion, ForceAccumulator,
-    apply_rest_springs, apply_mutual_repulsion,
-    // System B: Rigid body
-    Collision, CollisionPair, broad_phase, detect_collision, resolve_collision,
-    PhysicsSolver, SolverConfig, SolverStats, ContactManifold, ContactPoint,
-    AnchorConstraint, HingeJoint, WeldJoint, PrismaticJoint,
-    RegionConstraint, SliderConstraint, ConstraintSet,
-    // Constraint system (new)
-    FixedConstraint, ConstraintsDistanceConstraint,
-    AxisConstraint, PathConstraint, AlignmentConstraint, AlignmentAxis,
-    SeparationConstraint, AttractionConstraint as PhysicsAttractionConstraint, GroupConstraint,
-    Constraint, ConstraintSystem,
-    // System C: Fields
-    ForceField, FieldType, FieldConfig, FieldSource,
-    MagneticField, CohesionField, SeparationField,
-    RadialField, DirectionalField,
+    apply_mutual_repulsion,
+    apply_rest_springs,
+    broad_phase,
+    detect_collision,
+    resolve_collision,
+    AlignmentAxis,
+    AlignmentConstraint,
+    AnchorConstraint,
+    AttractionConstraint as PhysicsAttractionConstraint,
+    AttractionForce,
+    AxisConstraint,
     // Groups and spatial
-    BodyGroup, GroupId, GroupConfig, GroupBehavior, GroupManager,
-    SpatialHash, SpatialHashConfig, SpatialHashStats,
-    // High-level interaction API
-    InteractionApi, PhysicsDragState, DragConfig, ProjectionAxis,
-    InsertResult, CutResult, MergeResult,
+    BodyGroup,
+    // Core
+    BodyId,
+    BodyRepulsion,
+    BodyType,
+    CohesionField,
+    // System B: Rigid body
+    Collision,
+    CollisionEffect,
+    CollisionPair,
+    CollisionShape,
+    CommandResult,
+    Constraint,
+    ConstraintSet,
+    ConstraintSystem,
+    ConstraintsDistanceConstraint,
+    ContactManifold,
+    ContactPoint,
+    CutResult,
+    DampingConfig,
+    DirectionalField,
+    DistanceConstraint,
     // Physical dock layout model
-    Dock as PhysicsDock, DockItem as PhysicsDockItem, DockConfig as PhysicsDockConfig, DockAxis as PhysicsDockAxis, DockDragState as PhysicsDockDragState,
-    // Visual effects system
-    MotionState, VisualTransform, VisualEffectsConfig,
-    CollisionEffect, DragVisualState, VisualEffects,
+    Dock as PhysicsDock,
+    DockAxis as PhysicsDockAxis,
+    DockConfig as PhysicsDockConfig,
+    DockDragState as PhysicsDockDragState,
+    DockItem as PhysicsDockItem,
+    DragConfig,
+    DragForce,
+    DragVisualState,
+    FieldConfig,
+    FieldSource,
+    FieldType,
+    // Constraint system (new)
+    FixedConstraint,
+    FixedTimestepSimulator,
+    ForceAccumulator,
+    // System C: Fields
+    ForceField,
+    GroupBehavior,
+    GroupConfig,
+    GroupConstraint,
+    GroupId,
+    GroupManager,
     GroupVisualEffects,
-    // Fixed timestep simulation
-    PhysicsConfig, FixedTimestepSimulator, InterpolatedState,
+    HingeJoint,
+    InsertResult,
+    // High-level interaction API
+    InteractionApi,
     // Interaction command system
-    InteractionCommand, InteractionManager, CommandResult,
-    KeyboardKey, KeyboardModifiers, TouchPhase, PhysicsGestureType,
+    InteractionCommand,
+    InteractionManager,
+    InterpolatedState,
+    KeyboardKey,
+    KeyboardModifiers,
+    MagneticField,
+    MaterialProperties,
+    MergeResult,
+    // Visual effects system
+    MotionState,
+    PathConstraint,
+    PhysicalProperties,
+    PhysicsBody,
+    // Fixed timestep simulation
+    PhysicsConfig,
+    PhysicsDragState,
+    PhysicsGestureType,
+    PhysicsObject,
+    PhysicsSolver,
+    PhysicsStats,
+    PhysicsWorld,
+    PhysicsWorldConfig,
+    PrismaticJoint,
+    ProjectionAxis,
+    PushForce,
+    RadialField,
+    RadialSpringSystem,
+    RegionConstraint,
+    RepulsionForce,
     ScriptParameter,
+    SeparationConstraint,
+    SeparationField,
+    SliderConstraint,
+    SolverConfig,
+    SolverStats,
+    SpatialHash,
+    SpatialHashConfig,
+    SpatialHashStats,
+    SpringChain,
+    // System A: Springs
+    SpringConstraint as PhysicsSpringConstraint,
+    SpringForce,
+    TouchPhase,
+    VisualEffects,
+    VisualEffectsConfig,
+    VisualTransform,
+    WeldJoint,
+    WindForce,
 };
 
 // Error handling types
 pub use error::{
-    DockError, DockResult,
-    GpuError, RendererError, PhysicsError,
-    VideoError, WaylandError, SceneError,
-    LayoutError, TextError, InteractionError,
-    AnimationError,
-    log_err, log_warn,
+    log_err, log_warn, AnimationError, DockError, DockResult, GpuError, InteractionError,
+    LayoutError, PhysicsError, RendererError, SceneError, TextError, VideoError, WaylandError,
 };

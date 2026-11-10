@@ -86,7 +86,8 @@ pub fn draw_window_list_popup(
                         // multiple windows from matching the same PipeWire stream.
                         let mut used_streams: Vec<usize> = Vec::new();
 
-                        let mut matched: Vec<(WindowState, Option<usize>)> = Vec::with_capacity(app_windows.len());
+                        let mut matched: Vec<(WindowState, Option<usize>)> =
+                            Vec::with_capacity(app_windows.len());
                         for w in &app_windows {
                             let window_id = w.id.0.protocol_id();
                             let stream_idx = if w.title.is_empty() {
@@ -119,7 +120,8 @@ pub fn draw_window_list_popup(
                         // Third pass: if multiple windows share the same title and one has
                         // a stream, the others can share it (e.g., 3 pcmanfm "dock" windows
                         // but only 2 PipeWire streams because portal can't distinguish them).
-                        let title_to_stream: Vec<(String, usize)> = matched.iter()
+                        let title_to_stream: Vec<(String, usize)> = matched
+                            .iter()
                             .filter_map(|e| {
                                 if e.1.is_some() && !e.0.title.is_empty() {
                                     Some((e.0.title.clone(), e.1.unwrap()))
@@ -130,7 +132,8 @@ pub fn draw_window_list_popup(
                             .collect();
                         for entry in matched.iter_mut() {
                             if entry.1.is_none() && !entry.0.title.is_empty() {
-                                if let Some(idx) = title_to_stream.iter()
+                                if let Some(idx) = title_to_stream
+                                    .iter()
                                     .find(|(t, _)| *t == entry.0.title)
                                     .map(|(_, i)| *i)
                                 {
@@ -145,7 +148,8 @@ pub fn draw_window_list_popup(
                         matched
                     })
                     .unwrap_or_else(|| {
-                        let mut m: Vec<(WindowState, Option<usize>)> = app_windows.iter().map(|w| ((*w).clone(), None)).collect();
+                        let mut m: Vec<(WindowState, Option<usize>)> =
+                            app_windows.iter().map(|w| ((*w).clone(), None)).collect();
                         m.sort_by(|(a, _), (b, _)| a.title.cmp(&b.title));
                         m
                     })
@@ -219,10 +223,12 @@ pub fn draw_window_list_popup(
                 // hovering between rows — only the capture image changes, not the layout.
                 let frame_logical_h = if let Some(service) = pipewire_capture {
                     // Find the first stream index from matched windows to use for frame sizing
-                    let first_stream_idx = matched_windows.iter()
+                    let first_stream_idx = matched_windows
+                        .iter()
                         .find_map(|(_, idx)| *idx)
                         .unwrap_or(0);
-                    if let Some((orig_w, orig_h)) = service.get_stream_dimensions(first_stream_idx) {
+                    if let Some((orig_w, orig_h)) = service.get_stream_dimensions(first_stream_idx)
+                    {
                         let frame_border = 8.0; // 4px on each side
                         let frame_inner_w = popup_width as f32 - frame_border;
                         let aspect = orig_w as f32 / orig_h as f32;
@@ -275,7 +281,7 @@ pub fn draw_window_list_popup(
                         cached_content: Vec::new(),
                         cached_phys_width: 0,
                         cached_phys_height: 0,
-            input_region_key: 0,
+                        input_region_key: 0,
                     }
                 });
 
@@ -315,7 +321,8 @@ pub fn draw_window_list_popup(
                         && local_ptr_y >= frame_logical_h
                         && local_ptr_y < frame_logical_h + rows_logical_h
                     {
-                        ((local_ptr_y - frame_logical_h) / item_h).clamp(0, item_count_usize.saturating_sub(1) as i32)
+                        ((local_ptr_y - frame_logical_h) / item_h)
+                            .clamp(0, item_count_usize.saturating_sub(1) as i32)
                     } else if local_ptr_y < frame_logical_h {
                         // Cursor is in the frame area — default to row 0
                         0
@@ -328,8 +335,11 @@ pub fn draw_window_list_popup(
                         - close_size
                         - (8.0 * frame.dock_scale as f32).round() as i32;
                     let _hovered_close = if hovered_item >= 0 {
-                        let phys_item_h = (frame.config.popup_row_height as f32 * frame.dock_scale as f32).round() as i32;
-                        let frame_phys_h = (frame_logical_h as f32 * frame.dock_scale as f32).round() as i32;
+                        let phys_item_h = (frame.config.popup_row_height as f32
+                            * frame.dock_scale as f32)
+                            .round() as i32;
+                        let frame_phys_h =
+                            (frame_logical_h as f32 * frame.dock_scale as f32).round() as i32;
                         let top = frame_phys_h + hovered_item * phys_item_h;
                         let close_y = top + (phys_item_h - close_size) / 2;
                         let px = (local_ptr_x as f32 * frame.dock_scale as f32).round() as i32;
@@ -348,15 +358,15 @@ pub fn draw_window_list_popup(
                     // Set the active row based on hovered item for PipeWire capture switching.
                     // Only set active row if we have a valid PipeWire stream match.
                     // Validate hovered_item is within bounds before accessing matched_windows.
-                    let has_valid_stream = if use_matched
-                        && (hovered_item as usize) < matched_windows.len()
-                    {
-                        matched_windows[hovered_item as usize].1.is_some()
-                    } else {
-                        false
-                    };
+                    let has_valid_stream =
+                        if use_matched && (hovered_item as usize) < matched_windows.len() {
+                            matched_windows[hovered_item as usize].1.is_some()
+                        } else {
+                            false
+                        };
                     if let Some(service) = pipewire_capture {
-                        if has_valid_stream && use_matched
+                        if has_valid_stream
+                            && use_matched
                             && (hovered_item as usize) < matched_windows.len()
                         {
                             let stream_idx = matched_windows[hovered_item as usize].1.unwrap();
@@ -376,11 +386,16 @@ pub fn draw_window_list_popup(
                     let capture_frame_data = if has_valid_stream {
                         pipewire_capture.and_then(|service| {
                             let row = *service.active_row.lock();
-                            let (orig_w, orig_h) = service.get_stream_dimensions(row)
-                                .unwrap_or((0, 0));
-                            service.get_active_frame(Some(target_frame_w), Some(target_frame_h))
-                                .map(|(w, h, rgba)| {
-                                    CaptureFrameData { width: w, height: h, rgba, original_width: orig_w, original_height: orig_h }
+                            let (orig_w, orig_h) =
+                                service.get_stream_dimensions(row).unwrap_or((0, 0));
+                            service
+                                .get_active_frame(Some(target_frame_w), Some(target_frame_h))
+                                .map(|(w, h, rgba)| CaptureFrameData {
+                                    width: w,
+                                    height: h,
+                                    rgba,
+                                    original_width: orig_w,
+                                    original_height: orig_h,
                                 })
                         })
                     } else {
@@ -397,15 +412,16 @@ pub fn draw_window_list_popup(
                     };
                     let windows_refs: Vec<&WindowState> = windows.iter().collect();
                     // Get the active row index for blue highlight on the active stream's row
-                    let active_row_idx = pipewire_capture.as_ref().map_or(0, |service| {
-                        *service.active_row.lock()
-                    });
+                    let active_row_idx = pipewire_capture
+                        .as_ref()
+                        .map_or(0, |service| *service.active_row.lock());
                     // Map stream index to window row index: find which matched window
                     // owns the active stream
                     let active_window_row = if use_matched {
-                        matched_windows.iter().position(|(_, si)| {
-                            *si == Some(active_row_idx)
-                        }).unwrap_or(0)
+                        matched_windows
+                            .iter()
+                            .position(|(_, si)| *si == Some(active_row_idx))
+                            .unwrap_or(0)
                     } else {
                         0
                     };
@@ -456,7 +472,6 @@ pub fn draw_window_list_popup(
 
                     popup.surface.commit();
                     popup.current_buffer = Some(buffer);
-
                 } else if let Some(popup) = dock.window_list_popup.take() {
                     popup.surface.attach(None, 0, 0);
                     popup.surface.commit();

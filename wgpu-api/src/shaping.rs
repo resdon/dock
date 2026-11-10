@@ -16,13 +16,10 @@
 //! glyph IDs from different fonts, including multiple glyphs for one character or
 //! one glyph representing several characters.
 
-use crate::geometry::{Point, Size, Rect};
 use crate::color::Color;
-use crate::text::{Font, FontWeight, FontStyle, TextAlign, TextBaseline};
-use crate::glyph::{
-    GlyphInfo, GlyphCluster, GlyphRun, ShapedLine,
-    RasterizationMode, GlyphCache,
-};
+use crate::geometry::{Point, Rect, Size};
+use crate::glyph::{GlyphCache, GlyphCluster, GlyphInfo, GlyphRun, RasterizationMode, ShapedLine};
+use crate::text::{Font, FontStyle, FontWeight, TextAlign, TextBaseline};
 use std::path::Path;
 
 // ---------------------------------------------------------------------------
@@ -236,7 +233,13 @@ pub struct FontFace {
 
 impl FontFace {
     /// Create a new font face from data.
-    pub fn new(id: u32, family: String, weight: FontWeight, style: FontStyle, data: Vec<u8>) -> Self {
+    pub fn new(
+        id: u32,
+        family: String,
+        weight: FontWeight,
+        style: FontStyle,
+        data: Vec<u8>,
+    ) -> Self {
         Self {
             id,
             family,
@@ -319,8 +322,8 @@ impl TextShaper {
 
     /// Load a font from a file path.
     pub fn load_font_from_path<P: AsRef<Path>>(&mut self, path: P) -> Result<u32, String> {
-        let data = std::fs::read(path.as_ref())
-            .map_err(|e| format!("Failed to read font file: {}", e))?;
+        let data =
+            std::fs::read(path.as_ref()).map_err(|e| format!("Failed to read font file: {}", e))?;
 
         self.load_font_from_data(data)
     }
@@ -348,39 +351,46 @@ impl TextShaper {
 
         // Use fontdb to extract metadata if possible
         let db = fontdb::Database::default();
-        let face_info = db.query(&fontdb::Query {
-            families: &[],
-            style: fontdb::Style::Normal,
-            weight: fontdb::Weight(400),
-            stretch: fontdb::Stretch::Normal,
-        }).map(|id| {
-            // Find the face info by iterating through loaded faces
-            for face in db.faces() {
-                if face.id == id {
-                    let family = face.families.first().map(|f| f.0.clone()).unwrap_or_else(|| "Unknown".to_string());
-                    let weight = match face.weight.0 {
-                        100..=149 => FontWeight::Thin,
-                        150..=249 => FontWeight::ExtraLight,
-                        250..=349 => FontWeight::Light,
-                        350..=449 => FontWeight::Normal,
-                        450..=549 => FontWeight::Medium,
-                        550..=649 => FontWeight::SemiBold,
-                        650..=749 => FontWeight::Bold,
-                        750..=849 => FontWeight::ExtraBold,
-                        _ => FontWeight::Black,
-                    };
-                    let style = if face.style == fontdb::Style::Italic {
-                        FontStyle::Italic
-                    } else if face.style == fontdb::Style::Oblique {
-                        FontStyle::Oblique
-                    } else {
-                        FontStyle::Normal
-                    };
-                    return (family, weight, style);
+        let face_info = db
+            .query(&fontdb::Query {
+                families: &[],
+                style: fontdb::Style::Normal,
+                weight: fontdb::Weight(400),
+                stretch: fontdb::Stretch::Normal,
+            })
+            .map(|id| {
+                // Find the face info by iterating through loaded faces
+                for face in db.faces() {
+                    if face.id == id {
+                        let family = face
+                            .families
+                            .first()
+                            .map(|f| f.0.clone())
+                            .unwrap_or_else(|| "Unknown".to_string());
+                        let weight = match face.weight.0 {
+                            100..=149 => FontWeight::Thin,
+                            150..=249 => FontWeight::ExtraLight,
+                            250..=349 => FontWeight::Light,
+                            350..=449 => FontWeight::Normal,
+                            450..=549 => FontWeight::Medium,
+                            550..=649 => FontWeight::SemiBold,
+                            650..=749 => FontWeight::Bold,
+                            750..=849 => FontWeight::ExtraBold,
+                            _ => FontWeight::Black,
+                        };
+                        let style = if face.style == fontdb::Style::Italic {
+                            FontStyle::Italic
+                        } else if face.style == fontdb::Style::Oblique {
+                            FontStyle::Oblique
+                        } else {
+                            FontStyle::Normal
+                        };
+                        return (family, weight, style);
+                    }
                 }
-            }
-            ("Unknown".to_string(), FontWeight::Normal, FontStyle::Normal)
-        }).unwrap_or(("Unknown".to_string(), FontWeight::Normal, FontStyle::Normal));
+                ("Unknown".to_string(), FontWeight::Normal, FontStyle::Normal)
+            })
+            .unwrap_or(("Unknown".to_string(), FontWeight::Normal, FontStyle::Normal));
 
         let face = FontFace::new(id, face_info.0, face_info.1, face_info.2, data);
         self.faces.push(face);
@@ -419,7 +429,13 @@ impl TextShaper {
     /// Fallback shaping when no fonts are loaded.
     ///
     /// Creates simple glyph runs with estimated metrics.
-    fn shape_fallback(&mut self, text: &str, config: &ShaperConfig, char_count: usize, byte_count: usize) -> ShapedText {
+    fn shape_fallback(
+        &mut self,
+        text: &str,
+        config: &ShaperConfig,
+        char_count: usize,
+        byte_count: usize,
+    ) -> ShapedText {
         let font_size = config.font_size;
         let avg_char_width = font_size * 0.6;
         let ascent = font_size * 0.8;
@@ -434,16 +450,22 @@ impl TextShaper {
             let glyph_id = ch as u32 as u16;
 
             // Estimate glyph dimensions
-            let glyph_width = if ch == ' ' { avg_char_width * 0.5 } else { avg_char_width };
+            let glyph_width = if ch == ' ' {
+                avg_char_width * 0.5
+            } else {
+                avg_char_width
+            };
             let glyph_height = font_size;
 
             let info = GlyphInfo::new(
                 crate::glyph::TextureRegion::new(
                     crate::texture::TextureId::new(0),
-                    0, 0,
+                    0,
+                    0,
                     glyph_width as u32,
                     glyph_height as u32,
-                    1024, 1024,
+                    1024,
+                    1024,
                 ),
                 glyph_width + config.letter_spacing,
                 0.0,
@@ -453,13 +475,7 @@ impl TextShaper {
                 glyph_height,
             );
 
-            let glyph_run = GlyphRun::new(
-                ch,
-                glyph_id,
-                0,
-                Point::new(pen_x, 0.0),
-                info,
-            );
+            let glyph_run = GlyphRun::new(ch, glyph_id, 0, Point::new(pen_x, 0.0), info);
 
             clusters.push(GlyphCluster::new(
                 byte_offset..(byte_offset + char_len),
@@ -470,12 +486,7 @@ impl TextShaper {
             byte_offset += char_len;
         }
 
-        let line = ShapedLine::new(
-            clusters,
-            pen_x,
-            ascent,
-            descent,
-        );
+        let line = ShapedLine::new(clusters, pen_x, ascent, descent);
 
         ShapedText::new(vec![line], char_count, byte_count)
     }
@@ -485,7 +496,13 @@ impl TextShaper {
     /// When fonts are loaded, uses fontdb to match characters to fonts.
     /// The actual glyph positioning uses estimated metrics until the full
     /// cosmic-text integration is wired up with the correct API version.
-    fn shape_with_cosmic(&mut self, text: &str, config: &ShaperConfig, char_count: usize, byte_count: usize) -> ShapedText {
+    fn shape_with_cosmic(
+        &mut self,
+        text: &str,
+        config: &ShaperConfig,
+        char_count: usize,
+        byte_count: usize,
+    ) -> ShapedText {
         let font_size = config.font_size;
         let ascent = font_size * 0.8;
         let descent = font_size * 0.2;
@@ -522,16 +539,22 @@ impl TextShaper {
             }
 
             // Estimate glyph dimensions
-            let glyph_width = if ch == ' ' { avg_char_width * 0.5 } else { avg_char_width };
+            let glyph_width = if ch == ' ' {
+                avg_char_width * 0.5
+            } else {
+                avg_char_width
+            };
             let glyph_height = font_size;
 
             let info = GlyphInfo::new(
                 crate::glyph::TextureRegion::new(
                     crate::texture::TextureId::new(0),
-                    0, 0,
+                    0,
+                    0,
                     glyph_width as u32,
                     glyph_height as u32,
-                    1024, 1024,
+                    1024,
+                    1024,
                 ),
                 glyph_width + config.letter_spacing,
                 0.0,
@@ -541,13 +564,7 @@ impl TextShaper {
                 glyph_height,
             );
 
-            let glyph_run = GlyphRun::new(
-                ch,
-                glyph_id,
-                font_id,
-                Point::new(pen_x, 0.0),
-                info,
-            );
+            let glyph_run = GlyphRun::new(ch, glyph_id, font_id, Point::new(pen_x, 0.0), info);
 
             clusters.push(GlyphCluster::new(
                 byte_offset..(byte_offset + char_len),
@@ -558,12 +575,7 @@ impl TextShaper {
             byte_offset += char_len;
         }
 
-        let line = ShapedLine::new(
-            clusters,
-            pen_x,
-            ascent,
-            descent,
-        );
+        let line = ShapedLine::new(clusters, pen_x, ascent, descent);
 
         ShapedText::new(vec![line], char_count, byte_count)
     }
@@ -801,7 +813,13 @@ mod tests {
     #[test]
     fn test_shaped_text_single_line() {
         let region = crate::glyph::TextureRegion::new(
-            crate::texture::TextureId::new(0), 0, 0, 16, 16, 1024, 1024,
+            crate::texture::TextureId::new(0),
+            0,
+            0,
+            16,
+            16,
+            1024,
+            1024,
         );
         let info = GlyphInfo::new(region, 10.0, 0.0, 0.0, 12.0, 16.0, 16.0);
         let glyph = GlyphRun::new('A', 65, 1, Point::new(0.0, 0.0), info);
@@ -901,8 +919,14 @@ mod tests {
 
     #[test]
     fn test_font_face() {
-        let face = FontFace::new(1, "Test".to_string(), FontWeight::Bold, FontStyle::Italic, vec![0; 100])
-            .with_face_index(2);
+        let face = FontFace::new(
+            1,
+            "Test".to_string(),
+            FontWeight::Bold,
+            FontStyle::Italic,
+            vec![0; 100],
+        )
+        .with_face_index(2);
 
         assert_eq!(face.id, 1);
         assert_eq!(face.family, "Test");
@@ -913,7 +937,13 @@ mod tests {
     #[test]
     fn test_shaped_text_bounds() {
         let region = crate::glyph::TextureRegion::new(
-            crate::texture::TextureId::new(0), 0, 0, 16, 16, 1024, 1024,
+            crate::texture::TextureId::new(0),
+            0,
+            0,
+            16,
+            16,
+            1024,
+            1024,
         );
         let info = GlyphInfo::new(region, 10.0, 0.0, 0.0, 12.0, 16.0, 16.0);
         let glyph = GlyphRun::new('A', 65, 1, Point::new(0.0, 0.0), info);
@@ -930,7 +960,13 @@ mod tests {
     #[test]
     fn test_shaped_text_average_line_height() {
         let region = crate::glyph::TextureRegion::new(
-            crate::texture::TextureId::new(0), 0, 0, 16, 16, 1024, 1024,
+            crate::texture::TextureId::new(0),
+            0,
+            0,
+            16,
+            16,
+            1024,
+            1024,
         );
         let info = GlyphInfo::new(region, 10.0, 0.0, 0.0, 12.0, 16.0, 16.0);
         let glyph = GlyphRun::new('A', 65, 1, Point::new(0.0, 0.0), info);

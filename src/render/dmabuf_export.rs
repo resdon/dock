@@ -14,7 +14,6 @@
 /// 3. Submit GPU command buffer
 /// 4. Create a Wayland wl_buffer from the dmabuf planes
 /// 5. Attach wl_buffer to the Wayland surface and commit
-
 use std::collections::HashMap;
 use std::os::fd::AsFd;
 
@@ -120,7 +119,8 @@ fn create_dmabuf_target(
     let (texture, dmabuf) = wgpu_dmabuf::export(device, &desc)
         .map_err(|e| format!("Failed to export dmabuf texture: {}", e))?;
 
-    let params = dmabuf_state.create_params(qh)
+    let params = dmabuf_state
+        .create_params(qh)
         .map_err(|e| format!("Failed to create dmabuf params: {}", e))?;
 
     for (i, plane) in dmabuf.planes.iter().enumerate() {
@@ -137,7 +137,8 @@ fn create_dmabuf_target(
         width as i32,
         height as i32,
         dmabuf.fourcc as u32,
-        wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_buffer_params_v1::Flags::empty(),
+        wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_buffer_params_v1::Flags::empty(
+        ),
         qh,
     );
 
@@ -185,7 +186,8 @@ pub fn export_dmabuf_buffer(
         .map_err(|e| format!("Failed to export dmabuf texture: {}", e))?;
 
     // Create a Wayland wl_buffer from the dmabuf planes
-    let params = dmabuf_state.create_params(qh)
+    let params = dmabuf_state
+        .create_params(qh)
         .map_err(|e| format!("Failed to create dmabuf params: {}", e))?;
 
     for (i, plane) in dmabuf.planes.iter().enumerate() {
@@ -202,7 +204,8 @@ pub fn export_dmabuf_buffer(
         width as i32,
         height as i32,
         dmabuf.fourcc as u32,
-        wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_buffer_params_v1::Flags::empty(),
+        wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_buffer_params_v1::Flags::empty(
+        ),
         qh,
     );
 

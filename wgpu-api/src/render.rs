@@ -24,8 +24,8 @@
 
 use std::fmt;
 
-use crate::geometry::{Point, Size, Rect};
 use crate::color::Color;
+use crate::geometry::{Point, Rect, Size};
 use crate::surface::SurfaceId;
 use crate::texture::TextureId;
 use crate::transform::Transform;
@@ -228,7 +228,12 @@ pub struct FrameState {
 
 impl FrameState {
     /// Create a new frame state for the given surface.
-    pub fn new(surface_id: SurfaceId, surface_size: Size, scale_factor: f32, frame_number: u64) -> Self {
+    pub fn new(
+        surface_id: SurfaceId,
+        surface_size: Size,
+        scale_factor: f32,
+        frame_number: u64,
+    ) -> Self {
         Self {
             surface_id: Some(surface_id),
             surface_size,

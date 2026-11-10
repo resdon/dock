@@ -21,8 +21,7 @@
 /// # Ownership
 /// Error types are created by the subsystem that encounters the error and propagated
 /// upward. The application layer wraps them in `anyhow::Result` for context.
-
-use thiserror:: Error;
+use thiserror::Error;
 
 // ---------------------------------------------------------------------------
 // Unified wgpu-api error type
@@ -161,7 +160,12 @@ pub enum RendererError {
     TextureNotFound { id: u32 },
 
     #[error("Render target mismatch: expected ({expected_w}, {expected_h}), got ({actual_w}, {actual_h})")]
-    RenderTargetMismatch { expected_w: u32, expected_h: u32, actual_w: u32, actual_h: u32 },
+    RenderTargetMismatch {
+        expected_w: u32,
+        expected_h: u32,
+        actual_w: u32,
+        actual_h: u32,
+    },
 
     #[error("Renderer resize failed: {0}")]
     ResizeFailed(String),
@@ -491,7 +495,7 @@ pub type DockResult<T> = Result<T, DockError>;
 // ---------------------------------------------------------------------------
 
 impl miette::Diagnostic for DockError {
-    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt:: Display + 'a>> {
+    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         Some(Box::new(match self {
             DockError::Gpu(_) => "GPU_ERROR",
             DockError::Renderer(_) => "RENDERER_ERROR",
@@ -510,23 +514,19 @@ impl miette::Diagnostic for DockError {
     fn severity(&self) -> Option<miette::Severity> {
         Some(match self {
             DockError::Gpu(
-                GpuError::DeviceLost(_)
-                | GpuError::OutOfMemory
-                | GpuError::SubmissionError(_),
+                GpuError::DeviceLost(_) | GpuError::OutOfMemory | GpuError::SubmissionError(_),
             ) => miette::Severity::Error,
             DockError::Video(
-                VideoError::ConnectionFailed(_)
-                | VideoError::ContextCreationFailed(_),
+                VideoError::ConnectionFailed(_) | VideoError::ContextCreationFailed(_),
             ) => miette::Severity::Error,
             DockError::Wayland(
-                WaylandError::ConnectionFailed(_)
-                | WaylandError::DisplayNotFound,
+                WaylandError::ConnectionFailed(_) | WaylandError::DisplayNotFound,
             ) => miette::Severity::Error,
             _ => miette::Severity::Warning,
         })
     }
 
-    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt:: Display + 'a>> {
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
         let msg = match self {
             DockError::Gpu(GpuError::DeviceLost(_)) => {
                 Some("GPU device was lost. Try restarting the application. Check Vulkan driver status.")
@@ -551,7 +551,7 @@ impl miette::Diagnostic for DockError {
             }
             _ => None,
         };
-        msg.map(|s| Box::new(s) as Box<dyn std::fmt:: Display>)
+        msg.map(|s| Box::new(s) as Box<dyn std::fmt::Display>)
     }
 }
 
@@ -581,17 +581,14 @@ impl miette::Diagnostic for DockError {
 ///     Ok(())
 /// }
 /// ```
-pub fn log_err<E: std::fmt:: Display + std::fmt:: Debug>(
-    err: &E,
-    context: &str,
-) {
+pub fn log_err<E: std::fmt::Display + std::fmt::Debug>(err: &E, context: &str) {
     tracing::error!(error = %err, error.debug = ?err, context);
 }
 
 /// Log a warning using tracing.
 ///
 /// Useful for recoverable errors that should be logged but not propagated.
-pub fn log_warn<T: std::fmt:: Debug>(value: &T, message: &str) {
+pub fn log_warn<T: std::fmt::Debug>(value: &T, message: &str) {
     tracing::warn!(value = ?value, message);
 }
 
@@ -645,13 +642,19 @@ mod tests {
     #[test]
     fn test_miette_severity_critical_gpu() {
         let err = DockError::Gpu(GpuError::DeviceLost("test".into()));
-        assert!(matches!(miette::Diagnostic::severity(&err), Some(miette::Severity::Error)));
+        assert!(matches!(
+            miette::Diagnostic::severity(&err),
+            Some(miette::Severity::Error)
+        ));
     }
 
     #[test]
     fn test_miette_severity_warning() {
         let err = DockError::Layout(LayoutError::CalculationFailed("test".into()));
-        assert!(matches!(miette::Diagnostic::severity(&err), Some(miette::Severity::Warning)));
+        assert!(matches!(
+            miette::Diagnostic::severity(&err),
+            Some(miette::Severity::Warning)
+        ));
     }
 
     #[test]

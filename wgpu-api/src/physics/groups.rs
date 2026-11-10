@@ -9,8 +9,8 @@
 
 use std::collections::HashMap;
 
-use crate::geometry::{Point, Rect, Size};
 use super::body::{BodyId, PhysicsBody};
+use crate::geometry::{Point, Rect, Size};
 
 /// Opaque identifier for a body group.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -291,12 +291,7 @@ impl BodyGroup {
     }
 
     /// Arrange members in a horizontal row.
-    pub fn arrange_horizontal(
-        &mut self,
-        start: Point,
-        spacing: f32,
-        member_size: Size,
-    ) {
+    pub fn arrange_horizontal(&mut self, start: Point, spacing: f32, member_size: Size) {
         self.members.clear();
         self.rest_positions.clear();
 
@@ -428,7 +423,7 @@ impl Default for GroupManager {
 mod tests {
     use super::*;
     use crate::geometry::{Point, Size};
-    use crate::physics::body::{BodyId, PhysicsBody, CollisionShape};
+    use crate::physics::body::{BodyId, CollisionShape, PhysicsBody};
 
     #[test]
     fn test_create_group() {

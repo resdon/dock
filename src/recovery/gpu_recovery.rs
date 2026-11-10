@@ -105,10 +105,7 @@ impl GpuRecovery {
             return RecoveryResult::NotAttempted;
         }
 
-        tracing::warn!(
-            subsystem = "gpu",
-            "Attempting GPU memory pressure recovery"
-        );
+        tracing::warn!(subsystem = "gpu", "Attempting GPU memory pressure recovery");
 
         // In a real implementation, this would:
         // 1. Evict least-recently-used textures from cache
@@ -123,10 +120,7 @@ impl GpuRecovery {
     /// - `Recovered` if presentation was retried successfully.
     /// - `Retryable` if presentation should be retried.
     pub fn recover_presentation(&self) -> RecoveryResult {
-        tracing::warn!(
-            subsystem = "gpu",
-            "Attempting GPU presentation recovery"
-        );
+        tracing::warn!(subsystem = "gpu", "Attempting GPU presentation recovery");
 
         // In a real implementation, this would retry the presentation
         // or recreate the swapchain if needed.

@@ -6,8 +6,8 @@
 
 use std::collections::HashMap;
 
-use crate::geometry::{Point, Rect};
 use super::body::{BodyId, PhysicsBody};
+use crate::geometry::{Point, Rect};
 
 /// A cell in the spatial hash grid.
 #[derive(Debug, Clone)]
@@ -310,7 +310,7 @@ impl Default for SpatialHash {
 mod tests {
     use super::*;
     use crate::geometry::{Point, Rect};
-    use crate::physics::body::{BodyId, PhysicsBody, CollisionShape};
+    use crate::physics::body::{BodyId, CollisionShape, PhysicsBody};
 
     #[test]
     fn test_world_to_cell() {

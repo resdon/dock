@@ -16,13 +16,13 @@
 //! - Recovery attempts are bounded to prevent infinite loops.
 //! - Failed recovery escalates to the application level.
 
-mod gpu_recovery;
 mod capture_recovery;
+mod gpu_recovery;
 mod resource_recovery;
 mod service_recovery;
 
-pub use gpu_recovery::*;
 pub use capture_recovery::*;
+pub use gpu_recovery::*;
 pub use resource_recovery::*;
 pub use service_recovery::*;
 

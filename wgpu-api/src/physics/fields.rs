@@ -19,8 +19,8 @@
 //! by multiple fields simultaneously.  Fields do not require a physics engine —
 //! they compute forces directly and apply them to body velocities.
 
-use crate::geometry::{Point, Vector2D};
 use super::body::PhysicsBody;
+use crate::geometry::{Point, Vector2D};
 
 // ---------------------------------------------------------------------------
 // Field type enum
@@ -766,7 +766,7 @@ impl Default for ForceField {
 mod tests {
     use super::*;
     use crate::geometry::Point;
-    use crate::physics::body::{BodyId, PhysicsBody, CollisionShape};
+    use crate::physics::body::{BodyId, CollisionShape, PhysicsBody};
 
     #[test]
     fn test_magnetic_field_attracts() {
@@ -831,8 +831,18 @@ mod tests {
     fn test_cohesion_field() {
         let cohesion = CohesionField::new(10.0);
         let bodies = vec![
-            PhysicsBody::dynamic_body(BodyId::new(1), Point::new(0.0, 0.0), CollisionShape::circle(10.0), 1.0),
-            PhysicsBody::dynamic_body(BodyId::new(2), Point::new(100.0, 0.0), CollisionShape::circle(10.0), 1.0),
+            PhysicsBody::dynamic_body(
+                BodyId::new(1),
+                Point::new(0.0, 0.0),
+                CollisionShape::circle(10.0),
+                1.0,
+            ),
+            PhysicsBody::dynamic_body(
+                BodyId::new(2),
+                Point::new(100.0, 0.0),
+                CollisionShape::circle(10.0),
+                1.0,
+            ),
         ];
         let center = CohesionField::center_of_mass(&bodies);
         assert!((center.x - 50.0).abs() < 0.01);
@@ -845,8 +855,18 @@ mod tests {
     fn test_separation_field() {
         let separation = SeparationField::new(100.0, 50.0);
         let bodies = vec![
-            PhysicsBody::dynamic_body(BodyId::new(1), Point::new(0.0, 0.0), CollisionShape::circle(10.0), 1.0),
-            PhysicsBody::dynamic_body(BodyId::new(2), Point::new(10.0, 0.0), CollisionShape::circle(10.0), 1.0),
+            PhysicsBody::dynamic_body(
+                BodyId::new(1),
+                Point::new(0.0, 0.0),
+                CollisionShape::circle(10.0),
+                1.0,
+            ),
+            PhysicsBody::dynamic_body(
+                BodyId::new(2),
+                Point::new(10.0, 0.0),
+                CollisionShape::circle(10.0),
+                1.0,
+            ),
         ];
         let force = separation.compute_force(&bodies[0], &bodies);
         // Body 0 should be pushed away from body 1
@@ -857,8 +877,18 @@ mod tests {
     fn test_separation_no_force_when_far() {
         let separation = SeparationField::new(100.0, 50.0);
         let bodies = vec![
-            PhysicsBody::dynamic_body(BodyId::new(1), Point::new(0.0, 0.0), CollisionShape::circle(10.0), 1.0),
-            PhysicsBody::dynamic_body(BodyId::new(2), Point::new(200.0, 0.0), CollisionShape::circle(10.0), 1.0),
+            PhysicsBody::dynamic_body(
+                BodyId::new(1),
+                Point::new(0.0, 0.0),
+                CollisionShape::circle(10.0),
+                1.0,
+            ),
+            PhysicsBody::dynamic_body(
+                BodyId::new(2),
+                Point::new(200.0, 0.0),
+                CollisionShape::circle(10.0),
+                1.0,
+            ),
         ];
         let force = separation.compute_force(&bodies[0], &bodies);
         // Bodies are far apart, no separation force
@@ -895,12 +925,7 @@ mod tests {
 
     #[test]
     fn test_directional_field() {
-        let field = DirectionalField::new(
-            Point::ORIGIN,
-            Vector2D::new(1.0, 0.0),
-            100.0,
-            100.0,
-        );
+        let field = DirectionalField::new(Point::ORIGIN, Vector2D::new(1.0, 0.0), 100.0, 100.0);
         let body = PhysicsBody::dynamic_body(
             BodyId::new(1),
             Point::new(10.0, 0.0),

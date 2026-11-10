@@ -3,8 +3,7 @@
 //! Always-visible media player card showing the current track and controls.
 
 use smithay_client_toolkit::{
-    compositor::CompositorState, shell::WaylandSurface, shm::slot::SlotPool,
-    dmabuf::DmabufState,
+    compositor::CompositorState, dmabuf::DmabufState, shell::WaylandSurface, shm::slot::SlotPool,
 };
 use wayland_client::{protocol::wl_shm, QueueHandle};
 

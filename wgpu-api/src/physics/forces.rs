@@ -7,8 +7,8 @@
 //! - **Wind forces** apply global directional force
 //! - **Attraction forces** pull bodies toward a point
 
-use crate::geometry::{Point, Vector2D};
 use super::body::PhysicsBody;
+use crate::geometry::{Point, Vector2D};
 
 /// A spring force configuration for attracting a body to a target position.
 #[derive(Debug, Clone, Copy)]
@@ -533,12 +533,7 @@ mod tests {
 
     #[test]
     fn test_push_force_falloff() {
-        let push = PushForce::new(
-            Point::ORIGIN,
-            Vector2D::new(1.0, 0.0),
-            100.0,
-            50.0,
-        );
+        let push = PushForce::new(Point::ORIGIN, Vector2D::new(1.0, 0.0), 100.0, 50.0);
         let body1 = PhysicsBody::dynamic_body(
             BodyId::new(1),
             Point::new(10.0, 0.0),
@@ -639,12 +634,7 @@ mod tests {
 
     #[test]
     fn test_push_force_outside_radius() {
-        let push = PushForce::new(
-            Point::ORIGIN,
-            Vector2D::new(1.0, 0.0),
-            100.0,
-            50.0,
-        );
+        let push = PushForce::new(Point::ORIGIN, Vector2D::new(1.0, 0.0), 100.0, 50.0);
         let body = PhysicsBody::dynamic_body(
             BodyId::new(1),
             Point::new(100.0, 0.0),

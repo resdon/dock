@@ -76,10 +76,7 @@ impl ResourceRecovery {
         );
 
         if evicted > self.config.max_eviction_count {
-            tracing::error!(
-                subsystem = "gpu",
-                "Texture cache eviction limit reached"
-            );
+            tracing::error!(subsystem = "gpu", "Texture cache eviction limit reached");
             return RecoveryResult::Failed;
         }
 
@@ -96,10 +93,7 @@ impl ResourceRecovery {
     /// - `Recovered` if buffers were returned to the pool.
     /// - `Retryable` if buffers are still in use.
     pub fn recover_buffer_pool(&self) -> RecoveryResult {
-        tracing::warn!(
-            subsystem = "gpu",
-            "Waiting for buffer pool to free up"
-        );
+        tracing::warn!(subsystem = "gpu", "Waiting for buffer pool to free up");
 
         // In a real implementation, this would:
         // 1. Wait for in-use buffers to be returned
@@ -117,10 +111,7 @@ impl ResourceRecovery {
             return RecoveryResult::NotAttempted;
         }
 
-        tracing::warn!(
-            subsystem = "gpu",
-            "Reducing texture quality to free memory"
-        );
+        tracing::warn!(subsystem = "gpu", "Reducing texture quality to free memory");
 
         // In a real implementation, this would:
         // 1. Downscale textures

@@ -5,9 +5,9 @@
 
 use std::collections::HashMap;
 
+use super::dock::DockLayout;
 use crate::geometry::Size;
 use crate::physics::{BodyId, PhysicsBody};
-use super::dock::DockLayout;
 
 /// Redistribution mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,11 +40,7 @@ impl ArrangementManager {
     }
 
     /// Redistribute icons in the dock.
-    pub fn redistribute(
-        &self,
-        layout: &DockLayout,
-        bodies: &mut HashMap<BodyId, PhysicsBody>,
-    ) {
+    pub fn redistribute(&self, layout: &DockLayout, bodies: &mut HashMap<BodyId, PhysicsBody>) {
         let positions = layout.compute_rest_positions();
 
         for (i, pos) in positions.iter().enumerate() {
@@ -57,11 +53,7 @@ impl ArrangementManager {
     }
 
     /// Animate bodies toward their rest positions.
-    pub fn animate_to_rest(
-        &self,
-        bodies: &mut HashMap<BodyId, PhysicsBody>,
-        dt: f32,
-    ) {
+    pub fn animate_to_rest(&self, bodies: &mut HashMap<BodyId, PhysicsBody>, dt: f32) {
         let speed = self.animation_speed * dt;
         for (_, body) in bodies.iter_mut() {
             if let Some(rest) = body.rest_position {
@@ -117,11 +109,7 @@ impl ArrangementManager {
     }
 
     /// Check if all bodies are at their rest positions.
-    pub fn is_arranged(
-        &self,
-        bodies: &HashMap<BodyId, PhysicsBody>,
-        threshold: f32,
-    ) -> bool {
+    pub fn is_arranged(&self, bodies: &HashMap<BodyId, PhysicsBody>, threshold: f32) -> bool {
         for (_, body) in bodies.iter() {
             if let Some(rest) = body.rest_position {
                 let dx = body.position.x - rest.x;
@@ -157,8 +145,8 @@ impl Default for ArrangementManager {
 mod tests {
     use super::*;
     use crate::geometry::{Point, Size};
-    use crate::physics::{BodyId, PhysicsBody, CollisionShape};
     use crate::layout::DockLayoutConfig;
+    use crate::physics::{BodyId, CollisionShape, PhysicsBody};
 
     #[test]
     fn test_redistribute() {

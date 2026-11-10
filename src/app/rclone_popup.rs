@@ -2,10 +2,8 @@
 //!
 //! Paginated list of rclone mounts with transfer rate information.
 
-
 use smithay_client_toolkit::{
-    dmabuf::DmabufState,
-    compositor::CompositorState, shell::WaylandSurface, shm::slot::SlotPool,
+    compositor::CompositorState, dmabuf::DmabufState, shell::WaylandSurface, shm::slot::SlotPool,
 };
 use wayland_client::{protocol::wl_shm, QueueHandle};
 

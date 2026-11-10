@@ -257,7 +257,10 @@ impl PipewireCaptureService {
     /// holds the lock for an extended period.
     pub fn update_window_ids(&self, windows: &[(String, u32)]) {
         // Use timeout — if the monitor holds the lock, skip this frame's update
-        let Some(mut map) = self.window_ids.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) else {
+        let Some(mut map) = self
+            .window_ids
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+        else {
             return;
         };
         map.clear();
@@ -276,13 +279,19 @@ impl PipewireCaptureService {
     /// holds either lock for an extended period.
     pub fn get_bound_stream(&self, window_id: u32) -> Option<usize> {
         // Use timeout — if the monitor holds bindings, skip
-        let Some(bindings) = self.bindings.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) else {
+        let Some(bindings) = self
+            .bindings
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+        else {
             return None;
         };
         let stream_idx = bindings.get(&window_id).copied()?;
         // Release bindings before acquiring stream_frames to avoid ABBA deadlock
         drop(bindings);
-        let Some(frames) = self.stream_frames.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) else {
+        let Some(frames) = self
+            .stream_frames
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+        else {
             return None;
         };
         if stream_idx < frames.len() {
@@ -301,7 +310,10 @@ impl PipewireCaptureService {
     /// Uses a timeout lock so the draw thread never freezes if the monitor task
     /// holds the lock for an extended period.
     pub fn bind_window_to_stream(&self, window_id: u32, stream_idx: usize, _title: &str) {
-        let Some(mut bindings) = self.bindings.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) else {
+        let Some(mut bindings) = self
+            .bindings
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+        else {
             return;
         };
         bindings.insert(window_id, stream_idx);
@@ -311,7 +323,10 @@ impl PipewireCaptureService {
     ///
     /// Called when a window closes so the binding doesn't point to a stale stream.
     pub fn unbind_window(&self, window_id: u32) {
-        let Some(mut bindings) = self.bindings.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) else {
+        let Some(mut bindings) = self
+            .bindings
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+        else {
             return;
         };
         let _ = bindings.remove(&window_id);
@@ -323,7 +338,10 @@ impl PipewireCaptureService {
     /// When a stream is removed from `stream_frames`, all subsequent streams
     /// shift down by 1. This method updates the binding registry accordingly.
     pub fn unbind_and_remap_stream(&self, removed_stream_idx: usize) {
-        let Some(mut bindings) = self.bindings.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) else {
+        let Some(mut bindings) = self
+            .bindings
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+        else {
             return;
         };
         // Remove bindings to the deleted stream
@@ -355,9 +373,9 @@ impl PipewireCaptureService {
     ///
     /// Uses a timeout lock so the draw thread never freezes.
     pub fn find_window_by_stream_idx(&self, stream_idx: usize) -> Option<u32> {
-        let bindings = self.bindings
-            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))?
-        ;
+        let bindings = self
+            .bindings
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))?;
         for (&window_id, &idx) in bindings.iter() {
             if idx == stream_idx {
                 return Some(window_id);
@@ -382,7 +400,10 @@ impl PipewireCaptureService {
             }
         }
         // Slow path: scan streams by window_id field (for streams not yet in registry)
-        let Some(frames) = self.stream_frames.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) else {
+        let Some(frames) = self
+            .stream_frames
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+        else {
             return None;
         };
         for (i, stream) in frames.iter().enumerate() {
@@ -390,7 +411,10 @@ impl PipewireCaptureService {
                 continue;
             }
             // Use timeout lock — if a stream thread blocks window_id, skip it
-            if let Some(wid_guard) = stream.window_id.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) {
+            if let Some(wid_guard) = stream
+                .window_id
+                .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+            {
                 if let Some(sid) = wid_guard.as_ref().copied() {
                     if sid == window_id {
                         return Some(i);
@@ -412,7 +436,10 @@ impl PipewireCaptureService {
     pub fn request_probe(&self) {
         let now = Instant::now();
         // Use timeout — if monitor holds the lock, just notify anyway
-        let Some(mut last) = self.last_probe_time.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) else {
+        let Some(mut last) = self
+            .last_probe_time
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+        else {
             self.probe_signal.notify_one();
             return;
         };
@@ -443,7 +470,10 @@ impl PipewireCaptureService {
     ///
     /// Returns a fallback "Window N" title if the index is out of bounds or the lock times out.
     pub fn window_title(&self, idx: usize) -> String {
-        let state = match self.capture_state.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) {
+        let state = match self
+            .capture_state
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+        {
             Some(g) => g,
             None => return format!("Window {}", idx + 1),
         };
@@ -459,7 +489,10 @@ impl PipewireCaptureService {
     /// Updated by the window list popup on pointer motion. The next call to
     /// `get_active_frame()` will return the frame for this row.
     pub fn set_active_row(&self, row: usize) {
-        let Some(mut r) = self.active_row.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) else {
+        let Some(mut r) = self
+            .active_row
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+        else {
             return;
         };
         *r = row;
@@ -483,8 +516,15 @@ impl PipewireCaptureService {
     /// Uses timeout-based lock acquisition so a blocked stream thread (e.g.,
     /// pcmanfm-qt) cannot freeze the dock. If the lock times out, returns `None`
     /// for that frame.
-    pub fn get_active_frame(&self, target_w: Option<u32>, target_h: Option<u32>) -> Option<(u32, u32, Vec<u8>)> {
-        let row = match self.active_row.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) {
+    pub fn get_active_frame(
+        &self,
+        target_w: Option<u32>,
+        target_h: Option<u32>,
+    ) -> Option<(u32, u32, Vec<u8>)> {
+        let row = match self
+            .active_row
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+        {
             Some(g) => *g,
             None => {
                 static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -494,7 +534,10 @@ impl PipewireCaptureService {
                 return None;
             }
         };
-        let max_scale = match self.scale_factor.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) {
+        let max_scale = match self
+            .scale_factor
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+        {
             Some(g) => *g,
             None => return None,
         };
@@ -503,7 +546,10 @@ impl PipewireCaptureService {
         // before acquiring the per-stream frame lock. This prevents deadlock where
         // the draw thread holds stream_frames while a stream thread holds frame.
         let stream = {
-            let Some(frames) = self.stream_frames.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) else {
+            let Some(frames) = self
+                .stream_frames
+                .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+            else {
                 static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
                 if COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % 120 == 0 {
                     eprintln!("[PIPEWIRE] get_active_frame: stream_frames lock timeout");
@@ -517,12 +563,18 @@ impl PipewireCaptureService {
         };
 
         // Use timeout lock — if a stream thread blocks frame, skip it rather than freezing
-        let frame_data = match stream.frame.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) {
+        let frame_data = match stream
+            .frame
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+        {
             Some(guard) => (*guard).clone(),
             None => {
                 static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
                 if COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % 120 == 0 {
-                    eprintln!("[PIPEWIRE] get_active_frame: per-stream frame lock timeout, row={}", row);
+                    eprintln!(
+                        "[PIPEWIRE] get_active_frame: per-stream frame lock timeout, row={}",
+                        row
+                    );
                 }
                 return None;
             }
@@ -546,11 +598,10 @@ impl PipewireCaptureService {
                     max_scale
                 };
                 Some(convert_to_rgba(w, h, fmt, &bytes, scale))
-            },
+            }
             None => None,
         }
     }
-
 
     /// Get the original (pre-downscale) frame dimensions for a stream index.
     ///
@@ -559,7 +610,10 @@ impl PipewireCaptureService {
     pub fn get_stream_dimensions(&self, idx: usize) -> Option<(u32, u32)> {
         // Get the format_info Arc without holding stream_frames lock
         let format_info = {
-            let Some(frames) = self.stream_frames.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) else {
+            let Some(frames) = self
+                .stream_frames
+                .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+            else {
                 return None;
             };
             if idx >= frames.len() {
@@ -569,11 +623,11 @@ impl PipewireCaptureService {
         };
 
         // Use timeout lock — if a stream thread blocks format_info, skip it
-        format_info.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+        format_info
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
             .map(|guard| (*guard).clone())
             .and_then(|fmt| fmt.map(|(w, h, _)| (w, h)))
     }
-
 
     /// Strip the XDG Desktop Portal hash suffix from a PipeWire stream title.
     ///
@@ -617,7 +671,10 @@ impl PipewireCaptureService {
             return None;
         }
         // Use timeout — if the monitor holds stream_frames, skip
-        let Some(frames) = self.stream_frames.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) else {
+        let Some(frames) = self
+            .stream_frames
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+        else {
             return None;
         };
         let title_lower = title.to_lowercase();
@@ -688,7 +745,10 @@ impl PipewireCaptureService {
         // Try matching by checking if any word from the title appears in the PipeWire title.
         // Only use words longer than 4 chars to avoid false matches on common short words
         // like "the", "tab", "new", etc.
-        let title_words: Vec<&str> = title_lower.split_whitespace().filter(|w| w.len() > 4).collect();
+        let title_words: Vec<&str> = title_lower
+            .split_whitespace()
+            .filter(|w| w.len() > 4)
+            .collect();
         if !title_words.is_empty() {
             for (i, stream) in frames.iter().enumerate() {
                 if exclude.contains(&i) {
@@ -708,7 +768,6 @@ impl PipewireCaptureService {
         }
         None
     }
-
 }
 
 /// Initialize and start the PipeWire capture service.
@@ -737,10 +796,13 @@ pub async fn init_capture_service(
         token.clone()
     };
     // Capture all windows
-    let (results, new_restore_token) = match capture_windows_range(connection, desktop, 0, max_windows, restore_token.clone()).await {
-        Ok(r) => r,
-        Err(_e) => (Vec::new(), None)
-    };
+    let (results, new_restore_token) =
+        match capture_windows_range(connection, desktop, 0, max_windows, restore_token.clone())
+            .await
+        {
+            Ok(r) => r,
+            Err(_e) => (Vec::new(), None),
+        };
 
     // Update the in-memory restore token from the portal response
     if let Some(ref token) = new_restore_token {
@@ -759,7 +821,10 @@ pub async fn init_capture_service(
         return Ok(());
     }
 
-    let pw_fds: Vec<OwnedFd> = results.iter().map(|(fd, _, _)| fd.try_clone().unwrap()).collect();
+    let pw_fds: Vec<OwnedFd> = results
+        .iter()
+        .map(|(fd, _, _)| fd.try_clone().unwrap())
+        .collect();
     let node_ids: Vec<u32> = results.iter().map(|(_, nid, _)| *nid).collect();
     let titles: Vec<String> = results.iter().map(|(_, _, t)| t.clone()).collect();
     let count = results.len();
@@ -780,7 +845,11 @@ pub async fn init_capture_service(
     let chooser_titles: Vec<String> = std::fs::read_to_string("/tmp/chooser-windows.txt")
         .ok()
         .map(|content| {
-            content.lines().filter(|l| !l.is_empty()).map(|s| s.trim().to_string()).collect()
+            content
+                .lines()
+                .filter(|l| !l.is_empty())
+                .map(|s| s.trim().to_string())
+                .collect()
         })
         .unwrap_or_default();
 
@@ -810,11 +879,14 @@ pub async fn init_capture_service(
                     // Count how many streams with this title (hash-stripped) appear
                     // before this index in the chooser file. That count tells us which
                     // unbound ID to pick from the sorted window_ids vec.
-                    let clean_title_for_count = PipewireCaptureService::strip_portal_hash(&title).to_string();
+                    let clean_title_for_count =
+                        PipewireCaptureService::strip_portal_hash(&title).to_string();
                     let mut same_title_count_before = 0;
                     for ci in 0..idx {
                         if let Some(chooser_title) = chooser_titles.get(ci) {
-                            let chooser_clean = PipewireCaptureService::strip_portal_hash(chooser_title).to_string();
+                            let chooser_clean =
+                                PipewireCaptureService::strip_portal_hash(chooser_title)
+                                    .to_string();
                             if chooser_clean == clean_title_for_count {
                                 same_title_count_before += 1;
                             }
@@ -859,9 +931,15 @@ pub async fn init_capture_service(
     // instead of blocking indefinitely.
     for _ in 0..50 {
         // Use timeout lock so the draw thread isn't blocked while we wait
-        let ready = service.stream_frames
+        let ready = service
+            .stream_frames
             .try_lock_for(std::time::Duration::from_millis(50))
-            .map(|frames| frames.iter().filter(|s| s.ready.load(Ordering::Acquire)).count())
+            .map(|frames| {
+                frames
+                    .iter()
+                    .filter(|s| s.ready.load(Ordering::Acquire))
+                    .count()
+            })
             .unwrap_or(0);
         if ready == count {
             break;
@@ -929,7 +1007,11 @@ async fn create_session(
     let handle_token = next_token();
     let session_handle_token = next_token();
 
-    let unique = connection.unique_name().unwrap().as_str().trim_start_matches(':');
+    let unique = connection
+        .unique_name()
+        .unwrap()
+        .as_str()
+        .trim_start_matches(':');
     let bus_name = unique.replace('.', "_");
     let request_path = format!(
         "/org/freedesktop/portal/desktop/request/{}/{}",
@@ -941,39 +1023,50 @@ async fn create_session(
         "org.freedesktop.portal.Desktop",
         request_path.as_str(),
         "org.freedesktop.portal.Request",
-    ).await?;
+    )
+    .await?;
 
     let mut signal = request.receive_signal("Response").await?;
 
     let options: HashMap<String, Variant<'_>> = HashMap::from([
-        ("handle_token".to_string(), Variant::Str(handle_token.as_str().into())),
-        ("session_handle_token".to_string(), Variant::Str(session_handle_token.as_str().into())),
-        ("desktop_file".to_string(), Variant::Str("list-widget.desktop".into())),
+        (
+            "handle_token".to_string(),
+            Variant::Str(handle_token.as_str().into()),
+        ),
+        (
+            "session_handle_token".to_string(),
+            Variant::Str(session_handle_token.as_str().into()),
+        ),
+        (
+            "desktop_file".to_string(),
+            Variant::Str("list-widget.desktop".into()),
+        ),
     ]);
 
     desktop.call_method("CreateSession", &(options,)).await?;
 
-    let sig_opt = tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        signal.next()
-    ).await.map_err(|_| "CreateSession timed out waiting for Response signal")?;
+    let sig_opt = tokio::time::timeout(std::time::Duration::from_secs(10), signal.next())
+        .await
+        .map_err(|_| "CreateSession timed out waiting for Response signal")?;
     let sig = sig_opt.ok_or("Signal stream ended")?;
 
-    let (response, session_path): (u32, OwnedObjectPath) = sig.body().deserialize().unwrap_or_else(|_| {
-        let (resp, props): (u32, HashMap<String, OwnedVariant>) = sig.body().deserialize().expect("fallback failed");
-        if let Some(val) = props.get("session_handle") {
-            if let Variant::Str(s) = &**val {
-                let path = OwnedObjectPath::try_from(s.as_str()).expect("invalid session path");
-                return (resp, path);
+    let (response, session_path): (u32, OwnedObjectPath) =
+        sig.body().deserialize().unwrap_or_else(|_| {
+            let (resp, props): (u32, HashMap<String, OwnedVariant>) =
+                sig.body().deserialize().expect("fallback failed");
+            if let Some(val) = props.get("session_handle") {
+                if let Variant::Str(s) = &**val {
+                    let path = OwnedObjectPath::try_from(s.as_str()).expect("invalid session path");
+                    return (resp, path);
+                }
             }
-        }
-        if let Some(val) = props.get("session") {
-            if let Variant::ObjectPath(path) = &**val {
-                return (resp, OwnedObjectPath::from(path.clone()));
+            if let Some(val) = props.get("session") {
+                if let Variant::ObjectPath(path) = &**val {
+                    return (resp, OwnedObjectPath::from(path.clone()));
+                }
             }
-        }
-        panic!("No session path in response dict");
-    });
+            panic!("No session path in response dict");
+        });
     if response != 0 {
         return Err(format!("Session creation failed: {}", response).into());
     }
@@ -1000,7 +1093,11 @@ async fn select_sources(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let handle_token = next_token();
 
-    let unique = connection.unique_name().unwrap().as_str().trim_start_matches(':');
+    let unique = connection
+        .unique_name()
+        .unwrap()
+        .as_str()
+        .trim_start_matches(':');
     let bus_name = unique.replace('.', "_");
     let request_path = format!(
         "/org/freedesktop/portal/desktop/request/{}/{}",
@@ -1012,15 +1109,19 @@ async fn select_sources(
         "org.freedesktop.portal.Desktop",
         request_path.as_str(),
         "org.freedesktop.portal.Request",
-    ).await?;
+    )
+    .await?;
 
     let mut signal = request.receive_signal("Response").await?;
 
     // Build options — restore_token must be on SelectSources, not Start,
     // to bypass the portal confirmation dialog.
     let mut options: HashMap<String, Variant<'_>> = HashMap::from([
-        ("handle_token".to_string(), Variant::Str(handle_token.as_str().into())),
-        ("types".to_string(), Variant::U32(3)),  // 3 = window + viewport
+        (
+            "handle_token".to_string(),
+            Variant::Str(handle_token.as_str().into()),
+        ),
+        ("types".to_string(), Variant::U32(3)), // 3 = window + viewport
         ("multiple".to_string(), Variant::Bool(true)),
         ("cursor_mode".to_string(), Variant::U32(1)),
         ("persist_mode".to_string(), Variant::U32(2)),
@@ -1029,21 +1130,22 @@ async fn select_sources(
         options.insert("restore_token".to_string(), Variant::Str(token.into()));
     }
 
-    desktop.call_method("SelectSources", &(session, options)).await?;
+    desktop
+        .call_method("SelectSources", &(session, options))
+        .await?;
 
     // Wait for the response signal with a timeout to prevent the portal from
     // hanging indefinitely (e.g., when certain windows like pcmanfm-qt cause
     // the wlr portal to stall).
-    let sig_opt = tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        signal.next()
-    ).await.map_err(|_| "SelectSources timed out waiting for Response signal")?;
+    let sig_opt = tokio::time::timeout(std::time::Duration::from_secs(10), signal.next())
+        .await
+        .map_err(|_| "SelectSources timed out waiting for Response signal")?;
     let sig = sig_opt.ok_or("SelectSources signal stream ended")?;
     let response: u32 = if let Ok((r,)) = sig.body().deserialize::<(u32,)>() {
         r
     } else {
-        let (r, _props): (u32, HashMap<String, OwnedVariant>) = sig.body().deserialize()
-            .expect("SelectSources response");
+        let (r, _props): (u32, HashMap<String, OwnedVariant>) =
+            sig.body().deserialize().expect("SelectSources response");
         r
     };
     if response != 0 {
@@ -1067,7 +1169,11 @@ async fn start_capture(
 ) -> Result<(Vec<(u32, HashMap<String, String>)>, Option<String>), Box<dyn std::error::Error>> {
     let handle_token = next_token();
 
-    let unique = connection.unique_name().unwrap().as_str().trim_start_matches(':');
+    let unique = connection
+        .unique_name()
+        .unwrap()
+        .as_str()
+        .trim_start_matches(':');
     let bus_name = unique.replace('.', "_");
     let request_path = format!(
         "/org/freedesktop/portal/desktop/request/{}/{}",
@@ -1079,23 +1185,26 @@ async fn start_capture(
         "org.freedesktop.portal.Desktop",
         request_path.as_str(),
         "org.freedesktop.portal.Request",
-    ).await?;
+    )
+    .await?;
 
     let mut signal = request.receive_signal("Response").await?;
 
-    let options: HashMap<String, Variant<'_>> = HashMap::from([
-        ("handle_token".to_string(), Variant::Str(handle_token.as_str().into())),
-    ]);
+    let options: HashMap<String, Variant<'_>> = HashMap::from([(
+        "handle_token".to_string(),
+        Variant::Str(handle_token.as_str().into()),
+    )]);
 
-    desktop.call_method("Start", &(session, handle_token.as_str(), options)).await?;
+    desktop
+        .call_method("Start", &(session, handle_token.as_str(), options))
+        .await?;
 
     // Wait for the Start response signal with a timeout to prevent the portal
     // from hanging indefinitely (e.g., when certain windows like pcmanfm-qt
     // cause the wlr portal to stall).
-    let sig_opt = tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        signal.next()
-    ).await.map_err(|_| "Start timed out waiting for Response signal")?;
+    let sig_opt = tokio::time::timeout(std::time::Duration::from_secs(10), signal.next())
+        .await
+        .map_err(|_| "Start timed out waiting for Response signal")?;
     let sig = sig_opt.ok_or("Start signal stream ended")?;
     let (response, props): (u32, HashMap<String, OwnedVariant>) = sig.body().deserialize()?;
 
@@ -1121,7 +1230,8 @@ async fn start_capture(
                                 Variant::Dict(dict) if i == 1 => {
                                     for (k, v) in dict.iter() {
                                         if let Variant::Str(key_str) = k {
-                                            stream_props.insert(key_str.to_string(), format!("{}", v));
+                                            stream_props
+                                                .insert(key_str.to_string(), format!("{}", v));
                                         }
                                     }
                                 }
@@ -1130,7 +1240,8 @@ async fn start_capture(
                                         if let Variant::Structure(entry_tup) = entry {
                                             let mut entry_key = String::new();
                                             let mut entry_val = String::new();
-                                            for (j, f) in entry_tup.fields().into_iter().enumerate() {
+                                            for (j, f) in entry_tup.fields().into_iter().enumerate()
+                                            {
                                                 match f {
                                                     Variant::Str(s) if j == 0 => {
                                                         entry_key = s.to_string();
@@ -1176,29 +1287,29 @@ async fn open_pipewire_remote(
 ) -> Result<OwnedFd, Box<dyn std::error::Error>> {
     let handle_token = next_token();
 
-    let options: HashMap<String, Variant<'_>> = HashMap::from([
-        ("handle_token".to_string(), Variant::Str(handle_token.as_str().into())),
-    ]);
+    let options: HashMap<String, Variant<'_>> = HashMap::from([(
+        "handle_token".to_string(),
+        Variant::Str(handle_token.as_str().into()),
+    )]);
 
-    let msg = desktop.call_method("OpenPipeWireRemote", &(session, options)).await?;
+    let msg = desktop
+        .call_method("OpenPipeWireRemote", &(session, options))
+        .await?;
 
     let body = msg.body();
-    let fd_val: zbus::zvariant::Fd<'_> = body.deserialize().map_err(|_e| {
-        "Failed to deserialize PipeWire FD"
-    })?;
+    let fd_val: zbus::zvariant::Fd<'_> = body
+        .deserialize()
+        .map_err(|_e| "Failed to deserialize PipeWire FD")?;
 
     let owned_fd = match fd_val {
-        zbus::zvariant::Fd::Borrowed(borrowed) => {
-            borrowed.try_clone_to_owned().map_err(|_e| {
-                "Failed to clone file descriptor"
-            })?
-        }
+        zbus::zvariant::Fd::Borrowed(borrowed) => borrowed
+            .try_clone_to_owned()
+            .map_err(|_e| "Failed to clone file descriptor")?,
         zbus::zvariant::Fd::Owned(owned) => owned,
     };
 
     Ok(owned_fd)
 }
-
 
 /// Probe the portal to discover how many windows are available for capture.
 ///
@@ -1221,7 +1332,10 @@ async fn probe_window_count(
         Ok(s) => s,
         Err(_) => return 0,
     };
-    if select_sources(connection, desktop, &session, restore_token).await.is_err() {
+    if select_sources(connection, desktop, &session, restore_token)
+        .await
+        .is_err()
+    {
         // If portal session failed, try to read the existing chooser file
         if let Ok(content) = std::fs::read_to_string("/tmp/chooser-windows.txt") {
             return content.lines().filter(|l| !l.is_empty()).count();
@@ -1268,8 +1382,7 @@ async fn capture_windows_range(
 
     for idx in start_idx..end_idx {
         // Tell the chooser which window to select (0-based)
-        std::fs::write("/tmp/chooser-index.txt", idx.to_string())
-            .ok();
+        std::fs::write("/tmp/chooser-index.txt", idx.to_string()).ok();
 
         let session = match create_session(connection, desktop).await {
             Ok(s) => s,
@@ -1287,7 +1400,8 @@ async fn capture_windows_range(
             continue;
         }
 
-        let (streams, new_restore_token) = match start_capture(connection, desktop, &session).await {
+        let (streams, new_restore_token) = match start_capture(connection, desktop, &session).await
+        {
             Ok(s) => s,
             Err(_) => continue,
         };
@@ -1318,10 +1432,11 @@ async fn capture_windows_range(
                     // The chooser file lists all windows; the one we selected is at index `idx`
                     lines.get(idx).map(|s| s.trim().to_string())
                 });
-            
+
             let default_title = format!("Window {}", results.len() + 1);
             let title = chooser_title.unwrap_or_else(|| {
-                props.get("window.title")
+                props
+                    .get("window.title")
                     .or_else(|| props.get("node.name"))
                     .or_else(|| props.get("application.name"))
                     .or_else(|| props.get("node.description"))
@@ -1355,17 +1470,23 @@ fn spawn_stream_thread(fd: OwnedFd, node_id: u32, idx: usize, stream_data: Arc<S
     std::thread::spawn(move || {
         let mainloop = match pw::main_loop::MainLoopRc::new(None) {
             Ok(ml) => ml,
-            Err(_) => { return; }
+            Err(_) => {
+                return;
+            }
         };
         let context = match pw::context::ContextRc::new(&mainloop, None) {
             Ok(ctx) => ctx,
-            Err(_) => { return; }
+            Err(_) => {
+                return;
+            }
         };
         let loop_ = mainloop.loop_();
 
         let core = match context.connect_fd_rc(fd, None) {
             Ok(c) => c,
-            Err(_) => { return; }
+            Err(_) => {
+                return;
+            }
         };
 
         let stream = match pw::stream::StreamRc::new(
@@ -1378,7 +1499,9 @@ fn spawn_stream_thread(fd: OwnedFd, node_id: u32, idx: usize, stream_data: Arc<S
             },
         ) {
             Ok(s) => s,
-            Err(_) => { return; }
+            Err(_) => {
+                return;
+            }
         };
 
         let frame_data_for_process = Arc::clone(&stream_data.frame);
@@ -1390,16 +1513,20 @@ fn spawn_stream_thread(fd: OwnedFd, node_id: u32, idx: usize, stream_data: Arc<S
 
         let _listener = stream
             .add_local_listener_with_user_data(())
-            .state_changed(move |_stream, _user_data: &mut (), _old, _new| {
-            })
+            .state_changed(move |_stream, _user_data: &mut (), _old, _new| {})
             .param_changed(move |stream, _user_data: &mut (), id, param| {
-                let Some(param) = param else { return; };
-                if id != pw::spa::param::ParamType::Format.as_raw() { return; }
-
-                let (media_type, media_subtype) = match pw::spa::param::format_utils::parse_format(param) {
-                    Ok(v) => v,
-                    Err(_) => return,
+                let Some(param) = param else {
+                    return;
                 };
+                if id != pw::spa::param::ParamType::Format.as_raw() {
+                    return;
+                }
+
+                let (media_type, media_subtype) =
+                    match pw::spa::param::format_utils::parse_format(param) {
+                        Ok(v) => v,
+                        Err(_) => return,
+                    };
 
                 if media_type != pw::spa::param::format::MediaType::Video
                     || media_subtype != pw::spa::param::format::MediaSubtype::Raw
@@ -1410,9 +1537,7 @@ fn spawn_stream_thread(fd: OwnedFd, node_id: u32, idx: usize, stream_data: Arc<S
                 let mut format = pw::spa::param::video::VideoInfoRaw::new();
                 if format.parse(param).is_ok() {
                     if let Some(mut guard) = format_info_for_param.try_lock() {
-                        guard.replace((
-                            format.size().width, format.size().height, format.format()
-                        ));
+                        guard.replace((format.size().width, format.size().height, format.format()));
                     }
                     if stream.set_active(true).is_ok() {
                         ready_flag_for_param.store(true, Ordering::Release);
@@ -1424,7 +1549,9 @@ fn spawn_stream_thread(fd: OwnedFd, node_id: u32, idx: usize, stream_data: Arc<S
                     None => {}
                     Some(mut buffer) => {
                         let datas = buffer.datas_mut();
-                        if datas.is_empty() { return; }
+                        if datas.is_empty() {
+                            return;
+                        }
 
                         let data = &mut datas[0];
                         let chunk = data.chunk();
@@ -1447,20 +1574,30 @@ fn spawn_stream_thread(fd: OwnedFd, node_id: u32, idx: usize, stream_data: Arc<S
                                 if w > 0 && h > 0 {
                                     let bytes = samples[0..size.min(samples.len())].to_vec();
                                     // If we can't get the frame lock, skip this frame
-                                    let result = frame_data_for_process.try_lock().map(|mut guard| {
-                                        guard.replace((w, h, fmt, bytes));
-                                    });
+                                    let result =
+                                        frame_data_for_process.try_lock().map(|mut guard| {
+                                            guard.replace((w, h, fmt, bytes));
+                                        });
                                     let _ = result;
                                     // Log frame receipt periodically (every 60th frame ≈ 1 sec at 60fps)
-                                    static COUNTERS: std::sync::OnceLock<Vec<std::sync::atomic::AtomicU64>> = std::sync::OnceLock::new();
+                                    static COUNTERS: std::sync::OnceLock<
+                                        Vec<std::sync::atomic::AtomicU64>,
+                                    > = std::sync::OnceLock::new();
                                     let counters = COUNTERS.get_or_init(|| {
                                         // Pre-allocate 20 slots for streams
-                                        (0..20).map(|_| std::sync::atomic::AtomicU64::new(0)).collect()
+                                        (0..20)
+                                            .map(|_| std::sync::atomic::AtomicU64::new(0))
+                                            .collect()
                                     });
                                     if stream_idx_for_log < counters.len() {
-                                        let count = counters[stream_idx_for_log].fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                                        let count = counters[stream_idx_for_log]
+                                            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                                            + 1;
                                         if count % 120 == 0 {
-                                            eprintln!("[PIPEWIRE] Stream {} (title={}) frame count: {}", stream_idx_for_log, title_for_log, count);
+                                            eprintln!(
+                                                "[PIPEWIRE] Stream {} (title={}) frame count: {}",
+                                                stream_idx_for_log, title_for_log, count
+                                            );
                                         }
                                     }
                                 }
@@ -1501,9 +1638,18 @@ fn spawn_stream_thread(fd: OwnedFd, node_id: u32, idx: usize, stream_data: Arc<S
                 Choice,
                 Range,
                 Rectangle,
-                pw::spa::utils::Rectangle { width: 1920, height: 1080 },
-                pw::spa::utils::Rectangle { width: 1, height: 1 },
-                pw::spa::utils::Rectangle { width: 7680, height: 4320 }
+                pw::spa::utils::Rectangle {
+                    width: 1920,
+                    height: 1080
+                },
+                pw::spa::utils::Rectangle {
+                    width: 1,
+                    height: 1
+                },
+                pw::spa::utils::Rectangle {
+                    width: 7680,
+                    height: 4320
+                }
             ),
             pw::spa::pod::property!(
                 pw::spa::param::format::FormatProperties::VideoFramerate,
@@ -1518,15 +1664,23 @@ fn spawn_stream_thread(fd: OwnedFd, node_id: u32, idx: usize, stream_data: Arc<S
         let values: Vec<u8> = pw::spa::pod::serialize::PodSerializer::serialize(
             std::io::Cursor::new(Vec::new()),
             &pw::spa::pod::Value::Object(obj),
-        ).unwrap().0.into_inner();
+        )
+        .unwrap()
+        .0
+        .into_inner();
 
         let mut stream_params = vec![Pod::from_bytes(&values).unwrap()];
-        if stream.connect(
-            pw::spa::utils::Direction::Input,
-            Some(node_id),
-            pw::stream::StreamFlags::AUTOCONNECT | pw::stream::StreamFlags::MAP_BUFFERS | pw::stream::StreamFlags::RT_PROCESS,
-            &mut stream_params,
-        ).is_err() {
+        if stream
+            .connect(
+                pw::spa::utils::Direction::Input,
+                Some(node_id),
+                pw::stream::StreamFlags::AUTOCONNECT
+                    | pw::stream::StreamFlags::MAP_BUFFERS
+                    | pw::stream::StreamFlags::RT_PROCESS,
+                &mut stream_params,
+            )
+            .is_err()
+        {
             return;
         }
 
@@ -1593,22 +1747,28 @@ pub async fn start_monitor_inner(
         // when certain windows (e.g., pcmanfm-qt) cause the wlr portal to stall.
         {
             let _ = std::fs::write("/tmp/chooser-index.txt", "0");
-            let _portal_result = tokio::time::timeout(
-                std::time::Duration::from_secs(15),
-                async {
-                    let session = match create_session(&connection, &desktop).await {
-                        Ok(s) => s,
-                        Err(_) => return,
-                    };
-                    let portal_restore_token = {
-                        let token = service.restore_token.lock();
-                        token.clone()
-                    };
-                    if select_sources(&connection, &desktop, &session, portal_restore_token.as_deref()).await.is_ok() {
-                        let _ = start_capture(&connection, &desktop, &session).await;
-                    }
+            let _portal_result = tokio::time::timeout(std::time::Duration::from_secs(15), async {
+                let session = match create_session(&connection, &desktop).await {
+                    Ok(s) => s,
+                    Err(_) => return,
+                };
+                let portal_restore_token = {
+                    let token = service.restore_token.lock();
+                    token.clone()
+                };
+                if select_sources(
+                    &connection,
+                    &desktop,
+                    &session,
+                    portal_restore_token.as_deref(),
+                )
+                .await
+                .is_ok()
+                {
+                    let _ = start_capture(&connection, &desktop, &session).await;
                 }
-            ).await;
+            })
+            .await;
             // If the timeout fired, the portal session was abandoned — the chooser file
             // may be stale, but the monitor continues instead of freezing.
         }
@@ -1619,24 +1779,29 @@ pub async fn start_monitor_inner(
         // Read all window titles from the chooser file to detect new windows.
         // The chooser file is updated by chooser-all.sh on every portal call.
         // If the portal session failed, the file may be stale, but it's better than nothing.
-        let chooser_titles: Vec<String> = if let Ok(content) = std::fs::read_to_string("/tmp/chooser-windows.txt") {
-            content.lines()
-                .filter(|l| !l.is_empty())
-                .map(|l| l.trim().to_string())
-                .collect()
-        } else {
-            continue;
-        };
+        let chooser_titles: Vec<String> =
+            if let Ok(content) = std::fs::read_to_string("/tmp/chooser-windows.txt") {
+                content
+                    .lines()
+                    .filter(|l| !l.is_empty())
+                    .map(|l| l.trim().to_string())
+                    .collect()
+            } else {
+                continue;
+            };
 
         // Truncated titles for debug logging only — use char indices, not byte indices,
         // to avoid panics on multi-byte Unicode characters (e.g., apostrophes, emojis).
-        let _chooser_titles_truncated: Vec<String> = chooser_titles.iter().map(|t| {
-            if t.chars().count() > 20 {
-                format!("{}...", t.chars().take(17).collect::<String>())
-            } else {
-                t.clone()
-            }
-        }).collect();
+        let _chooser_titles_truncated: Vec<String> = chooser_titles
+            .iter()
+            .map(|t| {
+                if t.chars().count() > 20 {
+                    format!("{}...", t.chars().take(17).collect::<String>())
+                } else {
+                    t.clone()
+                }
+            })
+            .collect();
 
         let new_count = chooser_titles.len();
 
@@ -1661,13 +1826,15 @@ pub async fn start_monitor_inner(
 
             if stream_count == chooser_titles.len() && stream_count > 0 {
                 // Same count — likely just title changes.
-                let mut portal_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+                let mut portal_counts: std::collections::HashMap<String, usize> =
+                    std::collections::HashMap::new();
                 for ct in &chooser_titles {
                     let clean = PipewireCaptureService::strip_portal_hash(ct).to_string();
                     *portal_counts.entry(clean).or_insert(0) += 1;
                 }
 
-                let mut stream_title_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+                let mut stream_title_counts: std::collections::HashMap<String, usize> =
+                    std::collections::HashMap::new();
                 for t in &stream_titles {
                     let clean = PipewireCaptureService::strip_portal_hash(t).to_string();
                     *stream_title_counts.entry(clean).or_insert(0) += 1;
@@ -1692,7 +1859,7 @@ pub async fn start_monitor_inner(
         // (window closed) OR if there are more streams with a title than portal windows
         // with that title (extra stream from a closed window with the same title).
         // Streams with valid window_id bindings are preserved even if their title changed.
-        
+
         // Save the active row's window_id and stream count BEFORE retain() removes streams.
         // After removal, we'll remap active_row to the new index of this window.
         //
@@ -1711,7 +1878,8 @@ pub async fn start_monitor_inner(
         };
 
         // Count how many times each portal title appears (hash-stripped)
-        let mut portal_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        let mut portal_counts: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
         for ct in &chooser_titles {
             let clean = PipewireCaptureService::strip_portal_hash(ct).to_string();
             *portal_counts.entry(clean).or_insert(0) += 1;
@@ -1719,11 +1887,14 @@ pub async fn start_monitor_inner(
 
         // Phase 1: Remove stale streams
         // First, collect which indices to remove, then remove them in one pass.
-        eprintln!("[PIPEWIRE] Monitor Phase 1: checking {} streams for stale entries", { service_frames.lock().len() });
+        eprintln!(
+            "[PIPEWIRE] Monitor Phase 1: checking {} streams for stale entries",
+            { service_frames.lock().len() }
+        );
         let indices_to_remove: Vec<usize> = {
             let frames = service_frames.lock();
             let mut to_remove = Vec::new();
-            
+
             // First pass: mark streams whose window_id is no longer valid
             let mut bound_kept: std::collections::HashSet<usize> = std::collections::HashSet::new();
             for (i, stream) in frames.iter().enumerate() {
@@ -1737,12 +1908,14 @@ pub async fn start_monitor_inner(
             }
 
             // Second pass: for unbound streams, use title count matching
-            let mut kept_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+            let mut kept_counts: std::collections::HashMap<String, usize> =
+                std::collections::HashMap::new();
             for (i, stream) in frames.iter().enumerate() {
                 if bound_kept.contains(&i) {
                     continue;
                 }
-                let clean_title = PipewireCaptureService::strip_portal_hash(&stream.title).to_string();
+                let clean_title =
+                    PipewireCaptureService::strip_portal_hash(&stream.title).to_string();
                 let max_keep = *portal_counts.get(&clean_title).unwrap_or(&0);
                 let current_kept = *kept_counts.get(&clean_title).unwrap_or(&0);
                 if current_kept < max_keep {
@@ -1790,14 +1963,18 @@ pub async fn start_monitor_inner(
             // Collect unbound streams info
             let unbound_streams: Vec<(usize, String)> = {
                 let frames = service_frames.lock();
-                frames.iter().enumerate().filter_map(|(i, stream)| {
-                    let current_id = *stream.window_id.lock();
-                    if current_id.is_none() {
-                        Some((i, stream.title.clone()))
-                    } else {
-                        None
-                    }
-                }).collect()
+                frames
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, stream)| {
+                        let current_id = *stream.window_id.lock();
+                        if current_id.is_none() {
+                            Some((i, stream.title.clone()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
             };
             drop(window_ids_map);
 
@@ -1812,7 +1989,9 @@ pub async fn start_monitor_inner(
                 drop(bindings);
                 if let Some(ids) = window_ids_map.get(&clean_title) {
                     let id_to_use = if ids.len() <= 1 {
-                        ids.iter().find(|id| !bound_window_ids.contains(id)).copied()
+                        ids.iter()
+                            .find(|id| !bound_window_ids.contains(id))
+                            .copied()
                     } else {
                         // Multiple windows with the same title — use chooser file order.
                         // Count how many chooser entries with this title appear before
@@ -1820,7 +1999,9 @@ pub async fn start_monitor_inner(
                         let mut same_title_count_before = 0;
                         for ci in 0..i {
                             if let Some(chooser_title) = chooser_titles.get(ci) {
-                                let chooser_clean = PipewireCaptureService::strip_portal_hash(chooser_title).to_string();
+                                let chooser_clean =
+                                    PipewireCaptureService::strip_portal_hash(chooser_title)
+                                        .to_string();
                                 if chooser_clean == clean_title {
                                     same_title_count_before += 1;
                                 }
@@ -1852,7 +2033,7 @@ pub async fn start_monitor_inner(
             frames.len()
         };
         let streams_removed = stream_count_before > stream_count_after;
-        
+
         if let Some(wid) = active_window_id_before_removal {
             if let Some(new_idx) = service.get_bound_stream(wid) {
                 service.set_active_row(new_idx);
@@ -1888,21 +2069,24 @@ pub async fn start_monitor_inner(
         let mut to_capture: Vec<usize> = Vec::new();
         {
             // Count existing streams per title (hash-stripped)
-            let mut stream_title_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+            let mut stream_title_counts: std::collections::HashMap<String, usize> =
+                std::collections::HashMap::new();
             for t in &existing_titles {
                 let clean = PipewireCaptureService::strip_portal_hash(t).to_string();
                 *stream_title_counts.entry(clean).or_insert(0) += 1;
             }
 
             // Count portal windows per title (hash-stripped)
-            let mut portal_title_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+            let mut portal_title_counts: std::collections::HashMap<String, usize> =
+                std::collections::HashMap::new();
             for ct in &chooser_titles {
                 let clean = PipewireCaptureService::strip_portal_hash(ct).to_string();
                 *portal_title_counts.entry(clean).or_insert(0) += 1;
             }
 
             // Track how many streams we already have per title (for incremental matching)
-            let mut matched_so_far: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+            let mut matched_so_far: std::collections::HashMap<String, usize> =
+                std::collections::HashMap::new();
 
             for (i, title) in chooser_titles.iter().enumerate() {
                 let clean_title = PipewireCaptureService::strip_portal_hash(title).to_string();
@@ -1942,7 +2126,15 @@ pub async fn start_monitor_inner(
             token.clone()
         };
         for (idx, portal_idx) in to_capture.into_iter().enumerate() {
-            match capture_windows_range(&connection, &desktop, portal_idx, portal_idx + 1, current_restore_token.clone()).await {
+            match capture_windows_range(
+                &connection,
+                &desktop,
+                portal_idx,
+                portal_idx + 1,
+                current_restore_token.clone(),
+            )
+            .await
+            {
                 Ok((new_streams, _new_token)) => {
                     for (fd, node_id, captured_title) in new_streams {
                         let stream_idx = current_stream_count + idx + added_count;
@@ -1954,7 +2146,8 @@ pub async fn start_monitor_inner(
                             // Release window_ids before bindings to avoid lock ordering issues
                             let ids = {
                                 let map = service.window_ids.lock();
-                                let clean_title = PipewireCaptureService::strip_portal_hash(&captured_title);
+                                let clean_title =
+                                    PipewireCaptureService::strip_portal_hash(&captured_title);
                                 map.get(clean_title).cloned()
                             };
                             ids.and_then(|v| {
@@ -1963,11 +2156,17 @@ pub async fn start_monitor_inner(
                                     v.iter().find(|id| !bindings.contains_key(id)).copied()
                                 } else {
                                     // Multiple windows with the same title — use chooser file order.
-                                    let clean_title_for_count = PipewireCaptureService::strip_portal_hash(&captured_title).to_string();
+                                    let clean_title_for_count =
+                                        PipewireCaptureService::strip_portal_hash(&captured_title)
+                                            .to_string();
                                     let mut same_title_count_before = 0;
                                     for ci in 0..portal_idx {
                                         if let Some(chooser_title) = chooser_titles.get(ci) {
-                                            let chooser_clean = PipewireCaptureService::strip_portal_hash(chooser_title).to_string();
+                                            let chooser_clean =
+                                                PipewireCaptureService::strip_portal_hash(
+                                                    chooser_title,
+                                                )
+                                                .to_string();
                                             if chooser_clean == clean_title_for_count {
                                                 same_title_count_before += 1;
                                             }
@@ -2032,7 +2231,10 @@ pub async fn start_monitor_inner(
 /// Returns `(width, height, rgba_bytes)` where `rgba_bytes` is a flat
 /// vector of RGBA pixels (4 bytes per pixel, row-major order).
 fn convert_to_rgba(
-    w: u32, h: u32, fmt: pw::spa::param::video::VideoFormat, bytes: &[u8],
+    w: u32,
+    h: u32,
+    fmt: pw::spa::param::video::VideoFormat,
+    bytes: &[u8],
     scale_factor: f32,
 ) -> (u32, u32, Vec<u8>) {
     let out_w = if scale_factor < 1.0 {
@@ -2091,17 +2293,20 @@ fn convert_to_rgba(
                             rgba[dst] = ((bytes[s00 + 2] as f64 * w00
                                 + bytes[s10 + 2] as f64 * w10
                                 + bytes[s01 + 2] as f64 * w01
-                                + bytes[s11 + 2] as f64 * w11) + 0.5) as u8;
+                                + bytes[s11 + 2] as f64 * w11)
+                                + 0.5) as u8;
                             // G channel (src index 1)
                             rgba[dst + 1] = ((bytes[s00 + 1] as f64 * w00
                                 + bytes[s10 + 1] as f64 * w10
                                 + bytes[s01 + 1] as f64 * w01
-                                + bytes[s11 + 1] as f64 * w11) + 0.5) as u8;
+                                + bytes[s11 + 1] as f64 * w11)
+                                + 0.5) as u8;
                             // B channel (src index 0)
                             rgba[dst + 2] = ((bytes[s00] as f64 * w00
                                 + bytes[s10] as f64 * w10
                                 + bytes[s01] as f64 * w01
-                                + bytes[s11] as f64 * w11) + 0.5) as u8;
+                                + bytes[s11] as f64 * w11)
+                                + 0.5) as u8;
                             rgba[dst + 3] = 255;
                         }
                     }
@@ -2156,22 +2361,26 @@ fn convert_to_rgba(
                             rgba[dst] = ((bytes[s00] as f64 * w00
                                 + bytes[s10] as f64 * w10
                                 + bytes[s01] as f64 * w01
-                                + bytes[s11] as f64 * w11) + 0.5) as u8;
+                                + bytes[s11] as f64 * w11)
+                                + 0.5) as u8;
                             // G channel
                             rgba[dst + 1] = ((bytes[s00 + 1] as f64 * w00
                                 + bytes[s10 + 1] as f64 * w10
                                 + bytes[s01 + 1] as f64 * w01
-                                + bytes[s11 + 1] as f64 * w11) + 0.5) as u8;
+                                + bytes[s11 + 1] as f64 * w11)
+                                + 0.5) as u8;
                             // B channel
                             rgba[dst + 2] = ((bytes[s00 + 2] as f64 * w00
                                 + bytes[s10 + 2] as f64 * w10
                                 + bytes[s01 + 2] as f64 * w01
-                                + bytes[s11 + 2] as f64 * w11) + 0.5) as u8;
+                                + bytes[s11 + 2] as f64 * w11)
+                                + 0.5) as u8;
                             // A channel
                             rgba[dst + 3] = ((bytes[s00 + 3] as f64 * w00
                                 + bytes[s10 + 3] as f64 * w10
                                 + bytes[s01 + 3] as f64 * w01
-                                + bytes[s11 + 3] as f64 * w11) + 0.5) as u8;
+                                + bytes[s11 + 3] as f64 * w11)
+                                + 0.5) as u8;
                         }
                     }
                 }
@@ -2218,17 +2427,20 @@ fn convert_to_rgba(
                             rgba[dst] = ((bytes[s00] as f64 * w00
                                 + bytes[s10] as f64 * w10
                                 + bytes[s01] as f64 * w01
-                                + bytes[s11] as f64 * w11) + 0.5) as u8;
+                                + bytes[s11] as f64 * w11)
+                                + 0.5) as u8;
                             // G channel
                             rgba[dst + 1] = ((bytes[s00 + 1] as f64 * w00
                                 + bytes[s10 + 1] as f64 * w10
                                 + bytes[s01 + 1] as f64 * w01
-                                + bytes[s11 + 1] as f64 * w11) + 0.5) as u8;
+                                + bytes[s11 + 1] as f64 * w11)
+                                + 0.5) as u8;
                             // B channel
                             rgba[dst + 2] = ((bytes[s00 + 2] as f64 * w00
                                 + bytes[s10 + 2] as f64 * w10
                                 + bytes[s01 + 2] as f64 * w01
-                                + bytes[s11 + 2] as f64 * w11) + 0.5) as u8;
+                                + bytes[s11 + 2] as f64 * w11)
+                                + 0.5) as u8;
                             rgba[dst + 3] = 255;
                         }
                     }
@@ -2282,15 +2494,18 @@ fn convert_to_rgba(
                             rgba[dst] = ((bytes[s00 + 2] as f64 * w00
                                 + bytes[s10 + 2] as f64 * w10
                                 + bytes[s01 + 2] as f64 * w01
-                                + bytes[s11 + 2] as f64 * w11) + 0.5) as u8;
+                                + bytes[s11 + 2] as f64 * w11)
+                                + 0.5) as u8;
                             rgba[dst + 1] = ((bytes[s00 + 1] as f64 * w00
                                 + bytes[s10 + 1] as f64 * w10
                                 + bytes[s01 + 1] as f64 * w01
-                                + bytes[s11 + 1] as f64 * w11) + 0.5) as u8;
+                                + bytes[s11 + 1] as f64 * w11)
+                                + 0.5) as u8;
                             rgba[dst + 2] = ((bytes[s00] as f64 * w00
                                 + bytes[s10] as f64 * w10
                                 + bytes[s01] as f64 * w01
-                                + bytes[s11] as f64 * w11) + 0.5) as u8;
+                                + bytes[s11] as f64 * w11)
+                                + 0.5) as u8;
                             rgba[dst + 3] = 255;
                         }
                     }

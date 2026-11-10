@@ -95,13 +95,23 @@ pub fn handle_dock_release(
                         state.bounce_app_id = Some(app_id.clone());
                     } else {
                         // Sort by title to match the popup row order in window_list.rs.
-                        let titles: HashMap<ObjectId, String> = windows.iter()
+                        let titles: HashMap<ObjectId, String> = windows
+                            .iter()
                             .map(|id| {
-                                (id.clone(), state.window_state(id).map(|w| w.title.clone()).unwrap_or_default())
+                                (
+                                    id.clone(),
+                                    state
+                                        .window_state(id)
+                                        .map(|w| w.title.clone())
+                                        .unwrap_or_default(),
+                                )
                             })
                             .collect();
                         windows.sort_by(|a, b| {
-                            titles.get(a).unwrap_or(&String::new()).cmp(titles.get(b).unwrap_or(&String::new()))
+                            titles
+                                .get(a)
+                                .unwrap_or(&String::new())
+                                .cmp(titles.get(b).unwrap_or(&String::new()))
                         });
 
                         // Match each window to its PipeWire stream, then focus the window
@@ -111,7 +121,8 @@ pub fn handle_dock_release(
                             let active_row = *service.active_row.lock();
                             // Build a list of (window_id, stream_idx) pairs, matching
                             // windows to streams the same way window_list.rs does.
-                            let matched: Vec<(&ObjectId, usize)> = windows.iter()
+                            let matched: Vec<(&ObjectId, usize)> = windows
+                                .iter()
                                 .filter_map(|wid| {
                                     let window_id = wid.protocol_id();
                                     let stream_idx = if let Some(ws) = state.window_state(wid) {
@@ -131,13 +142,15 @@ pub fn handle_dock_release(
                                 })
                                 .collect();
                             // Find the window whose stream matches the active row
-                            matched.iter()
+                            matched
+                                .iter()
                                 .find(|(_, idx)| *idx == active_row)
                                 .map(|(wid, _)| *wid)
                                 // Fallback: if no PipeWire match, use the focused window
                                 .or_else(|| {
-                                    windows.iter()
-                                        .find(|id| state.window_state(id).is_some_and(|w| w.focused))
+                                    windows.iter().find(|id| {
+                                        state.window_state(id).is_some_and(|w| w.focused)
+                                    })
                                 })
                                 .or(windows.first())
                         } else {
@@ -149,7 +162,8 @@ pub fn handle_dock_release(
                         };
 
                         if let Some(handle_id) = target_window {
-                            let was_active = state.window_state(handle_id).is_some_and(|w| w.focused);
+                            let was_active =
+                                state.window_state(handle_id).is_some_and(|w| w.focused);
                             if was_active {
                                 if let Some(win) = state.window_handle(handle_id) {
                                     win.set_minimized();

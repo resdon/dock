@@ -128,18 +128,18 @@
 
 pub mod body;
 pub mod collision;
+pub mod commands;
 pub mod constraints;
+pub mod dock;
+pub mod fields;
 pub mod forces;
 pub mod groups;
+pub mod interaction;
 pub mod solver;
 pub mod spatial_index;
 pub mod springs;
-pub mod fields;
-pub mod interaction;
-pub mod commands;
-pub mod dock;
-pub mod visual_effects;
 pub mod timestep;
+pub mod visual_effects;
 pub mod world;
 
 // ---------------------------------------------------------------------------
@@ -148,73 +148,81 @@ pub mod world;
 
 // Core body types
 pub use body::{
-    BodyId, BodyType, PhysicsBody, CollisionShape, DampingConfig, MaterialProperties,
-    NodeId, PhysicalProperties, PhysicsObject,
+    BodyId, BodyType, CollisionShape, DampingConfig, MaterialProperties, NodeId,
+    PhysicalProperties, PhysicsBody, PhysicsObject,
 };
 
 // World and simulation
-pub use world::{PhysicsWorld, PhysicsWorldConfig, PhysicsStats};
+pub use world::{PhysicsStats, PhysicsWorld, PhysicsWorldConfig};
 
 // Spring system (A)
-pub use springs::{SpringConstraint, DistanceConstraint, SpringChain, RadialSpringSystem};
 pub use forces::{
-    SpringForce, DragForce, RepulsionForce, AttractionForce,
-    WindForce, PushForce, BodyRepulsion, ForceAccumulator,
-    apply_rest_springs, apply_mutual_repulsion,
+    apply_mutual_repulsion, apply_rest_springs, AttractionForce, BodyRepulsion, DragForce,
+    ForceAccumulator, PushForce, RepulsionForce, SpringForce, WindForce,
 };
+pub use springs::{DistanceConstraint, RadialSpringSystem, SpringChain, SpringConstraint};
 
 // Rigid body system (B)
-pub use collision::{Collision, CollisionPair, broad_phase, detect_collision, resolve_collision, aabb_vs_aabb, circle_vs_circle, aabb_vs_circle};
-pub use solver::{PhysicsSolver, SolverConfig, SolverStats, ContactManifold, ContactPoint};
-pub use constraints::{
-    AnchorConstraint, HingeJoint, WeldJoint, PrismaticJoint,
-    RegionConstraint, SliderConstraint, ConstraintSet,
-    // New constraint types
-    SpringConstraint as ConstraintSpring, FixedConstraint, DistanceConstraint as ConstraintsDistanceConstraint,
-    AxisConstraint, PathConstraint, AlignmentConstraint, AlignmentAxis,
-    SeparationConstraint, AttractionConstraint, GroupConstraint,
-    Constraint, ConstraintSystem,
+pub use collision::{
+    aabb_vs_aabb, aabb_vs_circle, broad_phase, circle_vs_circle, detect_collision,
+    resolve_collision, Collision, CollisionPair,
 };
+pub use constraints::{
+    AlignmentAxis,
+    AlignmentConstraint,
+    AnchorConstraint,
+    AttractionConstraint,
+    AxisConstraint,
+    Constraint,
+    ConstraintSet,
+    ConstraintSystem,
+    DistanceConstraint as ConstraintsDistanceConstraint,
+    FixedConstraint,
+    GroupConstraint,
+    HingeJoint,
+    PathConstraint,
+    PrismaticJoint,
+    RegionConstraint,
+    SeparationConstraint,
+    SliderConstraint,
+    // New constraint types
+    SpringConstraint as ConstraintSpring,
+    WeldJoint,
+};
+pub use solver::{ContactManifold, ContactPoint, PhysicsSolver, SolverConfig, SolverStats};
 
 // Field system (C)
 pub use fields::{
-    ForceField, FieldType, FieldConfig, FieldSource,
-    MagneticField, CohesionField, SeparationField,
-    RadialField, DirectionalField,
+    CohesionField, DirectionalField, FieldConfig, FieldSource, FieldType, ForceField,
+    MagneticField, RadialField, SeparationField,
 };
 
 // Groups and spatial indexing
-pub use groups::{BodyGroup, GroupId, GroupConfig, GroupBehavior, GroupManager};
-pub use spatial_index::{SpatialHash, SpatialHashConfig, SpatialHashStats, GridCell, CellKey};
+pub use groups::{BodyGroup, GroupBehavior, GroupConfig, GroupId, GroupManager};
+pub use spatial_index::{CellKey, GridCell, SpatialHash, SpatialHashConfig, SpatialHashStats};
 
 // High-level interaction API
 pub use interaction::{
-    InteractionApi, PhysicsDragState, DragConfig, ProjectionAxis,
-    InsertResult, CutResult, MergeResult,
+    CutResult, DragConfig, InsertResult, InteractionApi, MergeResult, PhysicsDragState,
+    ProjectionAxis,
 };
 
 // Physical dock layout model
-pub use dock::{
-    Dock, DockItem, DockConfig, DockAxis, DockDragState,
-};
+pub use dock::{Dock, DockAxis, DockConfig, DockDragState, DockItem};
 
 // Visual effects system
 pub use visual_effects::{
-    MotionState, VisualTransform, VisualEffectsConfig,
-    CollisionEffect, DragVisualState, VisualEffects,
-    GroupVisualEffects,
+    CollisionEffect, DragVisualState, GroupVisualEffects, MotionState, VisualEffects,
+    VisualEffectsConfig, VisualTransform,
 };
 
 // Fixed timestep simulation
-pub use timestep::{
-    PhysicsConfig, FixedTimestepSimulator, InterpolatedState,
-};
+pub use timestep::{FixedTimestepSimulator, InterpolatedState, PhysicsConfig};
 
 // Interaction command system
 pub use commands::{
-    InteractionCommand, InteractionManager, CommandResult,
-    KeyboardKey, KeyboardModifiers, TouchPhase, PhysicsGestureType,
-    ScriptParameter,
+    CommandResult, InteractionCommand, InteractionManager, KeyboardKey, KeyboardModifiers,
+    PhysicsGestureType, ScriptParameter, TouchPhase,
 };
 
 // Rapier2D removed per ADR 005: analytical springs are sufficient for dock physics.

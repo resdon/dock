@@ -63,30 +63,16 @@ impl SystemAppError {
             SystemAppError::DbusConnectionFailed(_) => {
                 "Retry D-Bus connection with exponential backoff"
             }
-            SystemAppError::DbusTimeout { .. } => {
-                "Retry the D-Bus method call"
-            }
+            SystemAppError::DbusTimeout { .. } => "Retry the D-Bus method call",
             SystemAppError::DbusServiceNotFound { .. } => {
                 "Check if the service is installed and running"
             }
-            SystemAppError::SystemMonitorFailed(_) => {
-                "Retry system monitoring on next interval"
-            }
-            SystemAppError::ProcessResolutionFailed(_) => {
-                "Skip the failed process and continue"
-            }
-            SystemAppError::IconThemeFailed(_) => {
-                "Fall back to default icon"
-            }
-            SystemAppError::ConfigNotFound { .. } => {
-                "Use default configuration values"
-            }
-            SystemAppError::ConfigParseError(_) => {
-                "Reload configuration file or use defaults"
-            }
-            SystemAppError::FileSystemAccessDenied { .. } => {
-                "Check file permissions"
-            }
+            SystemAppError::SystemMonitorFailed(_) => "Retry system monitoring on next interval",
+            SystemAppError::ProcessResolutionFailed(_) => "Skip the failed process and continue",
+            SystemAppError::IconThemeFailed(_) => "Fall back to default icon",
+            SystemAppError::ConfigNotFound { .. } => "Use default configuration values",
+            SystemAppError::ConfigParseError(_) => "Reload configuration file or use defaults",
+            SystemAppError::FileSystemAccessDenied { .. } => "Check file permissions",
         }
     }
 }

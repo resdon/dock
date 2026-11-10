@@ -74,11 +74,16 @@ pub const BYTES_PER_PIXEL: usize = 4;
 /// Panics in debug mode if `idx + 3 >= canvas.len()`.
 #[inline]
 pub fn write_bgra_pixel(canvas: &mut [u8], idx: usize, r: u8, g: u8, b: u8, a: u8) {
-    debug_assert!(idx + 3 < canvas.len(), "Pixel index {} out of bounds for canvas size {}", idx, canvas.len());
-    canvas[idx] = b;       // B
-    canvas[idx + 1] = g;   // G
-    canvas[idx + 2] = r;   // R
-    canvas[idx + 3] = a;   // A
+    debug_assert!(
+        idx + 3 < canvas.len(),
+        "Pixel index {} out of bounds for canvas size {}",
+        idx,
+        canvas.len()
+    );
+    canvas[idx] = b; // B
+    canvas[idx + 1] = g; // G
+    canvas[idx + 2] = r; // R
+    canvas[idx + 3] = a; // A
 }
 
 /// Writes a solid color pixel to the canvas in BGRA8888 format.
@@ -100,7 +105,14 @@ pub fn write_bgra_color(canvas: &mut [u8], idx: usize, color: (u8, u8, u8), a: u
 ///
 /// Returns `true` if the blue channel is at index 0, green at index 1,
 /// red at index 2, and alpha at index 3.
-pub fn verify_bgra_format(canvas: &[u8], idx: usize, expected_r: u8, expected_g: u8, expected_b: u8, expected_a: u8) -> bool {
+pub fn verify_bgra_format(
+    canvas: &[u8],
+    idx: usize,
+    expected_r: u8,
+    expected_g: u8,
+    expected_b: u8,
+    expected_a: u8,
+) -> bool {
     if idx + 3 >= canvas.len() {
         return false;
     }
@@ -147,11 +159,13 @@ mod tests {
         // ARGB would be: A=255, R=255, G=0, B=0
         canvas[0] = 255; // A slot (wrong - should be B)
         canvas[1] = 255; // R slot (wrong - should be G)
-        canvas[2] = 0;   // G slot (wrong - should be R)
-        canvas[3] = 0;   // B slot (wrong - should be A)
-        // This should fail the BGRA verification for pure red (R=255, G=0, B=0, A=255)
-        assert!(!verify_bgra_format(&canvas, 0, 255, 0, 0, 255),
-                "ARGB order should not pass BGRA verification for red");
+        canvas[2] = 0; // G slot (wrong - should be R)
+        canvas[3] = 0; // B slot (wrong - should be A)
+                       // This should fail the BGRA verification for pure red (R=255, G=0, B=0, A=255)
+        assert!(
+            !verify_bgra_format(&canvas, 0, 255, 0, 0, 255),
+            "ARGB order should not pass BGRA verification for red"
+        );
     }
 
     #[test]

@@ -43,7 +43,11 @@ impl PopupGeometry {
         let (base_width, item_height, extra_height) = match popup_type {
             PopupType::ContextMenu => (Self::BASE_MENU_WIDTH, Self::BASE_ITEM_HEIGHT, 0),
             // WindowList includes the PipeWire capture frame height at the top
-            PopupType::WindowList => (Self::BASE_WINDOW_LIST_WIDTH, Self::BASE_ITEM_HEIGHT, Self::WINDOW_LIST_FRAME_HEIGHT),
+            PopupType::WindowList => (
+                Self::BASE_WINDOW_LIST_WIDTH,
+                Self::BASE_ITEM_HEIGHT,
+                Self::WINDOW_LIST_FRAME_HEIGHT,
+            ),
             PopupType::Custom { width, height } => (width, height, 0),
         };
 

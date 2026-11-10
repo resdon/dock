@@ -3,8 +3,8 @@
 //! Images are loaded from pixel data and can be rendered with various
 //! filtering and wrapping modes.
 
-use crate::geometry::Size;
 use crate::color::Color;
+use crate::geometry::Size;
 
 /// Opaque identifier for a loaded image.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -137,25 +137,37 @@ impl ImageData {
         }
 
         match self.format {
-            ImageFormat::Rgba8 => {
-                Some([self.pixels[offset], self.pixels[offset + 1], self.pixels[offset + 2], self.pixels[offset + 3]])
-            }
-            ImageFormat::Bgra8 => {
-                Some([self.pixels[offset + 2], self.pixels[offset + 1], self.pixels[offset], self.pixels[offset + 3]])
-            }
-            ImageFormat::Rgb8 => {
-                Some([self.pixels[offset], self.pixels[offset + 1], self.pixels[offset + 2], 255])
-            }
+            ImageFormat::Rgba8 => Some([
+                self.pixels[offset],
+                self.pixels[offset + 1],
+                self.pixels[offset + 2],
+                self.pixels[offset + 3],
+            ]),
+            ImageFormat::Bgra8 => Some([
+                self.pixels[offset + 2],
+                self.pixels[offset + 1],
+                self.pixels[offset],
+                self.pixels[offset + 3],
+            ]),
+            ImageFormat::Rgb8 => Some([
+                self.pixels[offset],
+                self.pixels[offset + 1],
+                self.pixels[offset + 2],
+                255,
+            ]),
             ImageFormat::Grayscale8 => {
                 let v = self.pixels[offset];
                 Some([v, v, v, 255])
             }
-            ImageFormat::Alpha8 => {
-                Some([255, 255, 255, self.pixels[offset]])
-            }
+            ImageFormat::Alpha8 => Some([255, 255, 255, self.pixels[offset]]),
             ImageFormat::Rgba16Float => {
                 // Simplified: just return first 4 bytes as approximation
-                Some([self.pixels[offset], self.pixels[offset + 1], self.pixels[offset + 2], self.pixels[offset + 3]])
+                Some([
+                    self.pixels[offset],
+                    self.pixels[offset + 1],
+                    self.pixels[offset + 2],
+                    self.pixels[offset + 3],
+                ])
             }
         }
     }
@@ -187,7 +199,8 @@ impl ImageData {
                 self.pixels[offset + 2] = rgba[2];
             }
             ImageFormat::Grayscale8 => {
-                let gray = (rgba[0] as u32 * 299 + rgba[1] as u32 * 587 + rgba[2] as u32 * 114) / 1000;
+                let gray =
+                    (rgba[0] as u32 * 299 + rgba[1] as u32 * 587 + rgba[2] as u32 * 114) / 1000;
                 self.pixels[offset] = gray as u8;
             }
             ImageFormat::Alpha8 => {

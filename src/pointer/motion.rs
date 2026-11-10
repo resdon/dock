@@ -164,7 +164,10 @@ pub fn handle_motion_events(
                 // window list through dock hover logic.
                 // Allow hover when the context menu is fading out (not just when fully closed).
                 let menu_visible = state.menu_state.is_open
-                    && state.docks.iter().any(|dock| !dock.menu_fade.is_fully_hidden());
+                    && state
+                        .docks
+                        .iter()
+                        .any(|dock| !dock.menu_fade.is_fully_hidden());
                 if !is_special_surface && !menu_visible {
                     // Use the same dock-local hitbox as click, drag, scroll, and
                     // DnD handling. Keeping one geometry authority prevents hover
@@ -173,9 +176,9 @@ pub fn handle_motion_events(
 
                     // Update hovered_icon index for rendering (Slint hover outlines)
                     let apps_in_dock = state.get_apps_in_dock();
-                    let new_hovered_index = hovered_app.as_ref().and_then(|app_id| {
-                        apps_in_dock.iter().position(|id| id == app_id)
-                    });
+                    let new_hovered_index = hovered_app
+                        .as_ref()
+                        .and_then(|app_id| apps_in_dock.iter().position(|id| id == app_id));
                     if state.interaction.hovered_icon != new_hovered_index {
                         state.interaction.hovered_icon = new_hovered_index;
                         layer_changed = true;

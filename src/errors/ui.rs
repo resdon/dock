@@ -53,27 +53,13 @@ impl UiAppError {
     /// Returns the recovery strategy description.
     pub fn recovery_strategy(&self) -> &'static str {
         match self {
-            UiAppError::WidgetCreationFailed(_) => {
-                "Recreate the widget with default configuration"
-            }
-            UiAppError::RenderingFailed(_) => {
-                "Restart the affected rendering path"
-            }
-            UiAppError::IconLayoutFailed(_) => {
-                "Recalculate dock icon layout"
-            }
-            UiAppError::SystemBarUpdateFailed(_) => {
-                "Retry system bar update with cached data"
-            }
-            UiAppError::PopupCreationFailed(_) => {
-                "Defer popup creation until next trigger"
-            }
-            UiAppError::StateSyncFailed => {
-                "Reset widget state and resync"
-            }
-            UiAppError::EventHandlerPanic(_) => {
-                "Restart the event handler"
-            }
+            UiAppError::WidgetCreationFailed(_) => "Recreate the widget with default configuration",
+            UiAppError::RenderingFailed(_) => "Restart the affected rendering path",
+            UiAppError::IconLayoutFailed(_) => "Recalculate dock icon layout",
+            UiAppError::SystemBarUpdateFailed(_) => "Retry system bar update with cached data",
+            UiAppError::PopupCreationFailed(_) => "Defer popup creation until next trigger",
+            UiAppError::StateSyncFailed => "Reset widget state and resync",
+            UiAppError::EventHandlerPanic(_) => "Restart the event handler",
         }
     }
 }

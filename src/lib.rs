@@ -11,6 +11,9 @@ use std::path::Path;
 pub mod app;
 pub mod cache;
 pub mod config;
+pub mod diagnostics;
+pub mod error;
+pub mod errors;
 pub mod events;
 pub mod geometry;
 pub mod graphics;
@@ -20,16 +23,13 @@ pub mod interaction;
 pub mod listeners;
 pub mod models;
 pub mod pointer;
+pub mod recovery;
 pub mod registry;
 pub mod render;
 pub mod resolvers;
 pub mod services;
 pub mod state;
 pub mod types;
-pub mod error;
-pub mod errors;
-pub mod diagnostics;
-pub mod recovery;
 
 pub use geometry::*;
 
@@ -58,7 +58,6 @@ pub use types::{
 pub mod terminal_graphics {
     use super::*;
     use std::fs;
-    
 
     /// Pre-cache directory for rasterized SVG icons.
     /// SVGs are rasterized once to PNG and cached here, avoiding per-frame CPU rasterization.
@@ -68,7 +67,12 @@ pub mod terminal_graphics {
         let stem = svg_path.file_stem()?.to_str()?;
         let cache_dir = dirs::cache_dir()?.join("dock").join(SVG_CACHE_DIR);
         fs::create_dir_all(&cache_dir).ok()?;
-        Some(cache_dir.join(format!("{}_{}.png", stem, target_size)).to_string_lossy().into_owned())
+        Some(
+            cache_dir
+                .join(format!("{}_{}.png", stem, target_size))
+                .to_string_lossy()
+                .into_owned(),
+        )
     }
 
     pub fn load_image_raw_rgba(path: &Path, target_size: u32) -> Option<(u32, u32, Vec<u8>)> {

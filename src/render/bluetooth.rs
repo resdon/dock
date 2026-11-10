@@ -108,7 +108,12 @@ impl SlintBluetoothRenderer {
         if self.render_buffer.len() < total_pixels {
             self.render_buffer.resize(
                 total_pixels,
-                PremultipliedRgbaColor { red: 0, green: 0, blue: 0, alpha: 0 },
+                PremultipliedRgbaColor {
+                    red: 0,
+                    green: 0,
+                    blue: 0,
+                    alpha: 0,
+                },
             );
         }
         let slint_buffer = &mut self.render_buffer[..total_pixels];
@@ -180,7 +185,12 @@ impl SlintBluetoothRenderer {
 
         // Clear the Slint render buffer to transparent
         for pixel in slint_buffer.iter_mut() {
-            *pixel = PremultipliedRgbaColor { red: 0, green: 0, blue: 0, alpha: 0 };
+            *pixel = PremultipliedRgbaColor {
+                red: 0,
+                green: 0,
+                blue: 0,
+                alpha: 0,
+            };
         }
 
         // Render via Slint

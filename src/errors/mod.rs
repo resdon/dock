@@ -23,18 +23,18 @@
 //! - `tracing`: Structured logging integration.
 
 mod gpu;
-mod wayland;
-mod pipewire;
-mod ui;
 mod memory;
+mod pipewire;
 mod system;
+mod ui;
+mod wayland;
 
 pub use gpu::*;
-pub use wayland::*;
-pub use pipewire::*;
-pub use ui::*;
 pub use memory::*;
+pub use pipewire::*;
 pub use system::*;
+pub use ui::*;
+pub use wayland::*;
 
 // Re-export from parent module for convenience
 pub use crate::error::{AppError, AppResult};
@@ -97,6 +97,9 @@ mod tests {
     fn test_recoverable_dbus_error() {
         let err = AppError::DbusError("connection refused".into());
         assert!(!err.is_recoverable());
-        assert_eq!(err.recovery_strategy(), Some("Retry D-Bus connection with backoff"));
+        assert_eq!(
+            err.recovery_strategy(),
+            Some("Retry D-Bus connection with backoff")
+        );
     }
 }

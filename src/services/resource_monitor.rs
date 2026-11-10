@@ -22,10 +22,7 @@ use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 /// not available, fails, or the process is not found in the output.
 fn query_vram_mb(pid: u32) -> Option<u64> {
     let output = Command::new("nvidia-smi")
-        .args(&[
-            "pmon", "-c", "1", "-d", "MEM", "-q",
-            "-p", &pid.to_string(),
-        ])
+        .args(&["pmon", "-c", "1", "-d", "MEM", "-q", "-p", &pid.to_string()])
         .output()
         .ok()?;
 
@@ -36,9 +33,13 @@ fn query_vram_mb(pid: u32) -> Option<u64> {
     for line in stdout.lines() {
         let trimmed = line.trim();
         // Skip header lines
-        if trimmed.is_empty() || trimmed.starts_with('-') || trimmed.starts_with('[')
-            || trimmed.starts_with("Computing") || trimmed.starts_with("GPU")
-            || trimmed.starts_with("Timestamp") || trimmed.starts_with("PID")
+        if trimmed.is_empty()
+            || trimmed.starts_with('-')
+            || trimmed.starts_with('[')
+            || trimmed.starts_with("Computing")
+            || trimmed.starts_with("GPU")
+            || trimmed.starts_with("Timestamp")
+            || trimmed.starts_with("PID")
         {
             continue;
         }
@@ -46,7 +47,11 @@ fn query_vram_mb(pid: u32) -> Option<u64> {
         // Parse the used memory value — typically appears as a number followed by "MiB" or "MB"
         let parts: Vec<&str> = trimmed.split_whitespace().collect();
         for part in &parts {
-            if let Ok(val) = part.trim_end_matches('M').trim_end_matches("iB").parse::<u64>() {
+            if let Ok(val) = part
+                .trim_end_matches('M')
+                .trim_end_matches("iB")
+                .parse::<u64>()
+            {
                 if val > 0 {
                     return Some(val);
                 }

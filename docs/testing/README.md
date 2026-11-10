@@ -6,6 +6,7 @@ This directory contains the testing infrastructure and documentation for the Way
 
 | Layer | Description | Files |
 |-------|-------------|-------|
+| 0. **Testing Protocol** | **Mandatory 22-phase AI agent testing & verification protocol** | `TESTING_PROTOCOL.md` |
 | 1. Static Analysis | Rust compilation, Clippy, formatting, dependency checks | `scripts/check.sh` |
 | 2. Profiling | CPU and RAM profiling with perf, heaptrack, Massif, Tracy | `profiling.md` |
 | 3. GPU Validation | wgpu error scopes, Vulkan validation, RenderDoc, MangoHud | `gpu-validation.md` |
@@ -14,6 +15,25 @@ This directory contains the testing infrastructure and documentation for the Way
 | 6. Fuzzing | cargo-fuzz targets for config, scene, geometry, animation | `fuzzing.md` |
 | 7. AI Code Audit | Independent code audit instructions for AI agents | `AI_AUDIT.md` |
 | 8. CI Pipeline | GitHub Actions automated checks on push/PR | `../.github/workflows/ci.yml` |
+
+## Testing Protocol
+
+See [TESTING_PROTOCOL.md](TESTING_PROTOCOL.md) for the **mandatory 22-phase testing protocol** that every AI agent must follow. This includes:
+
+- Repository inspection and static analysis
+- Dependency and security checks
+- Automated tests with required coverage
+- Shader validation and GPU/Vulkan testing
+- Wayland and Slint compatibility tests
+- Visual regression testing
+- CPU, RAM, and VRAM profiling
+- Responsiveness and frame timing
+- Stress and stability tests
+- Fuzzing and safety checks
+- Performance regression comparison
+- Git safety procedures
+- Mandatory testing report template
+- Three testing gates (Build correctness, Runtime correctness, Performance acceptance)
 
 ## Quick Start
 

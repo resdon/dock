@@ -13,7 +13,7 @@
 //! logger.error("Device lost", "Reinitializing GPU");
 //! ```
 
-use tracing::{error, info, warn, debug, trace};
+use tracing::{debug, error, info, trace, warn};
 
 /// Identifies a subsystem for structured logging.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -81,8 +81,7 @@ impl AppState {
         if redraw || registry_changed {
             self.needs_redraw = true;
         }
-        if std::env::var_os("DOCK_WINDOW_DEBUG").is_some() {
-        }
+        if std::env::var_os("DOCK_WINDOW_DEBUG").is_some() {}
         registry_changed || redraw
     }
 
@@ -493,4 +492,3 @@ impl AppState {
         }
     }
 }
-

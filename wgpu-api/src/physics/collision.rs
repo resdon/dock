@@ -3,8 +3,8 @@
 //! Provides broad-phase and narrow-phase collision detection for axis-aligned
 //! bounding boxes and circles, plus impulse-based collision response.
 
+use super::body::{BodyId, CollisionShape, PhysicsBody};
 use crate::geometry::{Point, Rect, Vector2D};
-use super::body::{BodyId, PhysicsBody, CollisionShape};
 
 /// Result of a collision detection test.
 #[derive(Debug, Clone, Copy)]
@@ -40,16 +40,9 @@ impl Collision {
     }
 
     /// Compute the impulse for collision response.
-    pub fn compute_impulse(
-        &self,
-        a: &PhysicsBody,
-        b: &PhysicsBody,
-    ) -> Vector2D {
+    pub fn compute_impulse(&self, a: &PhysicsBody, b: &PhysicsBody) -> Vector2D {
         // Relative velocity
-        let rel_vel = Vector2D::new(
-            b.velocity.x - a.velocity.x,
-            b.velocity.y - a.velocity.y,
-        );
+        let rel_vel = Vector2D::new(b.velocity.x - a.velocity.x, b.velocity.y - a.velocity.y);
 
         // Relative velocity along normal
         let vel_along_normal = rel_vel.dot(&self.normal);
@@ -76,15 +69,17 @@ impl Collision {
     }
 
     /// Apply friction impulse.
-    pub fn compute_friction_impulse(&self, a: &PhysicsBody, b: &PhysicsBody, normal_impulse: &Vector2D) -> Vector2D {
+    pub fn compute_friction_impulse(
+        &self,
+        a: &PhysicsBody,
+        b: &PhysicsBody,
+        normal_impulse: &Vector2D,
+    ) -> Vector2D {
         // Friction direction is perpendicular to normal
         let tangent = Vector2D::new(-self.normal.y, self.normal.x);
 
         // Relative velocity along tangent
-        let rel_vel = Vector2D::new(
-            b.velocity.x - a.velocity.x,
-            b.velocity.y - a.velocity.y,
-        );
+        let rel_vel = Vector2D::new(b.velocity.x - a.velocity.x, b.velocity.y - a.velocity.y);
         let vel_along_tangent = rel_vel.dot(&tangent);
 
         // Coulomb's law: friction <= mu * normal_impulse
@@ -112,10 +107,18 @@ pub fn aabb_vs_aabb(a: &PhysicsBody, b: &PhysicsBody) -> Option<Collision> {
                 - (a_rect.center().y - b_rect.center().y).abs();
 
             let (normal, penetration) = if overlap_x < overlap_y {
-                let dir = if b_rect.center().x > a_rect.center().x { 1.0 } else { -1.0 };
+                let dir = if b_rect.center().x > a_rect.center().x {
+                    1.0
+                } else {
+                    -1.0
+                };
                 (Vector2D::new(dir, 0.0), overlap_x)
             } else {
-                let dir = if b_rect.center().y > a_rect.center().y { 1.0 } else { -1.0 };
+                let dir = if b_rect.center().y > a_rect.center().y {
+                    1.0
+                } else {
+                    -1.0
+                };
                 (Vector2D::new(0.0, dir), overlap_y)
             };
 
@@ -133,7 +136,9 @@ pub fn aabb_vs_aabb(a: &PhysicsBody, b: &PhysicsBody) -> Option<Collision> {
 /// Detect collision between two circles.
 pub fn circle_vs_circle(a: &PhysicsBody, b: &PhysicsBody) -> Option<Collision> {
     let (radius_a, radius_b) = match (&a.shape, &b.shape) {
-        (CollisionShape::Circle { radius: r1 }, CollisionShape::Circle { radius: r2 }) => (*r1, *r2),
+        (CollisionShape::Circle { radius: r1 }, CollisionShape::Circle { radius: r2 }) => {
+            (*r1, *r2)
+        }
         _ => return None,
     };
 
@@ -159,7 +164,9 @@ pub fn circle_vs_circle(a: &PhysicsBody, b: &PhysicsBody) -> Option<Collision> {
 /// Detect collision between AABB and circle.
 pub fn aabb_vs_circle(a: &PhysicsBody, b: &PhysicsBody) -> Option<Collision> {
     let (rect, radius) = match (&a.shape, &b.shape) {
-        (CollisionShape::AABB { .. }, CollisionShape::Circle { radius }) => (a.bounding_rect(), *radius),
+        (CollisionShape::AABB { .. }, CollisionShape::Circle { radius }) => {
+            (a.bounding_rect(), *radius)
+        }
         (CollisionShape::Circle { radius }, CollisionShape::AABB { .. }) => {
             // Swap: circle is A, AABB is B
             let rect = b.bounding_rect();
@@ -236,9 +243,7 @@ pub fn detect_collision(a: &PhysicsBody, b: &PhysicsBody) -> Option<Collision> {
         (CollisionShape::AABB { .. }, CollisionShape::AABB { .. }) => aabb_vs_aabb(a, b),
         (CollisionShape::Circle { .. }, CollisionShape::Circle { .. }) => circle_vs_circle(a, b),
         (CollisionShape::AABB { .. }, CollisionShape::Circle { .. })
-        | (CollisionShape::Circle { .. }, CollisionShape::AABB { .. }) => {
-            aabb_vs_circle(a, b)
-        }
+        | (CollisionShape::Circle { .. }, CollisionShape::AABB { .. }) => aabb_vs_circle(a, b),
     }
 }
 
@@ -250,7 +255,10 @@ pub fn broad_phase(bodies: &[PhysicsBody]) -> Vec<(usize, usize)> {
     for i in 0..len {
         for j in (i + 1)..len {
             if bodies[i].enabled && bodies[j].enabled {
-                if bodies[i].bounding_rect().intersects(&bodies[j].bounding_rect()) {
+                if bodies[i]
+                    .bounding_rect()
+                    .intersects(&bodies[j].bounding_rect())
+                {
                     pairs.push((i, j));
                 }
             }
@@ -311,20 +319,14 @@ pub struct CollisionPair {
 mod tests {
     use super::*;
     use crate::geometry::{Point, Vector2D};
-    use crate::physics::body::{BodyId, PhysicsBody, CollisionShape};
+    use crate::physics::body::{BodyId, CollisionShape, PhysicsBody};
 
     #[test]
     fn test_aabb_collision() {
-        let a = PhysicsBody::dynamic_from_rect(
-            BodyId::new(1),
-            &Rect::new(0.0, 0.0, 50.0, 50.0),
-            1.0,
-        );
-        let b = PhysicsBody::dynamic_from_rect(
-            BodyId::new(2),
-            &Rect::new(25.0, 25.0, 50.0, 50.0),
-            1.0,
-        );
+        let a =
+            PhysicsBody::dynamic_from_rect(BodyId::new(1), &Rect::new(0.0, 0.0, 50.0, 50.0), 1.0);
+        let b =
+            PhysicsBody::dynamic_from_rect(BodyId::new(2), &Rect::new(25.0, 25.0, 50.0, 50.0), 1.0);
         let collision = aabb_vs_aabb(&a, &b).unwrap();
         assert!(collision.penetration > 0.0);
         assert!((collision.normal.length() - 1.0).abs() < 0.01);
@@ -332,11 +334,8 @@ mod tests {
 
     #[test]
     fn test_aabb_no_collision() {
-        let a = PhysicsBody::dynamic_from_rect(
-            BodyId::new(1),
-            &Rect::new(0.0, 0.0, 50.0, 50.0),
-            1.0,
-        );
+        let a =
+            PhysicsBody::dynamic_from_rect(BodyId::new(1), &Rect::new(0.0, 0.0, 50.0, 50.0), 1.0);
         let b = PhysicsBody::dynamic_from_rect(
             BodyId::new(2),
             &Rect::new(100.0, 100.0, 50.0, 50.0),
@@ -382,33 +381,21 @@ mod tests {
 
     #[test]
     fn test_detect_collision_delegates() {
-        let a = PhysicsBody::dynamic_from_rect(
-            BodyId::new(1),
-            &Rect::new(0.0, 0.0, 50.0, 50.0),
-            1.0,
-        );
-        let b = PhysicsBody::dynamic_from_rect(
-            BodyId::new(2),
-            &Rect::new(25.0, 25.0, 50.0, 50.0),
-            1.0,
-        );
+        let a =
+            PhysicsBody::dynamic_from_rect(BodyId::new(1), &Rect::new(0.0, 0.0, 50.0, 50.0), 1.0);
+        let b =
+            PhysicsBody::dynamic_from_rect(BodyId::new(2), &Rect::new(25.0, 25.0, 50.0, 50.0), 1.0);
         let collision = detect_collision(&a, &b).unwrap();
         assert!(collision.penetration > 0.0);
     }
 
     #[test]
     fn test_disabled_body_no_collision() {
-        let mut a = PhysicsBody::dynamic_from_rect(
-            BodyId::new(1),
-            &Rect::new(0.0, 0.0, 50.0, 50.0),
-            1.0,
-        );
+        let mut a =
+            PhysicsBody::dynamic_from_rect(BodyId::new(1), &Rect::new(0.0, 0.0, 50.0, 50.0), 1.0);
         a.enabled = false;
-        let b = PhysicsBody::dynamic_from_rect(
-            BodyId::new(2),
-            &Rect::new(25.0, 25.0, 50.0, 50.0),
-            1.0,
-        );
+        let b =
+            PhysicsBody::dynamic_from_rect(BodyId::new(2), &Rect::new(25.0, 25.0, 50.0, 50.0), 1.0);
         assert!(detect_collision(&a, &b).is_none());
     }
 
@@ -437,7 +424,11 @@ mod tests {
         let bodies = vec![
             PhysicsBody::dynamic_from_rect(BodyId::new(1), &Rect::new(0.0, 0.0, 50.0, 50.0), 1.0),
             PhysicsBody::dynamic_from_rect(BodyId::new(2), &Rect::new(25.0, 25.0, 50.0, 50.0), 1.0),
-            PhysicsBody::dynamic_from_rect(BodyId::new(3), &Rect::new(200.0, 200.0, 50.0, 50.0), 1.0),
+            PhysicsBody::dynamic_from_rect(
+                BodyId::new(3),
+                &Rect::new(200.0, 200.0, 50.0, 50.0),
+                1.0,
+            ),
         ];
         let pairs = broad_phase(&bodies);
         assert_eq!(pairs.len(), 1);
@@ -467,11 +458,8 @@ mod tests {
 
     #[test]
     fn test_aabb_vs_circle_collision() {
-        let a = PhysicsBody::dynamic_from_rect(
-            BodyId::new(1),
-            &Rect::new(0.0, 0.0, 50.0, 50.0),
-            1.0,
-        );
+        let a =
+            PhysicsBody::dynamic_from_rect(BodyId::new(1), &Rect::new(0.0, 0.0, 50.0, 50.0), 1.0);
         let b = PhysicsBody::dynamic_body(
             BodyId::new(2),
             Point::new(40.0, 40.0),
@@ -484,11 +472,8 @@ mod tests {
 
     #[test]
     fn test_collision_normal_direction() {
-        let a = PhysicsBody::dynamic_from_rect(
-            BodyId::new(1),
-            &Rect::new(0.0, 0.0, 50.0, 50.0),
-            1.0,
-        );
+        let a =
+            PhysicsBody::dynamic_from_rect(BodyId::new(1), &Rect::new(0.0, 0.0, 50.0, 50.0), 1.0);
         let b = PhysicsBody::dynamic_from_rect(
             BodyId::new(2),
             &Rect::new(30.0, -10.0, 50.0, 50.0),

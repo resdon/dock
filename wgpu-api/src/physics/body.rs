@@ -227,32 +227,19 @@ impl PhysicsObject {
 
     /// Create a dynamic dock icon.
     pub fn dock_icon(node: NodeId, position: Point, shape: CollisionShape) -> Self {
-        let body = PhysicsBody::dynamic_body(
-            BodyId::from(node.as_u64()),
-            position,
-            shape,
-            1.0,
-        );
+        let body = PhysicsBody::dynamic_body(BodyId::from(node.as_u64()), position, shape, 1.0);
         Self::with_properties(node, body, PhysicalProperties::dock_icon())
     }
 
     /// Create a static background element.
     pub fn static_background(node: NodeId, position: Point, shape: CollisionShape) -> Self {
-        let body = PhysicsBody::static_body(
-            BodyId::from(node.as_u64()),
-            position,
-            shape,
-        );
+        let body = PhysicsBody::static_body(BodyId::from(node.as_u64()), position, shape);
         Self::with_properties(node, body, PhysicalProperties::static_background())
     }
 
     /// Create a kinematic panel.
     pub fn kinematic_panel(node: NodeId, position: Point, shape: CollisionShape) -> Self {
-        let body = PhysicsBody::kinematic_body(
-            BodyId::from(node.as_u64()),
-            position,
-            shape,
-        );
+        let body = PhysicsBody::kinematic_body(BodyId::from(node.as_u64()), position, shape);
         Self::with_properties(node, body, PhysicalProperties::kinematic_panel())
     }
 
@@ -511,12 +498,7 @@ impl PhysicsBody {
     }
 
     /// Create a new dynamic body at the given position with the given mass.
-    pub fn dynamic_body(
-        id: BodyId,
-        position: Point,
-        shape: CollisionShape,
-        mass: f32,
-    ) -> Self {
+    pub fn dynamic_body(id: BodyId, position: Point, shape: CollisionShape, mass: f32) -> Self {
         let inv_mass = if mass > 0.0 { 1.0 / mass } else { 0.0 };
         let inertia = Self::compute_inertia_from_shape(&shape, mass);
         let inv_inertia = if inertia > 0.0 { 1.0 / inertia } else { 0.0 };
@@ -547,17 +529,8 @@ impl PhysicsBody {
     }
 
     /// Create a dynamic body from a rectangle.
-    pub fn dynamic_from_rect(
-        id: BodyId,
-        rect: &Rect,
-        mass: f32,
-    ) -> Self {
-        Self::dynamic_body(
-            id,
-            rect.center(),
-            CollisionShape::from_rect(rect),
-            mass,
-        )
+    pub fn dynamic_from_rect(id: BodyId, rect: &Rect, mass: f32) -> Self {
+        Self::dynamic_body(id, rect.center(), CollisionShape::from_rect(rect), mass)
     }
 
     /// Compute the moment of inertia for a shape with the given mass.
@@ -752,11 +725,8 @@ mod tests {
 
     #[test]
     fn test_impulse_ignored_on_static() {
-        let mut body = PhysicsBody::static_body(
-            BodyId::new(4),
-            Point::ORIGIN,
-            CollisionShape::circle(10.0),
-        );
+        let mut body =
+            PhysicsBody::static_body(BodyId::new(4), Point::ORIGIN, CollisionShape::circle(10.0));
         body.apply_impulse(Vector2D::new(100.0, 0.0));
         assert!((body.velocity.x - 0.0).abs() < f32::EPSILON);
     }
@@ -772,10 +742,7 @@ mod tests {
             1.0,
         );
         // Apply impulse at top-right corner
-        body.apply_impulse_at_point(
-            Vector2D::new(0.0, 10.0),
-            Point::new(10.0, -10.0),
-        );
+        body.apply_impulse_at_point(Vector2D::new(0.0, 10.0), Point::new(10.0, -10.0));
         assert!(body.angular_velocity.abs() > 0.0);
     }
 

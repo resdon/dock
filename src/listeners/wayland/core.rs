@@ -73,7 +73,6 @@ impl RegistryHandler<AppState> for AppState {
         interface: &str,
         version: u32,
     ) {
-
         if interface == WlSubcompositor::interface().name {
             let subcompositor = state
                 .registry_state

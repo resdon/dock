@@ -2,10 +2,8 @@
 //!
 //! Expanded audio mixer popup with volume sliders and device selection.
 
-
 use smithay_client_toolkit::{
-    dmabuf::DmabufState,
-    compositor::CompositorState, shell::WaylandSurface, shm::slot::SlotPool,
+    compositor::CompositorState, dmabuf::DmabufState, shell::WaylandSurface, shm::slot::SlotPool,
 };
 use wayland_client::protocol::wl_shm;
 use wayland_client::QueueHandle;
