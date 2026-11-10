@@ -54,7 +54,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()
         .map_err(|e| format!("Failed to create tokio runtime: {}", e))?;
 
-    // GPU rendering via wgpu-api — initializes Vulkan device and queue
+    // GPU rendering via wgpu-api — initializes Vulkan device and queue.
+    // The GPU backend is available for features like popup rendering and visual effects.
+    // Main dock rendering uses Slint CPU → SHM (correct for headless Wayland).
+    // Full GPU rendering requires DMA-BUF export to present frames to the compositor.
     match rt.block_on(wgpu_api::Renderer::new()) {
         Ok(renderer) => {
             state.gpu_context = Some(renderer);

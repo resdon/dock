@@ -42,8 +42,8 @@ pub fn draw_main_dock(
     _bluetooth_snapshot: &BluetoothSnapshot,
     _sys_scanner: &mut sysinfo::System,
     _render_status: bool,
-    _render_gpu: Option<&mut wgpu_api::Renderer>,
-    _dmabuf_state: &DmabufState,
+    render_gpu: Option<&mut wgpu_api::Renderer>,
+    dmabuf_state: &DmabufState,
     is_animating: bool,
     scale_int: i32,
     mut slint_renderer: Option<&mut SlintDockRenderer>,
@@ -146,6 +146,168 @@ pub fn draw_main_dock(
         );
     } else {
         canvas.fill(0);
+    }
+
+    // GPU rendering path via DMA-BUF: renders the dock through wgpu-api
+    // and presents via DMA-BUF zero-copy sharing with the Wayland compositor.
+    // Falls back to Slint CPU rendering if GPU is unavailable or fails.
+    use std::os::fd::AsFd;
+
+    // Build draw commands from dock state for GPU rendering
+    let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::new();
+
+    // Background rounded rectangle
+    draw_commands.push(wgpu_api::DrawCommand::Rectangle {
+        rect: wgpu_api::Rect {
+            x: 0.0,
+            y: 0.0,
+            width: phys_width as f32,
+            height: phys_height as f32,
+        },
+        color: wgpu_api::Color {
+            r: 0.05,
+            g: 0.05,
+            b: 0.08,
+            a: 0.85,
+        },
+        radius: (phys_height as f32) / 2.0, // Pill shape
+        stroke: None,
+        stroke_width: 0.0,
+    });
+
+    // Draw icon placeholders and running indicators
+    for (i, pin) in dock_state.pins.iter().enumerate() {
+        let px = pin.x as f32;
+        let py = pin.y as f32;
+        let ps = pin.size as f32;
+
+        // Icon background (subtle highlight for running apps)
+        if pin.is_running {
+            draw_commands.push(wgpu_api::DrawCommand::Rectangle {
+                rect: wgpu_api::Rect {
+                    x: px,
+                    y: py,
+                    width: ps,
+                    height: ps,
+                },
+                color: wgpu_api::Color {
+                    r: 0.15,
+                    g: 0.15,
+                    b: 0.2,
+                    a: 0.5,
+                },
+                radius: ps / 4.0,
+                stroke: None,
+                stroke_width: 0.0,
+            });
+        }
+
+        // Running indicator dots at the bottom
+        if pin.is_running {
+            let dot_count = pin.running_count.min(3);
+            let dot_size = 3.0 * dock_scale as f32;
+            let dot_spacing = 6.0 * dock_scale as f32;
+            let dots_total_width = dot_count as f32 * dot_spacing;
+            let dots_x = px + (ps - dots_total_width) / 2.0;
+            let dots_y = py + ps - dot_size - 2.0 * dock_scale as f32;
+
+            for d in 0..dot_count {
+                draw_commands.push(wgpu_api::DrawCommand::Rectangle {
+                    rect: wgpu_api::Rect {
+                        x: dots_x + d as f32 * dot_spacing,
+                        y: dots_y,
+                        width: dot_size,
+                        height: dot_size,
+                    },
+                    color: wgpu_api::Color {
+                        r: 0.9,
+                        g: 0.9,
+                        b: 0.95,
+                        a: if pin.is_activated { 1.0 } else { 0.6 },
+                    },
+                    radius: dot_size / 2.0,
+                    stroke: None,
+                    stroke_width: 0.0,
+                });
+            }
+        }
+    }
+
+    // Hover highlight
+    if let Some(hovered_idx) = dock_state.hovered_index {
+        if let Some(pin) = dock_state.pins.get(hovered_idx) {
+            draw_commands.push(wgpu_api::DrawCommand::Rectangle {
+                rect: wgpu_api::Rect {
+                    x: pin.x as f32 - 2.0 * dock_scale as f32,
+                    y: pin.y as f32 - 2.0 * dock_scale as f32,
+                    width: pin.size as f32 + 4.0 * dock_scale as f32,
+                    height: pin.size as f32 + 4.0 * dock_scale as f32,
+                },
+                color: wgpu_api::Color {
+                    r: 0.3,
+                    g: 0.5,
+                    b: 0.8,
+                    a: 0.3,
+                },
+                radius: (pin.size as f32) / 3.0,
+                stroke: None,
+                stroke_width: 0.0,
+            });
+        }
+    }
+
+    let gpu_rendered = if let Some(gpu_renderer) = render_gpu {
+        match gpu_renderer.render_to_dmabuf(phys_width, phys_height, &draw_commands) {
+            Ok(export_info) => {
+                // Create Wayland buffer from DMA-BUF planes
+                match dmabuf_state.create_params(qh) {
+                    Ok(params) => {
+                        for (i, plane) in export_info.planes.iter().enumerate() {
+                            params.add(
+                                plane.fd.as_fd(),
+                                i as u32,
+                                plane.offset,
+                                plane.stride,
+                                export_info.modifier,
+                            );
+                        }
+                        let (wl_buffer, _params) = params.create_immed(
+                            phys_width as i32,
+                            phys_height as i32,
+                            export_info.fourcc as u32,
+                            wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_buffer_params_v1::Flags::empty(),
+                            qh,
+                        );
+                        // Attach DMA-BUF buffer to Wayland surface
+                        dock.surface.wl_surface().set_buffer_scale(scale_int.max(1));
+                        dock.surface.wl_surface().attach(Some(&wl_buffer), 0, 0);
+                        dock.surface.wl_surface()
+                            .damage_buffer(0, 0, phys_width as i32, phys_height as i32);
+                        dock.surface.wl_surface().commit();
+                        if is_animating {
+                            dock.surface.wl_surface()
+                                .frame(qh, dock.surface.wl_surface().clone());
+                        }
+                        true
+                    }
+                    Err(e) => {
+                        eprintln!("DMA-BUF params creation failed: {}, falling back to CPU", e);
+                        false
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("DMA-BUF rendering failed: {}, falling back to CPU", e);
+                false
+            }
+        }
+    } else {
+        false
+    };
+
+    // If GPU rendering succeeded, skip the CPU SHM path entirely.
+    if gpu_rendered {
+        return;
     }
 
     // Tray, utility widgets, and system indicators are rendered on sibling

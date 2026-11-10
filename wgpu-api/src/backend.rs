@@ -11,6 +11,7 @@
 //! - Command encoding and submission
 
 use std::collections::HashMap;
+use std::os::fd::OwnedFd;
 
 use crate::command::Command;
 use crate::renderer::{PowerPreference, RendererBackend};
@@ -626,6 +627,51 @@ impl GpuBackend {
         self.gpu_texture_views.remove(&texture_id);
     }
 
+    /// Create a wgpu Surface from raw Wayland display and surface pointers.
+    ///
+    /// This is the key integration point for headless Wayland rendering.
+    /// It creates a wgpu Surface that can be used with `register_surface_from_handle`.
+    ///
+    /// # Safety
+    /// The display and surface pointers must be valid for the lifetime of the surface.
+    /// The caller is responsible for ensuring the Wayland connection is active.
+    pub unsafe fn create_wayland_surface(
+        &self,
+        display: *mut std::ffi::c_void,
+        surface: *mut std::ffi::c_void,
+    ) -> Result<wgpu::Surface<'static>, String> {
+        use raw_window_handle::{
+            DisplayHandle, RawDisplayHandle, WaylandDisplayHandle, WaylandWindowHandle, WindowHandle,
+        };
+        use std::ptr::NonNull;
+
+        // Create a Wayland display handle from the raw pointer
+        let display_handle = unsafe {
+            let non_null = NonNull::new(display).ok_or_else(|| "Null display pointer".to_string())?;
+            let dh = WaylandDisplayHandle::new(non_null);
+            RawDisplayHandle::Wayland(dh)
+        };
+
+        // Create a Wayland window handle from the surface pointer
+        let window_handle = unsafe {
+            WaylandWindowHandle::new(NonNull::new(surface).ok_or_else(|| "Null surface pointer".to_string())?)
+        };
+
+        // Create the display and window handles for wgpu
+        let dh = unsafe { DisplayHandle::borrow_raw(display_handle) };
+        let wh = unsafe {
+            WindowHandle::borrow_raw(window_handle.into())
+        };
+
+        // Create the wgpu surface using unsafe API
+        let target = wgpu::SurfaceTargetUnsafe::from_display_and_window(&dh, &wh)
+            .map_err(|e| format!("Invalid window handle: {:?}", e))?;
+        let surface = unsafe {
+            self.instance.create_surface_unsafe(target)
+        }.map_err(|e| format!("Failed to create Wayland surface: {}", e))?;
+        Ok(surface)
+    }
+
     /// Register a surface with the GPU backend.
     pub fn register_surface_from_handle(
         &mut self,
@@ -858,37 +904,119 @@ impl GpuBackend {
         count
     }
 
-    /// Estimate the GPU memory usage for a texture.
-    pub fn estimate_texture_memory(config: &TextureConfig) -> u64 {
-        let bytes_per_pixel = match config.format {
-            TexFormat::Rgba8Unorm | TexFormat::Bgra8UnormSrgb | TexFormat::Rgba8UnormSrgb => 4,
-            TexFormat::Rgba16Float => 8,
-            TexFormat::Rgba32Float => 16,
-            TexFormat::Depth32Float => 4,
-            TexFormat::Depth24PlusStencil8 => 4,
-        };
-        (config.width as u64)
-            .saturating_mul(config.height as u64)
-            .saturating_mul(bytes_per_pixel as u64)
-            .saturating_mul(config.array_layers as u64)
-    }
+    /// Create a DMA-BUF exportable texture for Wayland presentation.
+    ///
+    /// This creates a wgpu texture that can be shared with the Wayland compositor
+    /// via DMA-BUF, enabling zero-copy GPU rendering. The returned texture can be
+    /// used as a render target, and the DMA-BUF info can be used to create a
+    /// Wayland wl_buffer for surface attachment.
+    ///
+    /// # Returns
+    /// A tuple of (wgpu::Texture, DmabufExportInfo) where the texture is for rendering
+    /// and the info contains the file descriptors, offsets, and strides for DMA-BUF.
+    pub fn create_dmabuf_texture(
+        &self,
+        width: u32,
+        height: u32,
+    ) -> Result<(wgpu::Texture, DmabufExportInfo), String> {
+        let fourcc = wgpu_dmabuf::format::Fourcc::Argb8888;
+        let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
+        
+        let modifiers = wgpu_dmabuf::modifiers::shareable(&self.adapter, fourcc, usage)
+            .map_err(|e| format!("Failed to get shareable modifiers: {}", e))?;
+        if modifiers.is_empty() {
+            return Err("No shareable dmabuf modifiers available".to_string());
+        }
+        let modifier_values: Vec<u64> = modifiers.iter().map(|m| m.value).collect();
 
-    /// Process commands and estimate the number of draw calls.
-    pub fn estimate_draw_calls(commands: &[Command]) -> usize {
-        commands
-            .iter()
-            .filter(|cmd| match cmd {
-                Command::Clear(_) => false,
-                Command::PushTransform(_) => false,
-                Command::PopTransform => false,
-                Command::SetBlendMode(_) => false,
-                Command::SetOpacity(_) => false,
-                Command::Clip { .. } => false,
-                Command::ResetClip => false,
-                _ => true,
-            })
-            .count()
+        let desc = wgpu_dmabuf::ExportDescriptor {
+            label: Some("Dock Dmabuf Render Target"),
+            width,
+            height,
+            format: wgpu::TextureFormat::Bgra8UnormSrgb,
+            usage,
+            modifiers: &modifier_values,
+        };
+
+        let (texture, dmabuf) = wgpu_dmabuf::export(&self.device, &desc)
+            .map_err(|e| format!("Failed to export dmabuf texture: {}", e))?;
+
+        let info = DmabufExportInfo {
+            width,
+            height,
+            modifier: dmabuf.modifier,
+            fourcc: dmabuf.fourcc,
+            planes: dmabuf
+                .planes
+                .iter()
+                .map(|p| DmabufPlane {
+                    fd: p.fd.try_clone().map_err(|e| format!("Failed to clone fd: {}", e)).unwrap(),
+                    offset: p.offset,
+                    stride: p.stride,
+                })
+                .collect(),
+        };
+
+        Ok((texture, info))
     }
+}
+
+/// DMA-BUF plane information for Wayland buffer creation.
+#[derive(Debug)]
+pub struct DmabufPlane {
+    /// File descriptor for the DMA-BUF.
+    pub fd: OwnedFd,
+    /// Offset in bytes.
+    pub offset: u32,
+    /// Stride in bytes.
+    pub stride: u32,
+}
+
+/// DMA-BUF export information for creating Wayland buffers.
+#[derive(Debug)]
+pub struct DmabufExportInfo {
+    /// Texture width.
+    pub width: u32,
+    /// Texture height.
+    pub height: u32,
+    /// DMA-BUF modifier.
+    pub modifier: u64,
+    /// FourCC format code.
+    pub fourcc: wgpu_dmabuf::format::Fourcc,
+    /// Plane information.
+    pub planes: Vec<DmabufPlane>,
+}
+
+/// Estimate the GPU memory usage for a texture.
+pub fn estimate_texture_memory(config: &TextureConfig) -> u64 {
+    let bytes_per_pixel = match config.format {
+        TexFormat::Rgba8Unorm | TexFormat::Bgra8UnormSrgb | TexFormat::Rgba8UnormSrgb => 4,
+        TexFormat::Rgba16Float => 8,
+        TexFormat::Rgba32Float => 16,
+        TexFormat::Depth32Float => 4,
+        TexFormat::Depth24PlusStencil8 => 4,
+    };
+    (config.width as u64)
+        .saturating_mul(config.height as u64)
+        .saturating_mul(bytes_per_pixel as u64)
+        .saturating_mul(config.array_layers as u64)
+}
+
+/// Process commands and estimate the number of draw calls.
+pub fn estimate_draw_calls(commands: &[Command]) -> usize {
+    commands
+        .iter()
+        .filter(|cmd| match cmd {
+            Command::Clear(_) => false,
+            Command::PushTransform(_) => false,
+            Command::PopTransform => false,
+            Command::SetBlendMode(_) => false,
+            Command::SetOpacity(_) => false,
+            Command::Clip { .. } => false,
+            Command::ResetClip => false,
+            _ => true,
+        })
+        .count()
 }
 
 /// Vertex buffer builder for batching draw calls.
@@ -1078,7 +1206,7 @@ mod tests {
             Command::PushTransform(crate::transform::Transform::new()),
             Command::PopTransform,
         ];
-        let draws = GpuBackend::estimate_draw_calls(&commands);
+        let draws = estimate_draw_calls(&commands);
         assert_eq!(draws, 1); // Only the rect is a draw call
     }
 

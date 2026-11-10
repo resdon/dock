@@ -351,6 +351,67 @@ impl Renderer {
         self.gpu_backend.as_ref().map(|b| b.queue())
     }
 
+    /// Get a reference to the wgpu adapter.
+    ///
+    /// Returns None if the GPU backend is not initialized.
+    pub fn adapter(&self) -> Option<&wgpu::Adapter> {
+        self.gpu_backend.as_ref().map(|b| b.adapter())
+    }
+
+    /// Register a Wayland surface with the renderer for GPU presentation.
+    ///
+    /// This creates a wgpu Surface from raw Wayland display and surface pointers,
+    /// then registers it with the GPU backend. This is the key integration point
+    /// for headless Wayland rendering — it allows the dock to render via GPU
+    /// instead of CPU software rendering.
+    ///
+    /// # Safety
+    /// The display and surface pointers must be valid for the lifetime of the surface.
+    /// The caller is responsible for ensuring the Wayland connection is active.
+    pub unsafe fn register_wayland_surface(
+        &mut self,
+        surface_id: SurfaceId,
+        width: u32,
+        height: u32,
+        display: *mut std::ffi::c_void,
+        surface: *mut std::ffi::c_void,
+    ) -> Result<(), String> {
+        let backend = self.gpu_backend.as_mut()
+            .ok_or_else(|| "GPU backend not initialized".to_string())?;
+
+        // Create wgpu Surface from raw Wayland pointers
+        let wgpu_surface = backend.create_wayland_surface(display, surface)?;
+
+        // Register the surface with the backend
+        let config = SurfaceConfig::new(width, height);
+        backend.register_surface_from_handle(surface_id, config.clone(), wgpu_surface);
+
+        // Track the surface in the renderer's surface map
+        let surf = Surface::new(surface_id, config);
+        self.surfaces.insert(surface_id, surf);
+
+        Ok(())
+    }
+
+    /// Resize a registered Wayland surface.
+    pub fn resize_wayland_surface(&mut self, surface_id: SurfaceId, width: u32, height: u32) {
+        if let Some(backend) = &mut self.gpu_backend {
+            backend.resize_surface(surface_id, width, height);
+        }
+        if let Some(surface) = self.surfaces.get_mut(&surface_id) {
+            surface.config.width = width;
+            surface.config.height = height;
+        }
+    }
+
+    /// Remove a registered Wayland surface.
+    pub fn remove_wayland_surface(&mut self, surface_id: SurfaceId) {
+        if let Some(backend) = &mut self.gpu_backend {
+            backend.remove_surface(surface_id);
+        }
+        self.surfaces.remove(&surface_id);
+    }
+
     /// Get the number of surfaces.
     pub fn surface_count(&self) -> usize {
         self.surfaces.len()
@@ -700,6 +761,80 @@ impl Renderer {
         Ok(())
     }
 
+    /// Render draw commands to a DMA-BUF texture for Wayland presentation.
+    ///
+    /// This creates a DMA-BUF exportable texture, renders the provided draw
+    /// commands to it, and returns the export info for creating a Wayland wl_buffer.
+    /// Unlike the surface-based rendering path, this works for headless Wayland
+    /// where wgpu surface presentation doesn't reach the compositor.
+    ///
+    /// # Arguments
+    /// * `width` - Texture width in physical pixels.
+    /// * `height` - Texture height in physical pixels.
+    /// * `commands` - Draw commands to render (bypasses the scene graph).
+    ///
+    /// # Returns
+    /// The DMA-BUF export info containing file descriptors, offsets, and strides
+    /// for creating a Wayland buffer, along with the width and height.
+    pub fn render_to_dmabuf(
+        &mut self,
+        width: u32,
+        height: u32,
+        commands: &[crate::render::DrawCommand],
+    ) -> Result<crate::backend::DmabufExportInfo, String> {
+        let backend = self.gpu_backend.as_mut().ok_or_else(|| {
+            "GPU backend not available for DMA-BUF rendering".to_string()
+        })?;
+
+        // Create a DMA-BUF exportable texture
+        let (texture, export_info) = backend.create_dmabuf_texture(width, height)?;
+
+        let width_f = width as f32;
+        let height_f = height as f32;
+
+        // Create command encoder
+        let mut encoder = backend.device().create_command_encoder(
+            &wgpu::CommandEncoderDescriptor {
+                label: Some("DMA-BUF Frame Encoder"),
+            },
+        );
+
+        // Begin render pass on the DMA-BUF texture
+        {
+            let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("DMA-BUF Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &texture_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+
+            // Render draw commands directly (bypasses scene graph)
+            Self::draw_commands_to_gpu_impl(
+                &mut render_pass,
+                backend,
+                commands,
+                width_f,
+                height_f,
+            );
+        }
+
+        // Submit command buffer
+        backend.queue().submit(std::iter::once(encoder.finish()));
+
+        Ok(export_info)
+    }
+
     /// Convert draw commands to GPU draw calls.
     fn draw_commands_to_gpu_impl(
         render_pass: &mut wgpu::RenderPass<'_>,
@@ -750,6 +885,11 @@ impl Renderer {
                             .ok_or_else(|| "No solid pipeline")
                             .unwrap(),
                     );
+                    // Bind the uniform bind group (uniform buffer + sampler + placeholder texture)
+                    // This is required by the solid pipeline's bind group layout at index 0.
+                    if let Some(bind_group) = backend.uniform_bind_group() {
+                        render_pass.set_bind_group(0, bind_group, &[]);
+                    }
                     render_pass.set_vertex_buffer(0, buffer.slice(..));
                     render_pass.draw(0..6, 0..1);
                 }
