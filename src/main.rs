@@ -4,13 +4,12 @@
 //! event loop that drives input processing, state updates, and frame rendering.
 
 use library::init::{initialize_app, AppContext};
-use library::render::femtovg_wgpu::GpuContext;
 
 /// Application entry point.
 ///
 /// # Initialization order
 /// 1. Wayland connection and app state (via `init.rs`)
-/// 2. GPU context (FemtoVG + wgpu via Vulkan) — falls back to CPU rendering
+/// 2. GPU rendering via wgpu-api — falls back to CPU rendering
 /// 3. PipeWire screen capture service with xdg-desktop-portal
 /// 4. Background monitor task for dynamic window detection
 /// 5. Main event loop (~60 FPS)
@@ -43,18 +42,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         process_rx,
     } = context;
 
-    // Initialize GPU context (FemtoVG + wgpu via Vulkan)
-    // Uses a current-thread tokio runtime so the rest of the dock remains synchronous.
+    // Keep the tokio runtime for GPU init, PipeWire and other async tasks
     let rt = tokio::runtime::Builder::new_multi_thread().worker_threads(2)
         .enable_all()
         .build()
         .map_err(|e| format!("Failed to create tokio runtime: {}", e))?;
 
-    match rt.block_on(GpuContext::init()) {
-        Ok(gpu) => {
-            state.gpu_context = Some(gpu);
+    // GPU rendering via wgpu-api — initializes Vulkan device and queue
+    match rt.block_on(wgpu_api::Renderer::new()) {
+        Ok(renderer) => {
+            state.gpu_context = Some(renderer);
+            state.gpu_available = true;
+            eprintln!("[GPU] Renderer initialized successfully");
         }
-        Err(_e) => {
+        Err(e) => {
+            eprintln!("[GPU] Init failed: {}, falling back to CPU rendering", e);
+            state.gpu_available = false;
         }
     }
 

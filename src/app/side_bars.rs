@@ -9,8 +9,6 @@ use smithay_client_toolkit::{
 use wayland_client::{protocol::wl_shm, QueueHandle};
 
 use crate::models::SystemBarSnapshot;
-use crate::render::dmabuf_export::attach_and_commit;
-use crate::render::femtovg_wgpu::{GpuContext, render_tray_bar_femtovg, render_system_bar_femtovg};
 use crate::render::tray::{
     render_system_status_into_canvas, render_tray_icons_into_canvas, system_bar_logical_width,
     system_bar_position, tray_bar_position, tray_logical_size, SYSTEM_BAR_HEIGHT,
@@ -82,8 +80,8 @@ pub fn draw_left_tray_bar(
     visible: bool,
     alpha: f32,
     font_manager: &mut crate::render::font::FontManager,
-    gpu_context: Option<&mut GpuContext>,
-    dmabuf_state: &DmabufState,
+    _gpu_context: Option<&mut wgpu_api::Renderer>,
+    _dmabuf_state: &DmabufState,
 ) {
     let parent_surface = dock.surface.wl_surface().clone();
     ensure_surface(
@@ -110,30 +108,7 @@ pub fn draw_left_tray_bar(
     bar.cached_content.resize(expected, 0);
     bar.cached_content.fill(0);
 
-    // GPU path: FemtoVG + dmabuf
-    if let Some(gpu) = gpu_context {
-        if !items.is_empty() {
-            gpu.canvas.save();
-            gpu.canvas.set_global_alpha(alpha);
-            render_tray_bar_femtovg(&mut gpu.canvas, phys_width as f32, phys_height as f32, scale as f32, &mut gpu.icon_cache, items, alpha);
-            gpu.canvas.restore();
-
-            match gpu.dmabuf_pool.get_or_create(&gpu.adapter, &gpu.device, qh, dmabuf_state, phys_width as u32, phys_height as u32) {
-                Ok(target) => {
-                    if let Some(cmd_buf) = gpu.flush_to_texture(&target.texture) {
-                        gpu.queue.submit(std::iter::once(cmd_buf));
-                    }
-                    bar.surface.set_buffer_scale(scale.round().max(1.0) as i32);
-                    attach_and_commit(&bar.surface, &target.buffer);
-                    set_interactive_region(bar, visible && !items.is_empty(), compositor, qh);
-                    return;
-                }
-                Err(_) => {}
-            }
-        }
-    }
-
-    // CPU fallback path
+    // GPU rendering via wgpu-api not yet integrated — using CPU rendering
     if !items.is_empty() {
         render_tray_icons_into_canvas(
             &mut bar.cached_content,
@@ -184,8 +159,8 @@ pub fn draw_bottom_system_bar(
     visible: bool,
     alpha: f32,
     font_manager: &mut crate::render::font::FontManager,
-    gpu_context: Option<&mut GpuContext>,
-    dmabuf_state: &DmabufState,
+    _gpu_context: Option<&mut wgpu_api::Renderer>,
+    _dmabuf_state: &DmabufState,
 ) {
     let parent_surface = dock.surface.wl_surface().clone();
     ensure_surface(
@@ -214,30 +189,7 @@ pub fn draw_bottom_system_bar(
     bar.cached_content.resize(expected, 0);
     bar.cached_content.fill(0);
 
-    // GPU path: FemtoVG + dmabuf
-    if let Some(gpu) = gpu_context {
-        if visible {
-            gpu.canvas.save();
-            gpu.canvas.set_global_alpha(alpha);
-            render_system_bar_femtovg(&mut gpu.canvas, phys_width as f32, phys_height as f32, scale as f32, snapshot, alpha);
-            gpu.canvas.restore();
-
-            match gpu.dmabuf_pool.get_or_create(&gpu.adapter, &gpu.device, qh, dmabuf_state, phys_width as u32, phys_height as u32) {
-                Ok(target) => {
-                    if let Some(cmd_buf) = gpu.flush_to_texture(&target.texture) {
-                        gpu.queue.submit(std::iter::once(cmd_buf));
-                    }
-                    bar.surface.set_buffer_scale(scale.round().max(1.0) as i32);
-                    attach_and_commit(&bar.surface, &target.buffer);
-                    set_interactive_region(bar, visible, compositor, qh);
-                    return;
-                }
-                Err(_) => {}
-            }
-        }
-    }
-
-    // CPU fallback path
+    // GPU rendering via wgpu-api not yet integrated — using CPU rendering
     if visible {
         render_system_status_into_canvas(
             &mut bar.cached_content,

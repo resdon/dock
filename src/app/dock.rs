@@ -12,7 +12,6 @@ use wayland_client::protocol::wl_shm;
 use wayland_client::QueueHandle;
 
 use crate::graphics::hide::AutoHideState;
-use crate::render::femtovg_wgpu::GpuContext;
 use crate::render::slint_dock::SlintDockRenderer;
 use crate::state::AppState;
 use crate::types::{DockInstance, DockState, PinItem};
@@ -43,7 +42,7 @@ pub fn draw_main_dock(
     _bluetooth_snapshot: &BluetoothSnapshot,
     _sys_scanner: &mut sysinfo::System,
     _render_status: bool,
-    _render_gpu: Option<&mut GpuContext>,
+    _render_gpu: Option<&mut wgpu_api::Renderer>,
     _dmabuf_state: &DmabufState,
     is_animating: bool,
      scale_int: i32,

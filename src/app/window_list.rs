@@ -290,7 +290,7 @@ pub fn draw_window_list_popup(
                 popup.height = geom.logical_height as u32;
 
                 if geom.phys_width > 0 && geom.phys_height > 0 {
-                    // CPU rendering path — GPU path (dmabuf) has issues with FemtoVG image rendering
+                    // CPU rendering path — GPU path not yet integrated
                     // for the PipeWire capture frame, so use CPU (shm) which works correctly.
                     let popup_x_logical = geom.x as f64 / frame.dock_scale;
                     let popup_y_logical = geom.y as f64 / frame.dock_scale;

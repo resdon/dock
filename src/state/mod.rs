@@ -49,7 +49,6 @@ use crate::graphics::hide::AutoHideState;
 use crate::models::BadgeUpdate;
 use crate::registry::SystemRegistry;
 use crate::render::font::FontManager;
-use crate::render::femtovg_wgpu::GpuContext;
 
 use crate::app::icon_load::IconLoader;
 use crate::events::DomainEvent;
@@ -222,8 +221,10 @@ pub struct AppState {
     // Autohide System State
     pub hide_state: AutoHideState,
 
-    // GPU Rendering (FemtoVG + wgpu + dmabuf)
-    pub gpu_context: Option<GpuContext>,
+    // GPU Rendering (wgpu-api)
+    pub gpu_context: Option<wgpu_api::Renderer>,
+    /// GPU is available (initialized successfully)
+    pub gpu_available: bool,
     pub dmabuf_state: DmabufState,
 
     // Dock configuration

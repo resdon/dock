@@ -10,7 +10,7 @@ use wayland_client::{protocol::wl_shm, QueueHandle};
 
 use crate::{
     models::AudioSnapshot,
-    render::{audio_player, dmabuf_export::attach_and_commit, femtovg_wgpu::{GpuContext, render_audio_player_bar_femtovg}, font::FontManager},
+    render::{audio_player, font::FontManager},
     state::AppState,
     types::{DockInstance, PopupSurface},
 };
@@ -25,8 +25,8 @@ pub fn draw_audio_player_bar(
     visible: bool,
     alpha: f32,
     font: &mut FontManager,
-    gpu_context: Option<&mut GpuContext>,
-    dmabuf_state: &DmabufState,
+    _gpu_context: Option<&mut wgpu_api::Renderer>,
+    _dmabuf_state: &DmabufState,
 ) {
     if dock.audio_player_bar.is_none() {
         let surface = compositor.create_surface(qh);
@@ -67,44 +67,7 @@ pub fn draw_audio_player_bar(
     bar.cached_content.resize(pw as usize * ph as usize * 4, 0);
     bar.cached_content.fill(0);
 
-    // GPU path: FemtoVG + dmabuf
-    if let Some(gpu) = gpu_context {
-        gpu.canvas.save();
-        gpu.canvas.set_global_alpha(alpha);
-        render_audio_player_bar_femtovg(&mut gpu.canvas, pw as f32, ph as f32, scale as f32, snapshot, alpha, expanded);
-        gpu.canvas.restore();
-
-        match gpu.dmabuf_pool.get_or_create(&gpu.adapter, &gpu.device, qh, dmabuf_state, pw as u32, ph as u32) {
-            Ok(target) => {
-                if let Some(cmd_buf) = gpu.flush_to_texture(&target.texture) {
-                    gpu.queue.submit(std::iter::once(cmd_buf));
-                }
-                bar.surface.set_buffer_scale(scale.round().max(1.0) as i32);
-                attach_and_commit(&bar.surface, &target.buffer);
-                let region_key = if !visible { 0 } else if expanded { 2 } else { 1 };
-                if bar.input_region_key != region_key {
-                    if region_key == 0 {
-                        let region = compositor.wl_compositor().create_region(qh, ());
-                        bar.surface.set_input_region(Some(&region));
-                        region.destroy();
-                    } else {
-                        let region = compositor.wl_compositor().create_region(qh, ());
-                        if expanded {
-                            region.add(0, 0, audio_player::PLAYER_WIDTH, audio_player::PLAYER_HEIGHT);
-                        } else {
-                            region.add(audio_player::COMPACT_X, audio_player::COMPACT_Y - 45, audio_player::COMPACT_WIDTH, audio_player::PLAYER_HEIGHT - (audio_player::COMPACT_Y - 45));
-                        }
-                        bar.surface.set_input_region(Some(&region));
-                        region.destroy();
-                    }
-                    bar.input_region_key = region_key;
-                }
-                return;
-            }
-            Err(_) => {}
-        }
-    }
-
+    // GPU rendering via wgpu-api not yet integrated — using CPU rendering
     // CPU fallback path
     audio_player::render(
         &mut bar.cached_content,

@@ -2,7 +2,6 @@
 //!
 //! Paginated list of rclone mounts with transfer rate information.
 
-use crate::render::femtovg_wgpu::GpuContext;
 
 use smithay_client_toolkit::{
     dmabuf::DmabufState,
@@ -31,8 +30,8 @@ pub fn draw_rclone_popup(
     page: usize,
     _tray_items: &[TrayItem],
     _system_bar: &SystemBarSnapshot,
-    gpu_context: Option<&mut GpuContext>,
-    dmabuf_state: &DmabufState,
+    _gpu_context: Option<&mut wgpu_api::Renderer>,
+    _dmabuf_state: &DmabufState,
 ) {
     if !is_open {
         if let Some(popup) = dock.rclone_popup.take() {
@@ -96,61 +95,7 @@ pub fn draw_rclone_popup(
     popup.cached_phys_width = phys_width;
     popup.cached_phys_height = phys_height;
 
-    // GPU rendering path
-    if let Some(gpu) = gpu_context {
-        let alpha = dock.hover_fade.current_alpha;
-        let transfers: Vec<(&str, f32, String)> = snapshot
-            .mounts
-            .iter()
-            .map(|m| {
-                let pct = if m.total_bytes > 0 {
-                    (m.used_bytes as f32 / m.total_bytes as f32) * 100.0
-                } else {
-                    0.0
-                };
-                let speed = format!("{:.1}%", pct);
-                (m.mount_point.as_str(), pct, speed)
-            })
-            .collect();
-        match gpu.dmabuf_pool.get_or_create(
-            &gpu.adapter,
-            &gpu.device,
-            qh,
-            dmabuf_state,
-            phys_width as u32,
-            phys_height as u32,
-        ) {
-            Ok(target) => {
-                gpu.resize(phys_width as u32, phys_height as u32, (scale * 96.0) as f32);
-                crate::render::femtovg_wgpu::render_rclone_popup_femtovg(
-                    &mut gpu.canvas,
-                    phys_width as f32,
-                    phys_height as f32,
-                    scale as f32,
-                    &transfers,
-                    alpha,
-                );
-                let output = femtovg::renderer::WGPURenderOutput::from(&target.texture);
-                if let Some(cmd_buf) = gpu.canvas.flush_to_output(output) {
-                    gpu.queue.submit(std::iter::once(cmd_buf));
-                }
-                popup.surface.set_buffer_scale(scale.round().max(1.0) as i32);
-                crate::render::dmabuf_export::attach_and_commit(&popup.surface, &target.buffer);
-                popup.surface.damage_buffer(0, 0, phys_width, phys_height);
-                let region = compositor_state.wl_compositor().create_region(qh, ());
-                region.add(0, 0, RCLONE_POPUP_WIDTH, RCLONE_POPUP_HEIGHT);
-                popup.surface.set_input_region(Some(&region));
-                region.destroy();
-                popup.surface.commit();
-                popup.current_buffer = None;
-                return;
-            }
-            Err(_) => {
-                // Fall through to CPU path
-            }
-        }
-    }
-
+    // GPU rendering via wgpu-api not yet integrated — using CPU rendering
     // CPU rendering path
     let (buffer, canvas) = pool
         .create_buffer(

@@ -3,7 +3,6 @@
 //! Builds and renders the right-click context menu popup with items
 //! for Launch, Focus, Unpin, and Quit actions.
 
-use crate::render::femtovg_wgpu::GpuContext;
 use smithay_client_toolkit::{
     compositor::CompositorState, shell::WaylandSurface, shm::slot::SlotPool,
 };
@@ -29,7 +28,7 @@ pub fn draw_context_menu_popup(
     font_manager: &mut FontManager,
     menu_state: &MenuState,
     interaction: &crate::types::InteractionState,
-    _gpu_context: Option<&mut GpuContext>,
+    _gpu_context: Option<&mut wgpu_api::Renderer>,
     _dmabuf_state: &DmabufState,
 ) {
     let show_menu = !dock.menu_fade.is_fully_hidden() && !menu_state.items.is_empty();

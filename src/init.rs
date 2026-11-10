@@ -273,7 +273,7 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
         sys_scanner: sysinfo::System::new_with_specifics(
             sysinfo::RefreshKind::nothing()
                 .with_processes(sysinfo::ProcessRefreshKind::everything()),
-        ),
+        ).expect("Failed to create sysinfo System"),
         last_process_scan: Instant::now() - std::time::Duration::from_secs(1),
         current_output: None,
         docks: Vec::new(),
@@ -328,6 +328,7 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
         focus_action_time: Some(Instant::now()),
         window_list_state: WindowListState::default(),
         gpu_context: None,
+        gpu_available: false,
         dmabuf_state: smithay_client_toolkit::dmabuf::DmabufState::new(&globals, &qh),
         config: crate::config::DockConfig::load(),
         slint_renderer: None,

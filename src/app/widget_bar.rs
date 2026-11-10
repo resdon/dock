@@ -2,7 +2,6 @@
 //!
 //! Right-side utility widget cluster: rclone, process monitor, audio, Bluetooth.
 
-use crate::render::femtovg_wgpu::GpuContext;
 use smithay_client_toolkit::{
     dmabuf::DmabufState,
     compositor::CompositorState, shell::WaylandSurface, shm::slot::SlotPool,
@@ -28,8 +27,8 @@ pub fn draw_status_widget_bar(
     tray_item_count: usize,
     visible: bool,
     alpha: f32,
-    gpu_context: Option<&mut GpuContext>,
-    dmabuf_state: &DmabufState,
+    _gpu_context: Option<&mut wgpu_api::Renderer>,
+    _dmabuf_state: &DmabufState,
 ) {
     if dock.status_widget_bar.is_none() {
         let surface = compositor_state.create_surface(qh);
@@ -87,55 +86,7 @@ pub fn draw_status_widget_bar(
     bar.cached_phys_width = phys_width;
     bar.cached_phys_height = phys_height;
 
-    // GPU rendering path
-    if let Some(gpu) = gpu_context {
-        match gpu.dmabuf_pool.get_or_create(
-            &gpu.adapter,
-            &gpu.device,
-            qh,
-            dmabuf_state,
-            phys_width as u32,
-            phys_height as u32,
-        ) {
-            Ok(target) => {
-                gpu.resize(phys_width as u32, phys_height as u32, (scale * 96.0) as f32);
-                crate::render::femtovg_wgpu::render_widget_bar_femtovg(
-                    &mut gpu.canvas,
-                    phys_width as f32,
-                    phys_height as f32,
-                    scale as f32,
-                    bluetooth.powered,
-                    bluetooth.discovering,
-                    alpha,
-                );
-                let output = femtovg::renderer::WGPURenderOutput::from(&target.texture);
-                if let Some(cmd_buf) = gpu.canvas.flush_to_output(output) {
-                    gpu.queue.submit(std::iter::once(cmd_buf));
-                }
-                bar.surface.set_buffer_scale(scale.round().max(1.0) as i32);
-                crate::render::dmabuf_export::attach_and_commit(&bar.surface, &target.buffer);
-                bar.surface.damage_buffer(0, 0, phys_width, phys_height);
-                let region_key = if visible { 1 } else { 0 };
-                if bar.input_region_key != region_key {
-                    if visible {
-                        bar.surface.set_input_region(None);
-                    } else {
-                        let region = compositor_state.wl_compositor().create_region(qh, ());
-                        bar.surface.set_input_region(Some(&region));
-                        region.destroy();
-                    }
-                    bar.input_region_key = region_key;
-                }
-                bar.surface.commit();
-                bar.current_buffer = None;
-                return;
-            }
-            Err(_) => {
-                // Fall through to CPU path
-            }
-        }
-    }
-
+    // GPU rendering via wgpu-api not yet integrated — using CPU rendering
     // CPU rendering path
     let (buffer, canvas) = pool
         .create_buffer(

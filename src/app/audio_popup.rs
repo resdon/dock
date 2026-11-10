@@ -2,7 +2,6 @@
 //!
 //! Expanded audio mixer popup with volume sliders and device selection.
 
-use crate::render::femtovg_wgpu::GpuContext;
 
 use smithay_client_toolkit::{
     dmabuf::DmabufState,
@@ -34,8 +33,8 @@ pub fn draw_audio_popup(
     snapshot: &AudioSnapshot,
     _tray_items: &[TrayItem],
     _system_bar: &SystemBarSnapshot,
-    gpu_context: Option<&mut GpuContext>,
-    dmabuf_state: &DmabufState,
+    _gpu_context: Option<&mut wgpu_api::Renderer>,
+    _dmabuf_state: &DmabufState,
 ) {
     if !is_open {
         if let Some(popup) = dock.audio_popup.take() {
@@ -96,65 +95,7 @@ pub fn draw_audio_popup(
 
     let expected_len = phys_width as usize * phys_height as usize * 4;
 
-    // GPU rendering path
-    if let Some(gpu) = gpu_context {
-        let alpha = dock.hover_fade.current_alpha;
-        let output_vol = snapshot.output_volume as f32;
-        let output_muted = snapshot.output_muted;
-        let output_device = snapshot.default_output
-            .and_then(|id| snapshot.outputs.iter().find(|d| d.id == id))
-            .map(|d| d.name.as_str())
-            .unwrap_or("N/A");
-        let input_vol = snapshot.input_volume as f32;
-        let input_muted = snapshot.input_muted;
-        let input_device = snapshot.default_input
-            .and_then(|id| snapshot.inputs.iter().find(|d| d.id == id))
-            .map(|d| d.name.as_str())
-            .unwrap_or("N/A");
-        match gpu.dmabuf_pool.get_or_create(
-            &gpu.adapter,
-            &gpu.device,
-            qh,
-            dmabuf_state,
-            phys_width as u32,
-            phys_height as u32,
-        ) {
-            Ok(target) => {
-                gpu.resize(phys_width as u32, phys_height as u32, (scale * 96.0) as f32);
-                crate::render::femtovg_wgpu::render_audio_popup_femtovg(
-                    &mut gpu.canvas,
-                    phys_width as f32,
-                    phys_height as f32,
-                    scale as f32,
-                    output_vol,
-                    output_muted,
-                    output_device,
-                    input_vol,
-                    input_muted,
-                    input_device,
-                    alpha,
-                );
-                let output = femtovg::renderer::WGPURenderOutput::from(&target.texture);
-                if let Some(cmd_buf) = gpu.canvas.flush_to_output(output) {
-                    gpu.queue.submit(std::iter::once(cmd_buf));
-                }
-                popup.surface.set_buffer_scale(scale.round().max(1.0) as i32);
-                crate::render::dmabuf_export::attach_and_commit(&popup.surface, &target.buffer);
-                popup.surface.damage_buffer(0, 0, phys_width, phys_height);
-                let region = compositor_state.wl_compositor().create_region(qh, ());
-                region.add(0, 0, AUDIO_POPUP_WIDTH, AUDIO_POPUP_HEIGHT);
-                popup.surface.set_input_region(Some(&region));
-                region.destroy();
-                popup.surface.commit();
-                popup.current_buffer = None;
-                return;
-            }
-            Err(_) => {
-                // Fall through to CPU path
-            }
-        }
-    }
-
+    // GPU rendering via wgpu-api not yet integrated — using CPU rendering
     // CPU rendering path — always render every frame
     popup.cached_content.resize(expected_len, 0);
     render_audio_surface(
