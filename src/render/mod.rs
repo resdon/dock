@@ -9,7 +9,6 @@ pub mod bluetooth;
 pub mod debug_overlay;
 pub mod dmabuf_export;
 pub mod dock;
-pub mod femtovg_wgpu;
 pub mod font;
 pub mod popup;
 pub mod text;

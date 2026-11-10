@@ -2,15 +2,15 @@
 //!
 //! Exports shared memory buffers for GPU-accelerated rendering.
 
-/// DMA-BUF export pipeline for FemtoVG + wgpu → Wayland surfaces.
+/// DMA-BUF export pipeline for wgpu → Wayland surfaces.
 ///
-/// Converts a wgpu::Texture rendered by FemtoVG into a Wayland wl_buffer
+/// Converts a wgpu::Texture into a Wayland wl_buffer
 /// via the wp_linux_dmabuf_v1 protocol, so the compositor can display
 /// GPU-rendered frames without CPU round-trips.
 ///
 /// Pipeline:
 /// 1. Create a dmabuf-exportable wgpu texture via wgpu_dmabuf::export()
-/// 2. Render FemtoVG scene to that texture
+/// 2. Render scene to that texture
 /// 3. Submit GPU command buffer
 /// 4. Create a Wayland wl_buffer from the dmabuf planes
 /// 5. Attach wl_buffer to the Wayland surface and commit
@@ -26,7 +26,7 @@ use crate::state::AppState;
 
 /// A dmabuf-exportable render target.
 ///
-/// Holds both the wgpu::Texture (for FemtoVG rendering) and the
+/// Holds both the wgpu::Texture and the
 /// corresponding Wayland WlBuffer (for surface attachment).
 #[derive(Clone)]
 pub struct DmabufRenderTarget {
@@ -38,7 +38,7 @@ pub struct DmabufRenderTarget {
 
 /// A pool of dmabuf render targets keyed by (width, height).
 /// Reuses textures across frames to avoid GPU memory exhaustion.
-/// Uses interior mutability (RefCell) to avoid borrow conflicts with GpuContext.
+/// Uses interior mutability (RefCell) to avoid borrow conflicts.
 pub struct DmabufPool {
     targets: std::cell::RefCell<HashMap<(u32, u32), DmabufRenderTarget>>,
 }

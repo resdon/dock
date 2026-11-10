@@ -4,15 +4,10 @@
 
 use crate::models::BadgeUpdate;
 use crate::render::font::FontManager;
-use crate::render::femtovg_wgpu::{
-    draw_dock_background, draw_icon_placeholder, draw_loading_spinner,
-    draw_text, FemtoVGIconCache,
-};
 use crate::render::{draw_canvas_badge, hsl_to_rgb};
 use crate::state::WindowState;
 use crate::types::DockState;
 
-use femtovg::{Canvas, Color, Paint, Path};
 use std::collections::HashMap;
 use std::collections::HashSet;
 
@@ -49,68 +44,24 @@ pub fn render_dock_surface(canvas: &mut [u8], state: &DockState, res: &mut DockR
     }
 }
 
+/// Render the dock background.
+///
+/// This function is a no-op now that the main dock uses Slint for rendering.
+/// The background is rendered by Slint's widget system, not by CPU pixel operations.
+///
+/// # Deprecation
+/// This function is kept for API compatibility but does nothing. The background
+/// is now rendered by the Slint dock widget.
 pub fn render_dock_background(
     canvas: &mut [u8],
-    phys_width: u32,
-    phys_height: u32,
-    dock_y: usize,
-    dock_height: usize,
-    alpha: f32,
+    _phys_width: u32,
+    _phys_height: u32,
+    _dock_y: usize,
+    _dock_height: usize,
+    _alpha: f32,
 ) {
-    let dock_start_y = dock_y.min(phys_height as usize);
-    let dock_end_y = dock_start_y
-        .saturating_add(dock_height)
-        .min(phys_height as usize);
-    let alpha = alpha.clamp(0.0, 1.0);
+    // Clear canvas to transparent black
     canvas.fill(0);
-    let stride = phys_width as usize * 4;
-    let inset_x = 1usize.min(phys_width as usize / 2);
-    let radius = (dock_height.min(phys_width as usize) / 3).max(1);
-    for y in dock_start_y..dock_end_y {
-        for x in inset_x..(phys_width as usize).saturating_sub(inset_x) {
-            let local_y = y - dock_start_y;
-            let cx = if x < inset_x + radius {
-                inset_x + radius
-            } else if x >= phys_width as usize - inset_x - radius {
-                phys_width as usize - inset_x - radius - 1
-            } else {
-                x
-            };
-            let cy = if local_y < radius {
-                radius
-            } else if local_y >= dock_height.saturating_sub(radius) {
-                dock_height.saturating_sub(radius).saturating_sub(1)
-            } else {
-                local_y
-            };
-            let dx = x as i32 - cx as i32;
-            let dy = local_y as i32 - cy as i32;
-            if (x < inset_x + radius || x >= phys_width as usize - inset_x - radius)
-                && (local_y < radius || local_y >= dock_height.saturating_sub(radius))
-                && (dx * dx + dy * dy) as usize > radius * radius
-            {
-                continue;
-            }
-            let border = x == inset_x
-                || x + inset_x + 1 >= phys_width as usize
-                || local_y == 0
-                || local_y + 1 == dock_height;
-            // Colors from reference project: #4C4954 border, #1D1C22CC background
-            let (r, g, b) = if border {
-                (76.0, 73.0, 84.0)  // #4C4954
-            } else {
-                (29.0, 28.0, 34.0)  // #1D1C22
-            };
-            let i = y * stride + x * 4;
-            if i + 3 < canvas.len() {
-                // Preserve Wayland's little-endian BGRA ordering and fade.
-                canvas[i] = (b * alpha) as u8;
-                canvas[i + 1] = (g * alpha) as u8;
-                canvas[i + 2] = (r * alpha) as u8;
-                canvas[i + 3] = (if border { 255.0 } else { 204.0 } * alpha) as u8; // CC alpha = 204
-            }
-        }
-    }
 }
 
 pub fn render_dock_items(canvas: &mut [u8], state: &DockState, res: &mut DockRenderResources) {
@@ -477,276 +428,5 @@ pub fn render_dragged_icon(
         }
 
         // Keep an unavailable dragged icon blank instead of drawing text.
-    }
-}
-
-// ============================================================================
-// FemtoVG-based dock rendering (GPU-accelerated, replaces pixel canvas)
-// ============================================================================
-
-/// Render the dock surface using FemtoVG draw commands.
-/// This is the GPU-accelerated replacement for `render_dock_surface`.
-pub fn render_dock_surface_femtovg(
-    canvas: &mut Canvas<femtovg::renderer::WGPURenderer>,
-    state: &DockState,
-    res: &mut DockRenderResources,
-    icon_cache: &mut FemtoVGIconCache,
-) {
-    // Clear canvas to transparent
-    let mut clear_path = Path::new();
-    clear_path.rect(0.0, 0.0, res.phys_width as f32, res.phys_height as f32);
-    let clear_paint = Paint::color(Color::rgba(0, 0, 0, 0));
-    canvas.fill_path(&clear_path, &clear_paint);
-
-    // Draw dock background
-    draw_dock_background(
-        canvas,
-        state.panel_rect.y.max(0.0) as f32,
-        state.panel_rect.height.max(0.0) as f32,
-        res.phys_width as f32,
-        state.current_visibility_alpha,
-    );
-
-    // Draw dock items
-    render_dock_items_femtovg(canvas, state, res, icon_cache);
-
-    // Draw dragged icon
-    if res.is_dragging {
-        if let Some(drag_id) = &res.dragged_app_id {
-            render_dragged_icon_femtovg(canvas, state, res, drag_id, icon_cache);
-        }
-    }
-}
-
-/// Render all dock items using FemtoVG.
-fn render_dock_items_femtovg(
-    canvas: &mut Canvas<femtovg::renderer::WGPURenderer>,
-    state: &DockState,
-    res: &mut DockRenderResources,
-    icon_cache: &mut FemtoVGIconCache,
-) {
-    for pin in &state.pins {
-        let box_size = pin.size as f32;
-        let start_x = pin.x as f32;
-        let start_y = pin.y as f32;
-
-        if start_x + box_size > res.phys_width as f32 {
-            continue;
-        }
-
-        // Get icon pixels
-        let windows = res.running_by_app.get(&pin.app_id);
-        let window_icon = windows.and_then(|v| {
-            v.first().and_then(|w| {
-                w.icon_rgba
-                    .as_ref()
-                    .map(|rgba| (rgba.as_slice(), w.icon_size))
-            })
-        });
-        let cached_icon = res
-            .icon_cache
-            .get(&pin.app_id)
-            .map(|(rgba, size)| (rgba.as_slice(), *size));
-        let icon = match (window_icon, cached_icon) {
-            (Some(window), Some(cached)) if cached.1 >= window.1 => Some(cached),
-            (Some(window), _) => Some(window),
-            (None, cached) => cached,
-        };
-
-        let alpha = if pin.is_running { 1.0 } else { 0.5 };
-        let is_hovered = state.hovered_index.map_or(false, |i| {
-            // Find the index of this pin in the pins list
-            state.pins.iter().position(|p| p.app_id == pin.app_id) == Some(i)
-        });
-
-        // Draw icon or placeholder
-        if let Some((icon_pixels, img_size_u32)) = icon {
-            // Cache the icon
-            icon_cache.get_or_create(
-                canvas,
-                &pin.app_id,
-                icon_pixels,
-                img_size_u32,
-                img_size_u32,
-            );
-
-            // Visual effect: Cyan hover outline (from reference project)
-            // Draw a slightly larger, cyan-colored version behind the main icon
-            if is_hovered {
-                let outline_size = box_size + 4.0;
-                let outline_x = start_x - 2.0;
-                let outline_y = start_y - 1.0;
-                icon_cache.draw_colorized(
-                    canvas,
-                    &pin.app_id,
-                    outline_x,
-                    outline_y,
-                    outline_size,
-                    outline_size,
-                    // Cyan color #00E5FF with partial opacity for outline effect
-                    Color::rgba(0, 229, 255, 180),
-                );
-            }
-
-            // Draw main icon
-            icon_cache.draw(
-                canvas,
-                &pin.app_id,
-                start_x,
-                start_y,
-                box_size,
-                box_size,
-                alpha,
-            );
-        } else if res.loading_apps.contains(&pin.app_id) {
-            // Loading spinner
-            draw_loading_spinner(
-                canvas,
-                start_x + box_size / 2.0,
-                start_y + box_size / 2.0,
-                box_size / 3.0,
-            );
-        } else {
-            // Placeholder
-            let hash = pin.app_id.bytes().fold(0u32, |acc, b| acc.wrapping_add(b as u32));
-            let hue = (hash % 360) as f32;
-            draw_icon_placeholder(canvas, start_x, start_y, box_size, hue, alpha);
-        }
-
-        // Draw multi-dash window count indicator (from reference project design)
-        // Up to 5 dashes with varying widths, cyan for focused/active apps
-        // Reference: 32px total span, y = dock_height - 2px (58px for 60px dock)
-        if pin.is_running {
-            let indicator_y = start_y + box_size - 2.0;
-            let window_count = pin.running_count.min(5).max(1);
-
-            let is_app_active = windows
-                .map_or(pin.is_activated, |wins| wins.iter().any(|w| w.focused))
-                || pin.is_activated;
-
-            draw_multi_dash_indicator(
-                canvas,
-                start_x,
-                indicator_y,
-                box_size,
-                window_count,
-                is_app_active,
-            );
-        }
-
-        // Draw badge
-        if let Some(badge) = res.badges.get(&pin.app_id) {
-            let badge_x = start_x + box_size - 8.0;
-            let badge_y = start_y - 2.0;
-            draw_badge_femtovg(canvas, badge_x, badge_y, badge);
-        }
-
-    }
-}
-
-/// Draw multi-dash window count indicator below an icon.
-/// Based on the reference project design: up to 5 dashes with varying widths.
-/// Active/focused apps use cyan (#00E5FF), inactive use silver (#9CA3AF).
-/// Reference: 32px total span, centered within 48px icon (8px padding each side).
-fn draw_multi_dash_indicator(
-    canvas: &mut Canvas<femtovg::renderer::WGPURenderer>,
-    icon_x: f32,
-    indicator_y: f32,
-    icon_size: f32,
-    window_count: usize,
-    is_active: bool,
-) {
-    // Total width of the indicator group (32px from reference)
-    let total_width = 32.0f32;
-    let dash_height = 2.0f32;
-    let dash_spacing = 3.0f32;
-
-    // Calculate dash widths based on count (matching reference project proportions)
-    // Reference: 1 dash = 32px, 2 dashes = 14.5px each, 3 = 8.67px, 4 = 6.25px, 5 = 4.8px
-    let total_spacing = dash_spacing * (window_count as f32 - 1.0);
-    let available_width = total_width - total_spacing;
-    let dash_width = (available_width / window_count as f32).max(4.0);
-
-    let start_x = icon_x + (icon_size - total_width) / 2.0;
-
-    let color = if is_active {
-        // Cyan for active/focused apps (#00E5FF)
-        Color::rgb(0, 229, 255)
-    } else {
-        // Silver for inactive running apps (#9CA3AF)
-        Color::rgb(156, 163, 175)
-    };
-
-    for i in 0..window_count {
-        let dash_x = start_x + i as f32 * (dash_width + dash_spacing);
-        let mut path = Path::new();
-        path.rounded_rect(dash_x, indicator_y, dash_width, dash_height, 1.0);
-        let paint = Paint::color(color);
-        canvas.fill_path(&path, &paint);
-    }
-}
-
-/// Draw a badge using FemtoVG.
-fn draw_badge_femtovg(
-    canvas: &mut Canvas<femtovg::renderer::WGPURenderer>,
-    x: f32,
-    y: f32,
-    badge: &BadgeUpdate,
-) {
-    let count = badge.count;
-    if count == 0 {
-        return;
-    }
-
-    let size = 14.0;
-    let mut path = Path::new();
-    path.rounded_rect(x, y, size, size, 3.0);
-    let paint = Paint::color(Color::rgb(220, 38, 38));
-    canvas.fill_path(&path, &paint);
-
-    let text = format!("{}", count);
-    let text_x = x + size / 2.0;
-    let text_y = y + size - 2.0;
-    draw_text(canvas, &text, 8.0, text_x, text_y, (255, 255, 255));
-}
-
-/// Render a dragged icon using FemtoVG.
-fn render_dragged_icon_femtovg(
-    canvas: &mut Canvas<femtovg::renderer::WGPURenderer>,
-    state: &DockState,
-    res: &mut DockRenderResources,
-    drag_id: &String,
-    icon_cache: &mut FemtoVGIconCache,
-) {
-    let box_size = state.pins.first().map(|p| p.size as f32).unwrap_or(48.0);
-    let (pointer_x, pointer_y) = res.pointer_position;
-    let drag_start_x = pointer_x as f32 - box_size / 2.0;
-    let drag_start_y = pointer_y as f32 - box_size / 2.0;
-
-    // Find the icon for the dragged app
-    let cached_icon = res.icon_cache.get(drag_id).map(|(rgba, size)| (rgba.as_slice(), *size));
-
-    if let Some((icon_pixels, img_size_u32)) = cached_icon {
-        icon_cache.get_or_create(
-            canvas,
-            drag_id,
-            icon_pixels,
-            img_size_u32,
-            img_size_u32,
-        );
-        icon_cache.draw(
-            canvas,
-            drag_id,
-            drag_start_x,
-            drag_start_y,
-            box_size,
-            box_size,
-            0.85,
-        );
-    } else {
-        // Placeholder for dragged icon
-        let hash = drag_id.bytes().fold(0u32, |acc, b| acc.wrapping_add(b as u32));
-        let hue = (hash % 360) as f32;
-        draw_icon_placeholder(canvas, drag_start_x, drag_start_y, box_size, hue, 0.85);
     }
 }

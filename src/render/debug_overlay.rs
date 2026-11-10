@@ -119,7 +119,7 @@ pub fn print_debug_stats(sys: &mut sysinfo::System, gpu_active: bool) {
 
     // Format and print to stderr
     let _gpu_line = if gpu_active {
-        "GPU: ON (FemtoVG + wgpu Vulkan)"
+        "GPU: ON (wgpu Vulkan)"
     } else {
         "GPU: OFF (CPU fallback)"
     };
