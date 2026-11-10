@@ -1054,30 +1054,34 @@ async fn create_session(
         match sig.body().deserialize() {
             Ok(result) => result,
             Err(_) => {
-                let result = match sig.body().deserialize::<(u32, HashMap<String, OwnedVariant>)>() {
-                    Ok((resp, props)) => {
-                        if let Some(val) = props.get("session_handle") {
-                            if let Variant::Str(s) = &**val {
-                                if let Ok(path) = OwnedObjectPath::try_from(s.as_str()) {
-                                    return (resp, path);
-                                } else {
-                                    tracing::warn!("Invalid session path in portal response");
-                                }
-                            }
-                        }
-                        if let Some(val) = props.get("session") {
-                            if let Variant::ObjectPath(path) = &**val {
-                                return (resp, OwnedObjectPath::from(path.clone()));
-                            }
-                        }
-                        return Err("No session path in portal response dict".into());
-                    }
+                let (resp, props) = match sig.body().deserialize::<(u32, HashMap<String, OwnedVariant>)>() {
+                    Ok(result) => result,
                     Err(e) => {
                         tracing::warn!("Failed to deserialize portal response: {}", e);
                         return Err("Failed to parse portal CreateSession response".into());
                     }
                 };
-                return Err("Failed to deserialize portal response".into());
+                if let Some(val) = props.get("session_handle") {
+                    if let Variant::Str(s) = &**val {
+                        if let Ok(path) = OwnedObjectPath::try_from(s.as_str()) {
+                            if resp != 0 {
+                                return Err(format!("Session creation failed: {}", resp).into());
+                            }
+                            return Ok(path);
+                        } else {
+                            tracing::warn!("Invalid session path in portal response");
+                        }
+                    }
+                }
+                if let Some(val) = props.get("session") {
+                    if let Variant::ObjectPath(path) = &**val {
+                        if resp != 0 {
+                            return Err(format!("Session creation failed: {}", resp).into());
+                        }
+                        return Ok(OwnedObjectPath::from(path.clone()));
+                    }
+                }
+                return Err("No session path in portal response dict".into());
             }
         };
     if response != 0 {
