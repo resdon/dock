@@ -17,46 +17,44 @@ name = "monitor"
 path = "src/services/monitor.rs"
 
 [dependencies]
-wayland-client = "0.31.14"
-wayland-protocols = { version = "0.32.9", features = ["client", "staging"] }
+wgpu-api = { path = "wgpu-api" }
+wayland-client = "0.31.15"
+wayland-protocols = { version = "0.32.13", features = ["client", "staging"] }
 smithay-client-toolkit = { version = "0.20.0" }
 
-wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 
-sysinfo = "0.33"
+sysinfo = "0.40"
 
 # Add this for your static caching maps:
-lazy_static = "1.5.0"
 
 # Add your image lookup dependencies from your proof-of-concept scripts:
 linicon = "2.3"
-image = "0.25"
+image = "0.25.10"
 base64 = "0.22" # Required to encode the binary image bytes over the terminal stream
 sixel-rs = "0.5.0"
 icy_sixel = "0.5.0"
 walkdir = "2.5.0"
 resvg = "0.47.0"
-fontdue = "0.9.3"
-serde = { version = "1.0", features = ["derive"] }
+fontdue = "0.9"
+serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0"
-once_cell = "1.21.4"
+once_cell = "1.21"
 dirs = "6.0.0"
 
 memmap2 = "0.9"
-libc = "0.2.189"
+libc = "0.2"
 urlencoding = "2.1.3"
 os_pipe = "1.2.3"
 
-zbus = { version = "4.0", features = ["tokio"] }
-zvariant = "4.0"
-tokio = { version = "1.0", features = ["full"] }
+zbus = { version = "6", features = ["tokio"] }
+tokio = { version = "1.54", features = ["full"] }
 futures-util = "0.3"
 cairo-rs = "0.19"
 usvg = "0.48.1"
 tiny-skia = "0.12.0"
 
-# FemtoVG + wgpu GPU rendering
-femtovg = { version = "0.28", features = ["wgpu", "image-loading", "textlayout"] }
+# wgpu GPU rendering (via wgpu-api crate)
 wgpu = { version = "30", features = ["vulkan"] }
 wgpu-dmabuf = "0.1"
 imgref = "1.10"
@@ -65,13 +63,13 @@ rgb = "0.8"
 # SIMD-optimized image resizing (replaces custom Lanczos-3)
 fast_image_resize = { version = "5.0", features = ["image"] }
 
-# Slint for dock icon rendering (software renderer - direct buffer rendering)
-slint = { version = "1.18", features = ["renderer-software"] }
+# Slint for dock icon rendering (wgpu-30 GPU renderer)
+slint = { version = "~1.18", features = ["unstable-wgpu-30"] }
 
 # PipeWire for window capture (list-widget integration)
-pipewire = "0.10"
-pipewire-sys = "0.10"
-libspa-sys = "0.10"
+pipewire = "0.10.1"
+pipewire-sys = "0.10.1"
+libspa-sys = "0.10.1"
 
 # Concurrent and bounded caching
 dashmap = "6.1"
@@ -80,7 +78,23 @@ lru = "0.12"
 # Timeout-based Mutex to prevent PipeWire stream threads from freezing the dock
 parking_lot = "0.12"
 
+# Lock-free structures, channels, and thread coordination
+crossbeam = "0.8"
+
+# Fast memory allocator — benchmark before/after to verify benefit
+mimalloc = "0.1"
+
+# Error handling: thiserror for typed errors, anyhow for propagation, miette for diagnostics
+thiserror = "2"
+anyhow = "1"
+miette = { version = "7", features = ["fancy"] }
+# Structured logging and performance tracing (root crate)
+tracing = { version = "0.1", features = ["std"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Development error reporting with backtraces
+color-eyre = "0.6"
+
 [build-dependencies]
-slint-build = { version = "1.18" }
+slint-build = { version = "1.18.1" }
 
 
