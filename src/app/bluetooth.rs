@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::thread;
 use std::time::Duration;
 
-use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
+use zbus::zvariant::{OwnedObjectPath, OwnedVariant, Variant};
 use zbus::{Connection, Proxy};
 
 use crate::models::{BluetoothAction, BluetoothDevice, BluetoothSnapshot};
@@ -18,7 +18,7 @@ const ADAPTER_IFACE: &str = "org.bluez.Adapter1";
 const DEVICE_IFACE: &str = "org.bluez.Device1";
 const PROPERTIES_IFACE: &str = "org.freedesktop.DBus.Properties";
 
-type ManagedObjects = HashMap<OwnedObjectPath, HashMap<String, HashMap<String, OwnedValue>>>;
+type ManagedObjects = HashMap<OwnedObjectPath, HashMap<String, HashMap<String, OwnedVariant>>>;
 
 /// Keep all BlueZ calls off the Wayland/render thread. The monitor uses the
 /// system D-Bus ObjectManager rather than parsing terminal output, so device
@@ -232,7 +232,7 @@ async fn apply_action(
                 &path,
                 ADAPTER_IFACE,
                 "Powered",
-                Value::Bool(powered),
+                Variant::Bool(powered),
             )
             .await?;
             Ok(if powered {
@@ -304,7 +304,7 @@ async fn apply_action(
                 &path,
                 DEVICE_IFACE,
                 "Trusted",
-                Value::Bool(true),
+                Variant::Bool(true),
             )
             .await?;
             Ok("Device paired and trusted".into())
@@ -317,7 +317,7 @@ async fn set_property(
     object_path: &str,
     interface: &str,
     property: &str,
-    value: Value<'_>,
+    value: Variant<'_>,
 ) -> Result<(), String> {
     let properties = Proxy::new(connection, BLUEZ_SERVICE, object_path, PROPERTIES_IFACE)
         .await
@@ -329,14 +329,14 @@ async fn set_property(
     Ok(())
 }
 
-fn value_string(properties: &HashMap<String, OwnedValue>, key: &str) -> Option<String> {
+fn value_string(properties: &HashMap<String, OwnedVariant>, key: &str) -> Option<String> {
     properties
         .get(key)
         .and_then(|value| value.try_clone().ok())
         .and_then(|value| String::try_from(value).ok())
 }
 
-fn value_bool(properties: &HashMap<String, OwnedValue>, key: &str) -> Option<bool> {
+fn value_bool(properties: &HashMap<String, OwnedVariant>, key: &str) -> Option<bool> {
     properties
         .get(key)
         .and_then(|value| value.try_clone().ok())

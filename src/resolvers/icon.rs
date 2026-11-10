@@ -201,7 +201,7 @@ pub fn search_icon_list_file(query: &str) -> Option<PathBuf> {
 
 pub fn get_icon_path(app_id: &str) -> Option<PathBuf> {
     if app_id.starts_with("steam_icon_") {
-        let sys_scanner = sysinfo::System::new();
+        let sys_scanner = sysinfo::System::new().expect("Failed to create sysinfo System");
         if let Some((_, _, icon_path)) = resolve_steam_game_details(app_id, "", &sys_scanner, None)
         {
             return Some(icon_path);

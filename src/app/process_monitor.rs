@@ -21,7 +21,8 @@ pub fn spawn_process_monitor(snapshot_tx: Sender<ProcessSnapshot>, enabled_rx: R
             // that adds avoidable /proc work when many processes are running.
             let process_refresh = ProcessRefreshKind::nothing().with_cpu().with_memory();
             let mut system =
-                System::new_with_specifics(RefreshKind::nothing().with_processes(process_refresh));
+                System::new_with_specifics(RefreshKind::nothing().with_processes(process_refresh))
+                .expect("Failed to create sysinfo System");
             loop {
                 match enabled_rx.recv() {
                     Ok(true) => {}

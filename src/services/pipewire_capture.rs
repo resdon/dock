@@ -83,7 +83,7 @@ use std::time::Instant;
 use parking_lot::Mutex;
 
 use futures_util::StreamExt;
-use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
+use zbus::zvariant::{OwnedObjectPath, OwnedVariant, Variant};
 use zbus::Proxy;
 
 use pipewire as pw;
@@ -945,10 +945,10 @@ async fn create_session(
 
     let mut signal = request.receive_signal("Response").await?;
 
-    let options: HashMap<String, Value<'_>> = HashMap::from([
-        ("handle_token".to_string(), Value::Str(handle_token.as_str().into())),
-        ("session_handle_token".to_string(), Value::Str(session_handle_token.as_str().into())),
-        ("desktop_file".to_string(), Value::Str("list-widget.desktop".into())),
+    let options: HashMap<String, Variant<'_>> = HashMap::from([
+        ("handle_token".to_string(), Variant::Str(handle_token.as_str().into())),
+        ("session_handle_token".to_string(), Variant::Str(session_handle_token.as_str().into())),
+        ("desktop_file".to_string(), Variant::Str("list-widget.desktop".into())),
     ]);
 
     desktop.call_method("CreateSession", &(options,)).await?;
@@ -960,15 +960,15 @@ async fn create_session(
     let sig = sig_opt.ok_or("Signal stream ended")?;
 
     let (response, session_path): (u32, OwnedObjectPath) = sig.body().deserialize().unwrap_or_else(|_| {
-        let (resp, props): (u32, HashMap<String, OwnedValue>) = sig.body().deserialize().expect("fallback failed");
+        let (resp, props): (u32, HashMap<String, OwnedVariant>) = sig.body().deserialize().expect("fallback failed");
         if let Some(val) = props.get("session_handle") {
-            if let Value::Str(s) = &**val {
+            if let Variant::Str(s) = &**val {
                 let path = OwnedObjectPath::try_from(s.as_str()).expect("invalid session path");
                 return (resp, path);
             }
         }
         if let Some(val) = props.get("session") {
-            if let Value::ObjectPath(path) = &**val {
+            if let Variant::ObjectPath(path) = &**val {
                 return (resp, OwnedObjectPath::from(path.clone()));
             }
         }
@@ -1018,15 +1018,15 @@ async fn select_sources(
 
     // Build options — restore_token must be on SelectSources, not Start,
     // to bypass the portal confirmation dialog.
-    let mut options: HashMap<String, Value<'_>> = HashMap::from([
-        ("handle_token".to_string(), Value::Str(handle_token.as_str().into())),
-        ("types".to_string(), Value::U32(3)),  // 3 = window + viewport
-        ("multiple".to_string(), Value::Bool(true)),
-        ("cursor_mode".to_string(), Value::U32(1)),
-        ("persist_mode".to_string(), Value::U32(2)),
+    let mut options: HashMap<String, Variant<'_>> = HashMap::from([
+        ("handle_token".to_string(), Variant::Str(handle_token.as_str().into())),
+        ("types".to_string(), Variant::U32(3)),  // 3 = window + viewport
+        ("multiple".to_string(), Variant::Bool(true)),
+        ("cursor_mode".to_string(), Variant::U32(1)),
+        ("persist_mode".to_string(), Variant::U32(2)),
     ]);
     if let Some(token) = restore_token {
-        options.insert("restore_token".to_string(), Value::Str(token.into()));
+        options.insert("restore_token".to_string(), Variant::Str(token.into()));
     }
 
     desktop.call_method("SelectSources", &(session, options)).await?;
@@ -1042,7 +1042,7 @@ async fn select_sources(
     let response: u32 = if let Ok((r,)) = sig.body().deserialize::<(u32,)>() {
         r
     } else {
-        let (r, _props): (u32, HashMap<String, OwnedValue>) = sig.body().deserialize()
+        let (r, _props): (u32, HashMap<String, OwnedVariant>) = sig.body().deserialize()
             .expect("SelectSources response");
         r
     };
@@ -1083,8 +1083,8 @@ async fn start_capture(
 
     let mut signal = request.receive_signal("Response").await?;
 
-    let options: HashMap<String, Value<'_>> = HashMap::from([
-        ("handle_token".to_string(), Value::Str(handle_token.as_str().into())),
+    let options: HashMap<String, Variant<'_>> = HashMap::from([
+        ("handle_token".to_string(), Variant::Str(handle_token.as_str().into())),
     ]);
 
     desktop.call_method("Start", &(session, handle_token.as_str(), options)).await?;
@@ -1097,7 +1097,7 @@ async fn start_capture(
         signal.next()
     ).await.map_err(|_| "Start timed out waiting for Response signal")?;
     let sig = sig_opt.ok_or("Start signal stream ended")?;
-    let (response, props): (u32, HashMap<String, OwnedValue>) = sig.body().deserialize()?;
+    let (response, props): (u32, HashMap<String, OwnedVariant>) = sig.body().deserialize()?;
 
     if response != 0 {
         return Err(format!("Start failed: {}", response).into());
@@ -1108,31 +1108,31 @@ async fn start_capture(
 
     for (key, val) in &props {
         if key == "streams" {
-            if let Value::Array(arr) = &**val {
+            if let Variant::Array(arr) = &**val {
                 for item in arr.inner() {
-                    if let Value::Structure(tup) = item {
+                    if let Variant::Structure(tup) = item {
                         let mut node_id = 0u32;
                         let mut stream_props = HashMap::new();
                         for (i, field) in tup.fields().into_iter().enumerate() {
                             match field {
-                                Value::U32(id) if i == 0 => {
+                                Variant::U32(id) if i == 0 => {
                                     node_id = *id;
                                 }
-                                Value::Dict(dict) if i == 1 => {
+                                Variant::Dict(dict) if i == 1 => {
                                     for (k, v) in dict.iter() {
-                                        if let Value::Str(key_str) = k {
+                                        if let Variant::Str(key_str) = k {
                                             stream_props.insert(key_str.to_string(), format!("{}", v));
                                         }
                                     }
                                 }
-                                Value::Array(dict_arr) if i == 1 => {
+                                Variant::Array(dict_arr) if i == 1 => {
                                     for entry in dict_arr.inner() {
-                                        if let Value::Structure(entry_tup) = entry {
+                                        if let Variant::Structure(entry_tup) = entry {
                                             let mut entry_key = String::new();
                                             let mut entry_val = String::new();
                                             for (j, f) in entry_tup.fields().into_iter().enumerate() {
                                                 match f {
-                                                    Value::Str(s) if j == 0 => {
+                                                    Variant::Str(s) if j == 0 => {
                                                         entry_key = s.to_string();
                                                     }
                                                     _ if j == 1 => {
@@ -1155,7 +1155,7 @@ async fn start_capture(
                 }
             }
         } else if key == "restore_token" {
-            if let Value::Str(s) = &**val {
+            if let Variant::Str(s) = &**val {
                 restore_token = Some(s.to_string());
             }
         }
@@ -1176,24 +1176,24 @@ async fn open_pipewire_remote(
 ) -> Result<OwnedFd, Box<dyn std::error::Error>> {
     let handle_token = next_token();
 
-    let options: HashMap<String, Value<'_>> = HashMap::from([
-        ("handle_token".to_string(), Value::Str(handle_token.as_str().into())),
+    let options: HashMap<String, Variant<'_>> = HashMap::from([
+        ("handle_token".to_string(), Variant::Str(handle_token.as_str().into())),
     ]);
 
     let msg = desktop.call_method("OpenPipeWireRemote", &(session, options)).await?;
 
     let body = msg.body();
-    let fd_val: zvariant::Fd<'_> = body.deserialize().map_err(|_e| {
+    let fd_val: zbus::zvariant::Fd<'_> = body.deserialize().map_err(|_e| {
         "Failed to deserialize PipeWire FD"
     })?;
 
     let owned_fd = match fd_val {
-        zvariant::Fd::Borrowed(borrowed) => {
+        zbus::zvariant::Fd::Borrowed(borrowed) => {
             borrowed.try_clone_to_owned().map_err(|_e| {
                 "Failed to clone file descriptor"
             })?
         }
-        zvariant::Fd::Owned(owned) => owned,
+        zbus::zvariant::Fd::Owned(owned) => owned,
     };
 
     Ok(owned_fd)

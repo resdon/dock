@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 use tokio::sync::mpsc;
-use zbus::zvariant::Value;
+use zbus::zvariant::Variant;
 use zbus::MatchRule;
 
 use crate::models::BadgeUpdate;
@@ -18,9 +18,9 @@ pub async fn start_unity_dbus_listener(
 
     let rule = MatchRule::builder()
         .msg_type(zbus::message::Type::Signal)
-        .interface("com.canonical.Unity.LauncherEntry")?
-        .member("Update")?
-        .build();
+        .interface("com.canonical.Unity.LauncherEntry")
+        .member("Update")
+        .build()?;
 
     let mut stream = zbus::MessageStream::for_match_rule(rule, &connection, None).await?;
 
@@ -28,7 +28,7 @@ pub async fn start_unity_dbus_listener(
         use futures_util::StreamExt;
         while let Some(Ok(msg)) = stream.next().await {
             if let Ok((app_uri, properties)) =
-                msg.body().deserialize::<(String, HashMap<String, Value>)>()
+                msg.body().deserialize::<(String, HashMap<String, Variant>)>()
             {
                 if let Some(update) = parse_unity_update(app_uri, properties) {
                     let _ = tx.send(update);
@@ -40,7 +40,7 @@ pub async fn start_unity_dbus_listener(
     Ok(())
 }
 
-fn parse_unity_update(app_uri: String, props: HashMap<String, Value>) -> Option<BadgeUpdate> {
+fn parse_unity_update(app_uri: String, props: HashMap<String, Variant>) -> Option<BadgeUpdate> {
     let desktop_id = app_uri
         .strip_prefix("application://")
         .or_else(|| app_uri.rsplit('/').next())
@@ -59,15 +59,15 @@ fn parse_unity_update(app_uri: String, props: HashMap<String, Value>) -> Option<
 
     if let Some(val) = props.get("count") {
         update.count = match val {
-            Value::I64(v) => *v,
-            Value::I32(v) => *v as i64,
-            Value::U64(v) => *v as i64,
-            Value::U32(v) => *v as i64,
+            Variant::I64(v) => *v,
+            Variant::I32(v) => *v as i64,
+            Variant::U64(v) => *v as i64,
+            Variant::U32(v) => *v as i64,
             _ => 0,
         };
     }
 
-    if let Some(Value::Bool(v)) = props.get("count-visible") {
+    if let Some(Variant::Bool(v)) = props.get("count-visible") {
         update.count_visible = *v;
     } else {
         update.count_visible = update.count > 0;
@@ -75,19 +75,19 @@ fn parse_unity_update(app_uri: String, props: HashMap<String, Value>) -> Option<
 
     if let Some(val) = props.get("progress") {
         update.progress = match val {
-            Value::F64(v) => *v,
-            Value::I64(v) => *v as f64 / 100.0,
+            Variant::F64(v) => *v,
+            Variant::I64(v) => *v as f64 / 100.0,
             _ => 0.0,
         };
     }
 
-    if let Some(Value::Bool(v)) = props.get("progress-visible") {
+    if let Some(Variant::Bool(v)) = props.get("progress-visible") {
         update.progress_visible = *v;
     } else {
         update.progress_visible = update.progress > 0.0 && update.progress <= 1.0;
     }
 
-    if let Some(Value::Bool(v)) = props.get("urgent") {
+    if let Some(Variant::Bool(v)) = props.get("urgent") {
         update.urgent = *v;
     }
 

@@ -80,7 +80,7 @@ fn query_vram_mb(pid: u32) -> Option<u64> {
 /// `nvidia-smi` and shows "N/A" if the command is unavailable.
 pub fn start_resource_monitor() {
     thread::spawn(|| {
-        let mut sys = System::new_all();
+        let mut sys = System::new_all().expect("Failed to create sysinfo System");
 
         let pid = match sysinfo::get_current_pid() {
             Ok(p) => p,

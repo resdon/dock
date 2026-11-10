@@ -578,7 +578,7 @@ fn main() {
         window_cache: HashMap::new(),
         sys_scanner: System::new_with_specifics(
             RefreshKind::nothing().with_processes(ProcessRefreshKind::everything()),
-        ),
+        ).expect("Failed to create sysinfo System"),
     };
     let qh = event_queue.handle();
     let _manager: ZwlrForeignToplevelManagerV1 =

@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use zbus::message::Header;
-use zbus::zvariant::{OwnedObjectPath, OwnedValue};
+use zbus::zvariant::{OwnedObjectPath, OwnedVariant};
 use zbus::{fdo, interface, Connection, Proxy};
 
 use crate::models::{TrayAction, TrayActionKind, TrayIcon, TrayItem, TraySnapshot, TrayStatus};
@@ -176,17 +176,17 @@ pub async fn start_status_notifier_listener(
         (initial_connection, false)
     } else {
         drop(dbus);
-        let connection = zbus::connection::Builder::session()?
-            .name(WATCHER_SERVICE)?
-            .name(WATCHER_KDE_SERVICE)?
+        let connection = zbus::connection::Builder::session()
+            .name(WATCHER_SERVICE)
+            .name(WATCHER_KDE_SERVICE)
             .serve_at(
                 WATCHER_PATH,
                 LocalStatusNotifierWatcher::new(registration_tx.clone()),
-            )?
+            )
             .serve_at(
                 WATCHER_PATH,
                 LocalKdeStatusNotifierWatcher::new(registration_tx.clone()),
-            )?
+            )
             .build()
             .await?;
         (connection, true)
@@ -199,23 +199,23 @@ pub async fn start_status_notifier_listener(
     let mut compatibility_connection: Option<Connection> = None;
     if fdo_owner && !kde_owner {
         compatibility_connection = Some(
-            zbus::connection::Builder::session()?
-                .name(WATCHER_KDE_SERVICE)?
+            zbus::connection::Builder::session()
+                .name(WATCHER_KDE_SERVICE)
                 .serve_at(
                     WATCHER_PATH,
                     LocalKdeStatusNotifierWatcher::new(registration_tx.clone()),
-                )?
+                )
                 .build()
                 .await?,
         );
     } else if kde_owner && !fdo_owner {
         compatibility_connection = Some(
-            zbus::connection::Builder::session()?
-                .name(WATCHER_SERVICE)?
+            zbus::connection::Builder::session()
+                .name(WATCHER_SERVICE)
                 .serve_at(
                     WATCHER_PATH,
                     LocalStatusNotifierWatcher::new(registration_tx.clone()),
-                )?
+                )
                 .build()
                 .await?,
         );
@@ -525,7 +525,7 @@ async fn load_tray_item(
                 Err(_) => continue,
             };
 
-            let props: HashMap<String, OwnedValue> =
+            let props: HashMap<String, OwnedVariant> =
                 match props_proxy.call("GetAll", &(interface_name,)).await {
                     Ok(value) => value,
                     Err(_get_all_error) => {
@@ -848,21 +848,21 @@ fn candidate_item_paths(service_name: &str, explicit_path: Option<&str>) -> Vec<
     paths
 }
 
-fn value_string(props: &HashMap<String, OwnedValue>, key: &str) -> Option<String> {
+fn value_string(props: &HashMap<String, OwnedVariant>, key: &str) -> Option<String> {
     props
         .get(key)
         .and_then(|value| value.try_clone().ok())
         .and_then(|value| String::try_from(value).ok())
 }
 
-fn value_bool(props: &HashMap<String, OwnedValue>, key: &str) -> Option<bool> {
+fn value_bool(props: &HashMap<String, OwnedVariant>, key: &str) -> Option<bool> {
     props
         .get(key)
         .and_then(|value| value.try_clone().ok())
         .and_then(|value| bool::try_from(value).ok())
 }
 
-fn value_object_path(props: &HashMap<String, OwnedValue>, key: &str) -> Option<String> {
+fn value_object_path(props: &HashMap<String, OwnedVariant>, key: &str) -> Option<String> {
     props
         .get(key)
         .and_then(|value| value.try_clone().ok())
@@ -872,7 +872,7 @@ fn value_object_path(props: &HashMap<String, OwnedValue>, key: &str) -> Option<S
 }
 
 fn value_pixmaps(
-    props: &HashMap<String, OwnedValue>,
+    props: &HashMap<String, OwnedVariant>,
     key: &str,
 ) -> Option<Vec<(i32, i32, Vec<u8>)>> {
     props
@@ -997,7 +997,7 @@ fn resolve_icon_by_name(icon_name: &str, theme_path: Option<&str>) -> Option<Tra
     None
 }
 
-fn tooltip_text(props: &HashMap<String, OwnedValue>) -> String {
+fn tooltip_text(props: &HashMap<String, OwnedVariant>) -> String {
     // Tooltip is a four-field SNI structure. Keep only the textual title and
     // description; the icon payload is unnecessary for the mini-dock.
     props
