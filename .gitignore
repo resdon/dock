@@ -49,3 +49,4 @@ slint-generated/
 
 # Junie session artifacts
 .junie/plans/
+**/target/
