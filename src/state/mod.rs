@@ -27,6 +27,7 @@ use smithay_client_toolkit::{
     registry::RegistryState,
     seat::SeatState,
     shell::wlr_layer::LayerShell,
+    shell::WaylandSurface,
     shm::slot::{Buffer, SlotPool},
     shm::Shm,
 };
@@ -197,6 +198,9 @@ pub struct AppState {
     pub bluetooth_snapshot: crate::models::BluetoothSnapshot,
     pub bluetooth_action_tx: tokio::sync::mpsc::UnboundedSender<crate::models::BluetoothAction>,
     pub bluetooth_panel_open: bool,
+    /// PID of the spawned bluetooth-widget-complete process, if currently running.
+    /// Used to close the widget when clicking the BT icon on the dashed block again.
+    pub bluetooth_widget_pid: Option<u32>,
     pub rclone_snapshot: crate::models::RcloneSnapshot,
     pub rclone_monitor_tx: Sender<bool>,
     pub rclone_panel_open: bool,
@@ -279,13 +283,13 @@ impl AppState {
                                 .map(|i| (i.width, i.height, i.rgba.as_slice()))
                 });
 
-        let item_count = snapshot.items.len();
+        let _item_count = snapshot.items.len();
         self.tray_items = snapshot.items;
         if changed {
             for dock in &mut self.docks {
                 dock.status_strip_rendered = false;
             }
-            let icon_count = self
+            let _icon_count = self
                 .tray_items
                 .iter()
                 .filter(|item| item.icon.is_some())
@@ -455,6 +459,91 @@ impl AppState {
 
     pub fn bluetooth_button_at_surface(&self, surface: &WlSurface, x: f64, y: f64) -> bool {
         self.widget_button_at_surface(surface, x, y, crate::render::widget_bar::BLUETOOTH_INDEX)
+    }
+
+    /// Check if the click is on the Bluetooth icon inside the dashed block widget.
+    ///
+    /// The dashed block is a separate layer surface, so this check is independent
+    /// of the widget bar button hit test.
+    pub fn bluetooth_button_at_dashed_block(&self, surface: &WlSurface, x: f64, y: f64) -> bool {
+        let on_dashed_block = self.docks.iter().any(|dock| {
+            dock.dashed_block_surface
+                .as_ref()
+                .is_some_and(|block| block.surface.wl_surface() == surface)
+        });
+        on_dashed_block && crate::render::dashed_block::bluetooth_icon_at(x, y, &self.config)
+    }
+
+    /// Calculate the screen position for the Bluetooth widget window.
+    ///
+    /// Returns (x, y) in logical screen coordinates, positioned to the right
+    /// of the dashed block with a 4px gap. The widget uses these coordinates
+    /// via environment variables passed to the spawned process.
+    pub fn bluetooth_widget_position(&self) -> (i32, i32) {
+        let config = &self.config;
+        let gap = config.dashed_block_gap_from_dock as i32;
+        let margin = config.margin;
+        let db_width = config.dashed_block_width as i32;
+        let db_height = config.dashed_block_height as i32;
+        let bt_gap: i32 = 4; // gap between dashed block and BT widget
+
+        let dock = self.docks.first();
+        let Some(dock) = dock else {
+            return (0, 0);
+        };
+
+        let output_size = self.output_state.info(&dock.output)
+            .and_then(|info| info.logical_size)
+            .unwrap_or((1920, 1080));
+        let output_width = output_size.0 as i32;
+        let output_height = output_size.1 as i32;
+        let dock_width = dock.width as i32;
+        let surface_height = dock.height as i32;
+
+        // Calculate the dashed block's left edge (screen X coordinate)
+        let db_left = match config.anchor {
+            crate::config::DockAnchor::Bottom => {
+                let dock_right_edge = (output_width / 2) + (dock_width / 2);
+                dock_right_edge + gap
+            }
+            crate::config::DockAnchor::Top => {
+                let dock_right_edge = (output_width / 2) + (dock_width / 2);
+                dock_right_edge + gap
+            }
+            crate::config::DockAnchor::Left => {
+                let dock_bottom_edge = (output_height / 2) + (surface_height / 2);
+                dock_bottom_edge + gap
+            }
+            crate::config::DockAnchor::Right => {
+                let dock_bottom_edge = (output_height / 2) + (surface_height / 2);
+                dock_bottom_edge + gap
+            }
+        };
+
+        // Calculate the BT widget's X: dashed block left + block width + gap
+        let bt_x = db_left + db_width + bt_gap;
+
+        // Calculate the BT widget's Y: aligned vertically with the dashed block
+        let bt_y = match config.anchor {
+            crate::config::DockAnchor::Bottom => {
+                output_height - surface_height - margin - db_height
+            }
+            crate::config::DockAnchor::Top => {
+                margin + surface_height
+            }
+            crate::config::DockAnchor::Left => {
+                let dock_bottom_edge = (output_height / 2) + (surface_height / 2);
+                let db_bottom = dock_bottom_edge + gap;
+                output_height - db_bottom - margin - db_height
+            }
+            crate::config::DockAnchor::Right => {
+                let dock_bottom_edge = (output_height / 2) + (surface_height / 2);
+                let db_bottom = dock_bottom_edge + gap;
+                output_height - db_bottom - margin - db_height
+            }
+        };
+
+        (bt_x, bt_y)
     }
 
     pub fn send_audio_action(&self, action: crate::models::AudioAction) -> bool {

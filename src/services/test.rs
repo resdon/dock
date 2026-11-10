@@ -19,7 +19,7 @@ fn main() {
         home.join(".local/share/flatpak/appstream/flathub/x86_64/724b0f962e2504fe47cd53d7fce5085e518ca2fed6e66dd4444293d6b93f277d/icons"),
     ];
 
-    let mut i = 0;
+    let mut _i = 0;
 
     for dir_path in dirs {
         if !dir_path.exists() {
@@ -37,20 +37,20 @@ fn main() {
 
                 // Process .desktop files
                 if p.is_file() && file_name.ends_with(".desktop") {
-                    let mut icon_val = "None".to_string();
+                    let mut _icon_val = "None".to_string();
                     if let Ok(content) = fs::read_to_string(&p) {
                         for line in content.lines() {
                             if let Some(val) = line.strip_prefix("Icon=") {
-                                icon_val = val.to_string();
+                                _icon_val = val.to_string();
                                 break;
                             }
                         }
                     }
-                    i += 1;
+                    _i += 1;
                 }
                 // Process files in the Flatpak icons folder specifically
                 else if p.is_file() && p.to_string_lossy().contains("flatpak") {
-                    i += 1;
+                    _i += 1;
                 }
             }
         }

@@ -9,7 +9,7 @@ use smithay_client_toolkit::{
     compositor::CompositorState, dmabuf::DmabufState, shell::WaylandSurface, shm::slot::SlotPool,
 };
 use wayland_client::protocol::wl_shm;
-use wayland_client::{Proxy, QueueHandle};
+use wayland_client::QueueHandle;
 
 use crate::graphics::hide::AutoHideState;
 use crate::render::femtovg_wgpu::GpuContext;

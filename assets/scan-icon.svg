@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 10 10">
+  <!-- Satellite dish icon -->
+  <path d="M5 1 Q2 1 2 4" stroke="#8b949e" stroke-width="0.8" fill="none" stroke-linecap="round"/>
+  <path d="M5 1 Q8 1 8 4" stroke="#8b949e" stroke-width="0.8" fill="none" stroke-linecap="round"/>
+  <line x1="5" y1="1" x2="5" y2="5" stroke="#8b949e" stroke-width="0.8" stroke-linecap="round"/>
+  <line x1="3" y1="5" x2="7" y2="5" stroke="#8b949e" stroke-width="0.8" stroke-linecap="round"/>
+</svg>

@@ -87,7 +87,7 @@ impl GpuContext {
         // Load a system font for text rendering
         let font_id = canvas.add_font("/usr/share/fonts/Adwaita/AdwaitaSans-Regular.ttf")
             .ok();
-        if let Some(fid) = &font_id {
+        if let Some(_fid) = &font_id {
         } else {
         }
 
@@ -936,7 +936,7 @@ pub fn render_bluetooth_popup_femtovg(
 pub fn render_context_menu_popup_femtovg(
     canvas: &mut Canvas<femtovg::renderer::WGPURenderer>,
     width: f32,
-    height: f32,
+    _height: f32,
     scale: f32,
     items: &[(&str, bool, bool, bool)],
     alpha: f32,
@@ -948,7 +948,7 @@ pub fn render_context_menu_popup_femtovg(
 
     // Context menu text — green (#00FF00) for all items including CloseApp/Quit
     // Font size 14, text_x 12, matching window list popup style
-    for (i, (label, hovered, active, is_close_app)) in items.iter().enumerate() {
+    for (i, (label, hovered, _active, is_close_app)) in items.iter().enumerate() {
         let row_y = (i as f32) * 29.0 * scale;
         let row_h = 29.0 * scale;
 

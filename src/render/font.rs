@@ -127,9 +127,9 @@ impl FontManager {
                     }
                 }
             }
-            Ok(out) => {
+            Ok(_out) => {
             }
-            Err(e) => {
+            Err(_e) => {
             }
         }
         None
@@ -298,5 +298,16 @@ impl FontManager {
     pub fn clear_cache(&mut self) {
         self.cache.clear();
         self.cache.shrink_to_fit();
+    }
+
+    /// Measure the pixel width of a string at the given font size.
+    pub fn measure(&mut self, text: &str, size: i32) -> i32 {
+        let size_f = size.max(7) as f32;
+        text.chars()
+            .map(|c| {
+                let glyph = self.get_glyph(c, size_f);
+                glyph.metrics.advance_width as i32
+            })
+            .sum()
     }
 }

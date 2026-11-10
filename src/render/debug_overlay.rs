@@ -118,13 +118,13 @@ pub fn print_debug_stats(sys: &mut sysinfo::System, gpu_active: bool) {
     let stats = DebugStats::sample(sys);
 
     // Format and print to stderr
-    let gpu_line = if gpu_active {
+    let _gpu_line = if gpu_active {
         "GPU: ON (FemtoVG + wgpu Vulkan)"
     } else {
         "GPU: OFF (CPU fallback)"
     };
-    let ram_warn = if stats.ram_percent > 80.0 { "⚠ " } else { "" };
-    let vram_line = if stats.vram_total_mb > 0 {
+    let _ram_warn = if stats.ram_percent > 80.0 { "⚠ " } else { "" };
+    let _vram_line = if stats.vram_total_mb > 0 {
         let vram_warn = if stats.vram_percent > 80.0 { "⚠ " } else { "" };
         format!(
             "VRAM: {}{}/{} MB ({:.0}%)",

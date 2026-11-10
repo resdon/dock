@@ -201,7 +201,7 @@ fn apply_action(action: AudioAction) {
                 .map_err(|e| format!("could not control MPRIS player with playerctl: {e}"))
         }
     };
-    if let Err(error) = result {
+    if let Err(_error) = result {
     }
 }
 

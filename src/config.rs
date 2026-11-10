@@ -169,11 +169,12 @@ pub struct DockConfig {
     /// Popup close button margin from right edge in pixels
     #[serde(default = "default_popup_close_button_margin")]
     pub popup_close_button_margin: u32,
-    /// PipeWire capture frame downscale factor (0.01–1.0, lower = smaller thumbnails).
+    /// PipeWire capture frame maximum quality cap (0.01–1.0).
     ///
-    /// Controls the resolution of PipeWire window capture thumbnails in the popup grid.
-    /// A value of 0.25 means a 1920×1080 window becomes a 480×270 thumbnail.
-    /// Lower values reduce memory usage and rendering cost at the expense of quality.
+    /// The frame is automatically downscaled to match the popup's display area.
+    /// This value acts as an upper bound: even if the display area is large, the
+    /// frame won't exceed `source × pipewire_scale_factor`. Set to 1.0 for full
+    /// quality, or lower (e.g., 0.25) to cap memory usage for very large windows.
     /// Clamped to [0.01, 1.0] during config validation.
     #[serde(default = "default_pipewire_scale_factor")]
     pub pipewire_scale_factor: f32,
@@ -197,11 +198,6 @@ pub struct DockConfig {
     /// Popup frame background color in hex format (e.g., "#000000")
     #[serde(default = "default_popup_frame_bg_color")]
     pub popup_frame_bg_color: String,
-    /// Popup "No capture" placeholder text color in hex format.
-    /// Default: #00FF00 (green) — displayed when PipeWire capture has no frame for a window.
-    /// Green provides high contrast against the dark frame background.
-    #[serde(default = "default_popup_no_capture_color")]
-    pub popup_no_capture_color: String,
     /// Popup window list text color in hex format.
     /// Default: #00FF00 (green) — used for window titles in the popup grid.
     /// Green provides high contrast against the dark popup background.
@@ -271,6 +267,130 @@ pub struct DockConfig {
     /// Badge font size in pixels
     #[serde(default = "default_badge_font_size")]
     pub badge_font_size: u32,
+
+    // === Date/time block widget (right side of dock) ===
+    /// Enable the date/time block widget floating to the right of the dock.
+    /// The block displays time (HH:MM), day+month, and year.
+    #[serde(default = "default_date_time_block_enabled")]
+    pub date_time_block_enabled: bool,
+    /// Date/time block width in pixels (logical).
+    /// Default: 104px — wide enough for time and date text.
+    #[serde(default = "default_date_time_block_width")]
+    pub date_time_block_width: u32,
+    /// Date/time block height in pixels (logical).
+    /// Default: 62px — accommodates time, day+month, and year.
+    #[serde(default = "default_date_time_block_height")]
+    pub date_time_block_height: u32,
+    /// Date/time block border color in hex format (e.g., "#00FF00").
+    /// Default: #00FF00 (green) — matches the dock's text color scheme.
+    #[serde(default = "default_date_time_block_border_color")]
+    pub date_time_block_border_color: String,
+    /// Date/time block border thickness in pixels.
+    /// Default: 2px — visible but not overwhelming.
+    #[serde(default = "default_date_time_block_border_thickness")]
+    pub date_time_block_border_thickness: u32,
+    /// Date/time block dash segment length in pixels.
+    /// Default: 6px — each dash line is 6 pixels long.
+    #[serde(default = "default_date_time_block_dash_length")]
+    pub date_time_block_dash_length: u32,
+    /// Date/time block dash gap length in pixels.
+    /// Default: 4px — gap between each dash segment.
+    #[serde(default = "default_date_time_block_gap_length")]
+    pub date_time_block_gap_length: u32,
+    /// Date/time block text color in hex format (e.g., "#007AFF").
+    /// Default: #007AFF (blue) — used for time, date, and year text.
+    #[serde(default = "default_date_time_block_text_color")]
+    pub date_time_block_text_color: String,
+    /// Date/time block time font size in points.
+    /// Default: 32pt — large, prominent time display (HH:MM).
+    #[serde(default = "default_date_time_block_time_font_size")]
+    pub date_time_block_time_font_size: u32,
+    /// Date/time block time text y-position in pixels (from top).
+    /// Default: 25px — time text below the dashed border.
+    #[serde(default = "default_date_time_block_time_text_y")]
+    pub date_time_block_time_text_y: u32,
+    /// Date/time block date font size in points.
+    /// Default: 16pt — half the time font size for date lines.
+    #[serde(default = "default_date_time_block_date_font_size")]
+    pub date_time_block_date_font_size: u32,
+    /// Date/time block day+month text y-position in pixels (from top).
+    /// Default: 43px — day+month text below the time.
+    #[serde(default = "default_date_time_block_day_month_y")]
+    pub date_time_block_day_month_y: u32,
+    /// Date/time block year text y-position in pixels (from top).
+    /// Default: 59px — year text below the day+month.
+    #[serde(default = "default_date_time_block_year_y")]
+    pub date_time_block_year_y: u32,
+    /// Date/time block gap from the dock's right edge in pixels.
+    /// Default: 4px — positions the block next to the dock.
+    #[serde(default = "default_date_time_block_gap_from_dock")]
+    pub date_time_block_gap_from_dock: u32,
+
+    // === Dashed block widget (icons and keyboard layout, left side of dock) ===
+    /// Enable the dashed block widget floating to the left of the dock.
+    /// The block displays status icons and keyboard layout indicator.
+    #[serde(default = "default_dashed_block_enabled")]
+    pub dashed_block_enabled: bool,
+    /// Dashed block width in pixels (logical).
+    /// Default: 74px — wide enough for 2×2 icon grid and ENG text.
+    #[serde(default = "default_dashed_block_width")]
+    pub dashed_block_width: u32,
+    /// Dashed block height in pixels (logical).
+    /// Default: 48px — accommodates 2×2 icon grid and keyboard layout text.
+    #[serde(default = "default_dashed_block_height")]
+    pub dashed_block_height: u32,
+    /// Dashed block border color in hex format (e.g., "#00FF00").
+    /// Default: #00FF00 (green) — matches the dock's text color scheme.
+    #[serde(default = "default_dashed_block_border_color")]
+    pub dashed_block_border_color: String,
+    /// Dashed block border thickness in pixels.
+    /// Default: 2px — visible but not overwhelming.
+    #[serde(default = "default_dashed_block_border_thickness")]
+    pub dashed_block_border_thickness: u32,
+    /// Dashed block dash segment length in pixels.
+    /// Default: 6px — each dash line is 6 pixels long.
+    #[serde(default = "default_dashed_block_dash_length")]
+    pub dashed_block_dash_length: u32,
+    /// Dashed block dash gap length in pixels.
+    /// Default: 4px — gap between each dash segment.
+    #[serde(default = "default_dashed_block_gap_length")]
+    pub dashed_block_gap_length: u32,
+    /// Dashed block text color in hex format (e.g., "#007AFF").
+    /// Default: #007AFF (blue) — used for keyboard layout text.
+    #[serde(default = "default_dashed_block_text_color")]
+    pub dashed_block_text_color: String,
+    /// Dashed block icon size in pixels.
+    /// Default: 16px — each status icon (rclonetray, bluetooth, speaker, pac) is 16×16.
+    #[serde(default = "default_dashed_block_icon_size")]
+    pub dashed_block_icon_size: u32,
+    /// Dashed block icon gap in pixels.
+    /// Default: 4px — space between adjacent icons in a row.
+    #[serde(default = "default_dashed_block_icon_gap")]
+    pub dashed_block_icon_gap: u32,
+    /// Dashed block icon row gap in pixels.
+    /// Default: 4px — vertical space between the top and bottom icon rows.
+    #[serde(default = "default_dashed_block_row_gap")]
+    pub dashed_block_row_gap: u32,
+    /// Dashed block top icon row y-position in pixels (from top).
+    /// Default: 4px — near the top of the block.
+    #[serde(default = "default_dashed_block_top_row_y")]
+    pub dashed_block_top_row_y: u32,
+    /// Dashed block row x-offset in pixels.
+    /// Default: 6px — icon rows offset 6px to the right from center.
+    #[serde(default = "default_dashed_block_row_offset")]
+    pub dashed_block_row_offset: u32,
+    /// Dashed block keyboard layout font size in points.
+    /// Default: 12pt — smaller font for the "ENG" indicator.
+    #[serde(default = "default_dashed_block_kb_font_size")]
+    pub dashed_block_kb_font_size: u32,
+    /// Dashed block keyboard layout text (e.g., "ENG").
+    /// Default: "ENG" — hardcoded placeholder; making it dynamic requires system integration.
+    #[serde(default = "default_dashed_block_kb_layout")]
+    pub dashed_block_kb_layout: String,
+    /// Dashed block gap from the dock's left edge in pixels.
+    /// Default: 4px — positions the block next to the dock.
+    #[serde(default = "default_dashed_block_gap_from_dock")]
+    pub dashed_block_gap_from_dock: u32,
 }
 
 fn default_dock_height() -> u32 {
@@ -401,11 +521,6 @@ fn default_popup_frame_bg_color() -> String {
     "#000000".to_string()
 }
 
-/// Default color for popup "No capture" placeholder text.
-/// Green (#00FF00) provides high contrast against dark backgrounds.
-fn default_popup_no_capture_color() -> String {
-    "#00FF00".to_string()
-}
 
 /// Default color for popup window list text labels.
 /// Green (#00FF00) provides high contrast against dark backgrounds.
@@ -464,7 +579,73 @@ fn default_hard_timeout() -> u64 { 10000 }
 fn default_badge_text_color() -> String { "#00FF00".to_string() }
 fn default_badge_bg_color() -> String { "#DC2626".to_string() }
 fn default_badge_font_size() -> u32 { 10 }
-fn default_pipewire_scale_factor() -> f32 { 0.25 }
+fn default_pipewire_scale_factor() -> f32 { 0.5 }
+
+// === Date/time block widget defaults (right side of dock) ===
+
+/// Default: true — the date/time block widget is enabled by default.
+fn default_date_time_block_enabled() -> bool { true }
+/// Default: 104px — wide enough for time and date text.
+fn default_date_time_block_width() -> u32 { 104 }
+/// Default: 62px — accommodates time, day+month, and year.
+fn default_date_time_block_height() -> u32 { 62 }
+/// Default: #00FF00 (green) — matches the dock's text color scheme.
+fn default_date_time_block_border_color() -> String { "#00FF00".to_string() }
+/// Default: 2px — visible border without overwhelming the content.
+fn default_date_time_block_border_thickness() -> u32 { 2 }
+/// Default: 6px — each dash segment is 6 pixels long.
+fn default_date_time_block_dash_length() -> u32 { 6 }
+/// Default: 4px — gap between dash segments.
+fn default_date_time_block_gap_length() -> u32 { 4 }
+/// Default: #007AFF (blue) — used for time, date, and year text.
+fn default_date_time_block_text_color() -> String { "#007AFF".to_string() }
+/// Default: 32pt — large, prominent time display (HH:MM).
+fn default_date_time_block_time_font_size() -> u32 { 32 }
+/// Default: 25px — time text below the dashed border.
+fn default_date_time_block_time_text_y() -> u32 { 25 }
+/// Default: 16pt — half the time font size for date lines.
+fn default_date_time_block_date_font_size() -> u32 { 16 }
+/// Default: 43px — day+month text below the time.
+fn default_date_time_block_day_month_y() -> u32 { 43 }
+/// Default: 59px — year text below the day+month.
+fn default_date_time_block_year_y() -> u32 { 59 }
+/// Default: 4px — gap from the dock's right edge to the block.
+fn default_date_time_block_gap_from_dock() -> u32 { 4 }
+
+// === Dashed block widget defaults (icons and keyboard layout, left side of dock) ===
+
+/// Default: true — the dashed block widget is enabled by default.
+fn default_dashed_block_enabled() -> bool { true }
+/// Default: 74px — wide enough for 2×2 icon grid and ENG text.
+fn default_dashed_block_width() -> u32 { 74 }
+/// Default: 48px — accommodates 2×2 icon grid and keyboard layout text.
+fn default_dashed_block_height() -> u32 { 48 }
+/// Default: #00FF00 (green) — matches the dock's text color scheme.
+fn default_dashed_block_border_color() -> String { "#00FF00".to_string() }
+/// Default: 2px — visible border without overwhelming the content.
+fn default_dashed_block_border_thickness() -> u32 { 2 }
+/// Default: 6px — each dash segment is 6 pixels long.
+fn default_dashed_block_dash_length() -> u32 { 6 }
+/// Default: 4px — gap between dash segments.
+fn default_dashed_block_gap_length() -> u32 { 4 }
+/// Default: #007AFF (blue) — used for keyboard layout text.
+fn default_dashed_block_text_color() -> String { "#007AFF".to_string() }
+/// Default: 16px — each status icon is 16×16 pixels.
+fn default_dashed_block_icon_size() -> u32 { 16 }
+/// Default: 4px — horizontal gap between icons in a row.
+fn default_dashed_block_icon_gap() -> u32 { 4 }
+/// Default: 4px — vertical gap between icon rows.
+fn default_dashed_block_row_gap() -> u32 { 4 }
+/// Default: 4px — top icon row near the top of the block.
+fn default_dashed_block_top_row_y() -> u32 { 4 }
+/// Default: 16px — icon rows offset 16px to the right from center.
+fn default_dashed_block_row_offset() -> u32 { 16 }
+/// Default: 12pt — smaller font for keyboard layout indicator.
+fn default_dashed_block_kb_font_size() -> u32 { 12 }
+/// Default: "ENG" — placeholder keyboard layout text.
+fn default_dashed_block_kb_layout() -> String { "ENG".to_string() }
+/// Default: 4px — gap from the dock's left edge to the block.
+fn default_dashed_block_gap_from_dock() -> u32 { 4 }
 
 impl Default for DockConfig {
     fn default() -> Self {
@@ -522,7 +703,6 @@ impl Default for DockConfig {
             popup_close_button_hover_color: default_popup_close_button_hover_color(),
             popup_close_cross_color: default_popup_close_cross_color(),
             popup_frame_bg_color: default_popup_frame_bg_color(),
-            popup_no_capture_color: default_popup_no_capture_color(),
             popup_text_color: default_popup_text_color(),
             popup_border_style: PopupBorderStyle::default(),
             popup_border_color: default_popup_border_color(),
@@ -544,6 +724,38 @@ impl Default for DockConfig {
             badge_text_color: default_badge_text_color(),
             badge_bg_color: default_badge_bg_color(),
             badge_font_size: default_badge_font_size(),
+            // Date/time block widget (right side of dock)
+            date_time_block_enabled: default_date_time_block_enabled(),
+            date_time_block_width: default_date_time_block_width(),
+            date_time_block_height: default_date_time_block_height(),
+            date_time_block_border_color: default_date_time_block_border_color(),
+            date_time_block_border_thickness: default_date_time_block_border_thickness(),
+            date_time_block_dash_length: default_date_time_block_dash_length(),
+            date_time_block_gap_length: default_date_time_block_gap_length(),
+            date_time_block_text_color: default_date_time_block_text_color(),
+            date_time_block_time_font_size: default_date_time_block_time_font_size(),
+            date_time_block_time_text_y: default_date_time_block_time_text_y(),
+            date_time_block_date_font_size: default_date_time_block_date_font_size(),
+            date_time_block_day_month_y: default_date_time_block_day_month_y(),
+            date_time_block_year_y: default_date_time_block_year_y(),
+            date_time_block_gap_from_dock: default_date_time_block_gap_from_dock(),
+            // Dashed block widget (icons and keyboard layout, left side of dock)
+            dashed_block_enabled: default_dashed_block_enabled(),
+            dashed_block_width: default_dashed_block_width(),
+            dashed_block_height: default_dashed_block_height(),
+            dashed_block_border_color: default_dashed_block_border_color(),
+            dashed_block_border_thickness: default_dashed_block_border_thickness(),
+            dashed_block_dash_length: default_dashed_block_dash_length(),
+            dashed_block_gap_length: default_dashed_block_gap_length(),
+            dashed_block_text_color: default_dashed_block_text_color(),
+            dashed_block_icon_size: default_dashed_block_icon_size(),
+            dashed_block_icon_gap: default_dashed_block_icon_gap(),
+            dashed_block_row_gap: default_dashed_block_row_gap(),
+            dashed_block_top_row_y: default_dashed_block_top_row_y(),
+            dashed_block_row_offset: default_dashed_block_row_offset(),
+            dashed_block_kb_font_size: default_dashed_block_kb_font_size(),
+            dashed_block_kb_layout: default_dashed_block_kb_layout(),
+            dashed_block_gap_from_dock: default_dashed_block_gap_from_dock(),
         }
     }
 }
@@ -690,7 +902,6 @@ impl DockConfig {
             popup_close_button_hover_color: Self::validate_color(&self.popup_close_button_hover_color, "popup_close_button_hover_color", &default_cfg.popup_close_button_hover_color),
             popup_close_cross_color: Self::validate_color(&self.popup_close_cross_color, "popup_close_cross_color", &default_cfg.popup_close_cross_color),
             popup_frame_bg_color: Self::validate_color(&self.popup_frame_bg_color, "popup_frame_bg_color", &default_cfg.popup_frame_bg_color),
-            popup_no_capture_color: Self::validate_color(&self.popup_no_capture_color, "popup_no_capture_color", &default_cfg.popup_no_capture_color),
             popup_text_color: Self::validate_color(&self.popup_text_color, "popup_text_color", &default_cfg.popup_text_color),
             popup_border_style: self.popup_border_style,
             popup_border_color: Self::validate_color(&self.popup_border_color, "popup_border_color", &default_cfg.popup_border_color),
@@ -730,6 +941,40 @@ impl DockConfig {
             badge_text_color: Self::validate_color(&self.badge_text_color, "badge_text_color", &default_cfg.badge_text_color),
             badge_bg_color: Self::validate_color(&self.badge_bg_color, "badge_bg_color", &default_cfg.badge_bg_color),
             badge_font_size: Self::validate_size(self.badge_font_size, "badge_font_size", 6, 24, default_cfg.badge_font_size),
+            
+            // Date/time block widget (right side of dock)
+            date_time_block_enabled: self.date_time_block_enabled,
+            date_time_block_width: Self::validate_size(self.date_time_block_width, "date_time_block_width", 48, 256, default_cfg.date_time_block_width),
+            date_time_block_height: Self::validate_size(self.date_time_block_height, "date_time_block_height", 32, 256, default_cfg.date_time_block_height),
+            date_time_block_border_color: Self::validate_color(&self.date_time_block_border_color, "date_time_block_border_color", &default_cfg.date_time_block_border_color),
+            date_time_block_border_thickness: Self::validate_size(self.date_time_block_border_thickness, "date_time_block_border_thickness", 1, 8, default_cfg.date_time_block_border_thickness),
+            date_time_block_dash_length: Self::validate_size(self.date_time_block_dash_length, "date_time_block_dash_length", 1, 20, default_cfg.date_time_block_dash_length),
+            date_time_block_gap_length: Self::validate_size(self.date_time_block_gap_length, "date_time_block_gap_length", 1, 20, default_cfg.date_time_block_gap_length),
+            date_time_block_text_color: Self::validate_color(&self.date_time_block_text_color, "date_time_block_text_color", &default_cfg.date_time_block_text_color),
+            date_time_block_time_font_size: Self::validate_size(self.date_time_block_time_font_size, "date_time_block_time_font_size", 8, 64, default_cfg.date_time_block_time_font_size),
+            date_time_block_time_text_y: self.date_time_block_time_text_y,
+            date_time_block_date_font_size: Self::validate_size(self.date_time_block_date_font_size, "date_time_block_date_font_size", 8, 32, default_cfg.date_time_block_date_font_size),
+            date_time_block_day_month_y: self.date_time_block_day_month_y,
+            date_time_block_year_y: self.date_time_block_year_y,
+            date_time_block_gap_from_dock: self.date_time_block_gap_from_dock,
+
+            // Dashed block widget (icons and keyboard layout, left side of dock)
+            dashed_block_enabled: self.dashed_block_enabled,
+            dashed_block_width: Self::validate_size(self.dashed_block_width, "dashed_block_width", 32, 256, default_cfg.dashed_block_width),
+            dashed_block_height: Self::validate_size(self.dashed_block_height, "dashed_block_height", 32, 256, default_cfg.dashed_block_height),
+            dashed_block_border_color: Self::validate_color(&self.dashed_block_border_color, "dashed_block_border_color", &default_cfg.dashed_block_border_color),
+            dashed_block_border_thickness: Self::validate_size(self.dashed_block_border_thickness, "dashed_block_border_thickness", 1, 8, default_cfg.dashed_block_border_thickness),
+            dashed_block_dash_length: Self::validate_size(self.dashed_block_dash_length, "dashed_block_dash_length", 1, 20, default_cfg.dashed_block_dash_length),
+            dashed_block_gap_length: Self::validate_size(self.dashed_block_gap_length, "dashed_block_gap_length", 1, 20, default_cfg.dashed_block_gap_length),
+            dashed_block_text_color: Self::validate_color(&self.dashed_block_text_color, "dashed_block_text_color", &default_cfg.dashed_block_text_color),
+            dashed_block_icon_size: Self::validate_size(self.dashed_block_icon_size, "dashed_block_icon_size", 8, 32, default_cfg.dashed_block_icon_size),
+            dashed_block_icon_gap: self.dashed_block_icon_gap,
+            dashed_block_row_gap: self.dashed_block_row_gap,
+            dashed_block_top_row_y: self.dashed_block_top_row_y,
+            dashed_block_row_offset: self.dashed_block_row_offset,
+            dashed_block_kb_font_size: Self::validate_size(self.dashed_block_kb_font_size, "dashed_block_kb_font_size", 6, 24, default_cfg.dashed_block_kb_font_size),
+            dashed_block_kb_layout: self.dashed_block_kb_layout,
+            dashed_block_gap_from_dock: self.dashed_block_gap_from_dock,
         }
     }
 

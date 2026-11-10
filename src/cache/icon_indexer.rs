@@ -25,7 +25,7 @@ pub fn spawn_startup_indexer() {
         }
 
         let list_path = get_icon_list_path();
-        let start = Instant::now();
+        let _start = Instant::now();
 
         // The index is persistent cache data. Rebuilding it on every launch
         // needlessly competes with the UI for CPU and disk bandwidth. Refresh

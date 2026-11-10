@@ -197,6 +197,34 @@ impl PopupSurface {
     }
 }
 
+/// A separate layer surface for the date/time block widget (right side of dock).
+///
+/// Positioned to the right of the dock as a floating widget with dashed
+/// green borders displaying time, day+month, and year.
+pub struct DateTimeBlockSurface {
+    pub surface: LayerSurface,
+    pub current_buffer: Option<Buffer>,
+    pub width: u32,
+    pub height: u32,
+    pub cached_content: Vec<u8>,
+    pub cached_phys_width: i32,
+    pub cached_phys_height: i32,
+}
+
+/// A separate layer surface for the dashed block widget (left side of dock).
+///
+/// Positioned to the left of the dock as a floating widget with dashed
+/// green borders displaying status icons and keyboard layout.
+pub struct DashedBlockSurface {
+    pub surface: LayerSurface,
+    pub current_buffer: Option<Buffer>,
+    pub width: u32,
+    pub height: u32,
+    pub cached_content: Vec<u8>,
+    pub cached_phys_width: i32,
+    pub cached_phys_height: i32,
+}
+
 /// One dock instance per Wayland output (monitor).
 ///
 /// Contains the main layer surface, all popup subsurfaces, fade animations,
@@ -234,6 +262,10 @@ pub struct DockInstance {
     pub audio_player_expanded: bool,
     /// Keyboard, network and clock information in a slim bar beneath the dock.
     pub system_status_bar: Option<PopupSurface>,
+    /// Date/time block widget as a separate layer surface to the right of the dock.
+    pub date_time_block_surface: Option<DateTimeBlockSurface>,
+    /// Dashed border block widget as a separate layer surface to the left of the dock.
+    pub dashed_block_surface: Option<DashedBlockSurface>,
     pub dock_state: Option<DockState>,
     pub hover_fade: FadeAnimation,
     pub menu_fade: FadeAnimation,

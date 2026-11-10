@@ -94,6 +94,12 @@ pub fn get_icon_from_desktop(desktop_id: &str) -> Option<String> {
 }
 
 pub fn extract_icon_name(app_id: &str) -> String {
+    // The bluetooth-widget-complete app is canonicalized to "bluetooth" but has
+    // no .desktop file. Use the dock's bundled bluetooth.svg icon directly.
+    if app_id.eq_ignore_ascii_case("bluetooth") {
+        return "bluetooth".to_string();
+    }
+
     if let Some(icon) = get_icon_from_desktop(app_id) {
         return icon;
     }
@@ -199,6 +205,28 @@ pub fn get_icon_path(app_id: &str) -> Option<PathBuf> {
         if let Some((_, _, icon_path)) = resolve_steam_game_details(app_id, "", &sys_scanner, None)
         {
             return Some(icon_path);
+        }
+    }
+
+    // The bluetooth-widget-complete app has no .desktop file, so the XDG icon
+    // search won't find it. Try the dock's bundled bluetooth.svg first, then
+    // fall back to system icon themes.
+    if app_id.eq_ignore_ascii_case("bluetooth") {
+        // Try dock's bundled asset
+        let bundled = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/bluetooth.svg");
+        if bundled.exists() {
+            return Some(bundled);
+        }
+        // Try system icon themes
+        for theme in [
+            "/usr/share/icons/Adwaita/symbolic/devices/bluetooth-symbolic.svg",
+            "/usr/share/icons/Papirus-Dark/48x48/devices/bluetooth.svg",
+            "/usr/share/icons/Papirus-Light/48x48/devices/bluetooth.svg",
+        ] {
+            let p = PathBuf::from(theme);
+            if p.exists() {
+                return Some(p);
+            }
         }
     }
 

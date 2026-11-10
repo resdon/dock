@@ -219,7 +219,8 @@ impl AppState {
                 &self.dmabuf_state,
             );
             // audio_popup::draw_audio_popup(...);
-            // bluetooth_popup::draw_bluetooth_popup(...);
+            // Bluetooth popup — the widget bar BT button opens a subsurface popup,
+            // while the dashed block BT icon spawns the bluetooth-widget-complete app.
             // rclone_popup::draw_rclone_popup(...);
             // process_popup::draw_process_popup(...);
 
@@ -276,6 +277,25 @@ impl AppState {
             // side_bars::draw_left_tray_bar(...);
             // super::widget_bar::draw_status_widget_bar(...);
             // side_bars::draw_bottom_system_bar(...);
+
+            // Dashed block — separate layer surface to the left of the dock
+            super::dashed_block::draw_dashed_block(
+                dock_instance,
+                &mut self.pool,
+                self.hide_state.current_alpha,
+                &mut self.font_manager,
+                &self.config,
+            );
+
+            // Date/time block — separate layer surface to the right of the dock
+            super::date_time_block::draw_date_time_block(
+                dock_instance,
+                &mut self.pool,
+                self.hide_state.current_alpha,
+                &mut self.font_manager,
+                &self.config,
+            );
+
             dock_instance.status_strip_rendered = true;
         }
 

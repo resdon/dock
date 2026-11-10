@@ -128,7 +128,7 @@ impl AppState {
             .refresh_processes(sysinfo::ProcessesToUpdate::All, true);
         let clean_name = normalize_app_id(&target_app_lower);
 
-        let mut proc_kills = 0;
+        let mut _proc_kills = 0;
         for (pid, proc_) in self.sys_scanner.processes() {
             let pid_u32 = pid.as_u32();
             if pid_u32 <= 1 || pid_u32 == my_pid || pid_u32 == my_ppid {
@@ -149,7 +149,7 @@ impl AppState {
                 unsafe {
                     libc::kill(pid_u32 as i32, libc::SIGTERM);
                 }
-                proc_kills += 1;
+                _proc_kills += 1;
             }
         }
 

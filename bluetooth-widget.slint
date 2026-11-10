@@ -1,0 +1,370 @@
+export global BluetoothState {
+    in property<bool> powerOn;
+    in property<bool> scanning;
+    in property<bool> minimized;
+    in property<bool> settingsOpen;
+    in property<string> adapterName: "archlinux";
+    in property<float> sweepCos;
+    in property<float> sweepSin;
+    in property<float> dot1X;
+    in property<float> dot1Y;
+    in property<float> dot2X;
+    in property<float> dot2Y;
+    in property<float> dot3X;
+    in property<float> dot3Y;
+    in property<float> scrollOffset;
+    in property<float> pairedScrollOffset;
+    in property<float> scrollThumbY;
+    in property<float> scrollThumbH;
+    in property<float> pairedScrollThumbY;
+    in property<float> pairedScrollThumbH;
+    in property<string> lastAction: "";
+    in property<string> footerText: "";
+    in property<int> connectedCount;
+    callback deviceConnect(int, bool);
+    callback deviceUnpair(int, bool);
+    callback deviceDisconnect(int, bool);
+    callback powerToggled(bool);
+    callback scanToggled(bool);
+    callback clearDiscovered();
+    callback dataExportRequested();
+}
+
+struct DeviceEntry {
+    name: string,
+    connected: bool,
+    buttonText: string,
+    status: string,
+    lastAction: string,
+}
+
+export component BluetoothWidget inherits Window {
+    width: 402px;
+    height: 318px;
+    title: "";
+
+    in property <[DeviceEntry]> discoveredModel: [];
+    in property <[DeviceEntry]> pairedModel: [];
+
+    Rectangle {
+        width: 402px;
+        height: 318px;
+        background: #161b22;
+        border-color: #30363d;
+        border-width: 1px;
+        border-radius: 10px;
+
+        // ===== HEADER =====
+        Rectangle {
+            x: 1px; y: 1px;
+            width: 398px; height: 48px;
+            background: #1f2937;
+
+            Rectangle { x: 0px; y: 47px; width: 398px; height: 1px; background: #30363d; }
+
+            Rectangle {
+                x: 12px; y: 16px; width: 20px; height: 20px;
+                background: #3b82f6; border-radius: 5px;
+                Image { x: 4px; y: 4px; width: 12px; height: 12px; source: @image-url("assets/bt-symbol.svg"); }
+            }
+
+            Text { x: 38px; y: 10px; text: "Bluetooth"; font-size: 13px; font-weight: 600; color: #f0f6fc; }
+            Text { x: 38px; y: 27px; text: "archlinux"; font-size: 9px; color: #8b949e; }
+
+            gearBtnArea := TouchArea {
+                x: 328px; y: 12px; width: 24px; height: 24px;
+                gearBtn := Rectangle {
+                    width: 24px; height: 24px; border-color: transparent; border-width: 1px; border-radius: 4px;
+                    Image { x: 3px; y: 3px; width: 18px; height: 18px; source: @image-url("assets/gear-btn.svg"); }
+                }
+                states [ hover when gearBtnArea.has-hover: { gearBtn.border-color: #3b82f6; in { animate gearBtn.border-color { duration: 150ms; } } out { animate gearBtn.border-color { duration: 150ms; } } } ]
+            }
+
+            minBtnArea := TouchArea {
+                x: 358px; y: 14px; width: 20px; height: 20px;
+                minBtn := Rectangle {
+                    width: 20px; height: 20px; background: #21262d; border-color: #30363d; border-width: 1px; border-radius: 4px;
+                    Text { width: 20px; height: 20px; text: "−"; font-size: 12px; color: #8b949e; horizontal-alignment: center; vertical-alignment: center; }
+                }
+                states [ hover when minBtnArea.has-hover: { minBtn.border-color: #3b82f6; in { animate minBtn.border-color { duration: 150ms; } } out { animate minBtn.border-color { duration: 150ms; } } } ]
+            }
+        }
+
+        // ===== ADAPTER LABEL =====
+        Rectangle {
+            x: 1px; y: 49px; width: 398px; height: 26px;
+            Rectangle { x: 0px; y: 25px; width: 398px; height: 1px; background: #30363d; }
+            adapterDot := Rectangle { x: 12px; y: 10px; width: 6px; height: 6px; border-radius: 3px; background: #484f58; }
+            Text { x: 24px; y: 6px; text: "Adapter: "; font-size: 9px; color: #8b949e; }
+            Text { x: 68px; y: 6px; text: "archlinux"; font-size: 9px; font-weight: 600; color: #8b949e; }
+        }
+
+        states [
+            adapterDotOn when BluetoothState.powerOn: { adapterDot.background: #3fb950; in { animate adapterDot.background { duration: 300ms; } } out { animate adapterDot.background { duration: 300ms; } } }
+        ]
+
+        // ===== CONTROLS ROW =====
+        Rectangle {
+            x: 1px; y: 75px; width: 398px; height: 60px;
+
+            powerToggleArea := TouchArea {
+                x: 12px; y: 10px; width: 89px; height: 40px;
+                clicked => {
+                    let newPower = !(BluetoothState.powerOn);
+                    if !newPower {
+                        BluetoothState.scanning = false;
+                        BluetoothState.clearDiscovered();
+                    }
+                    BluetoothState.powerOn = newPower;
+                    BluetoothState.powerToggled(newPower);
+                }
+                powerToggleCard := Rectangle {
+                    width: 89px; height: 40px; background: #21262d; border-color: #30363d; border-width: 1px; border-radius: 6px;
+                    powerStatus := Text { x: 8px; y: 6px; text: "OFF"; font-size: 18px; font-weight: 600; color: #8b949e; }
+                    toggleTrack := Rectangle { x: 55px; y: 12px; width: 28px; height: 14px; border-radius: 7px; background: #30363d; }
+                    toggleKnob := Rectangle { x: 53px; y: 12px; width: 14px; height: 14px; border-radius: 7px; background: #8b949e; }
+                }
+                states [
+                    powerOn when BluetoothState.powerOn: {
+                        powerStatus.text: "ON"; powerStatus.color: #3fb950; powerStatus.font-size: 18px; powerStatus.font-weight: 600;
+                        toggleTrack.background: #3b82f6; toggleKnob.x: 69px; toggleKnob.background: white;
+                        in { animate powerStatus.color { duration: 300ms; } animate toggleTrack.background { duration: 300ms; } animate toggleKnob.x { duration: 300ms; } animate toggleKnob.background { duration: 300ms; } }
+                        out { animate powerStatus.color { duration: 300ms; } animate toggleTrack.background { duration: 300ms; } animate toggleKnob.x { duration: 300ms; } animate toggleKnob.background { duration: 300ms; } }
+                    }
+                    hover when powerToggleArea.has-hover: { powerToggleCard.border-color: #3b82f6; in { animate powerToggleCard.border-color { duration: 150ms; } } out { animate powerToggleCard.border-color { duration: 150ms; } } }
+                ]
+            }
+
+            scanTouchArea := TouchArea {
+                x: 107px; y: 10px; width: 89px; height: 40px;
+                clicked => {
+                    if BluetoothState.powerOn {
+                        let newScanning = !(BluetoothState.scanning);
+                        BluetoothState.scanning = newScanning;
+                        BluetoothState.scanToggled(newScanning);
+                    }
+                }
+                scanCard := Rectangle {
+                    width: 89px; height: 40px; background: #21262d; border-color: #30363d; border-width: 1px; border-radius: 6px; clip: true;
+                    opacity: BluetoothState.powerOn ? 1.0 : 0.5;
+                    animate opacity { duration: 300ms; }
+                    states [
+                        scanning when BluetoothState.scanning: {
+                            scanCard.width: 40px; scanCard.x: 24px; scanCard.border-radius: 20px; scanCard.border-color: #3b82f6; scanCard.opacity: 1.0;
+                            in { animate scanCard.width { duration: 200ms; } animate scanCard.x { duration: 200ms; } animate scanCard.border-radius { duration: 200ms; } }
+                            out { animate scanCard.width { duration: 200ms; } animate scanCard.x { duration: 200ms; } animate scanCard.border-radius { duration: 200ms; } }
+                        }
+                    ]
+                    scanIcon := Text {
+                        width: 89px; height: 16px; text: "📡"; font-size: 14px; horizontal-alignment: center; vertical-alignment: center;
+                        opacity: BluetoothState.scanning ? 0 : 1;
+                        animate opacity { duration: 200ms; }
+                    }
+                    scanText := Text {
+                        x: 0px; y: 8px; width: 89px; height: 24px; text: "SCAN"; font-size: 18px; font-weight: 600; color: #c9d1d9; horizontal-alignment: center; vertical-alignment: center;
+                        opacity: BluetoothState.scanning ? 0 : 1;
+                        animate opacity { duration: 200ms; }
+                    }
+                    radarLoader := Rectangle {
+                        x: 0px; y: 0px; width: 40px; height: 40px;
+                        opacity: BluetoothState.scanning ? 1 : 0;
+                        animate opacity { duration: 200ms; }
+                        Rectangle { x: 10px; y: 10px; width: 20px; height: 20px; border-radius: 10px; border-color: rgba(255, 255, 255, 0.3); border-width: 1px; }
+                        Rectangle { x: 14px; y: 14px; width: 12px; height: 12px; border-radius: 6px; border-color: rgba(255, 255, 255, 0.15); border-width: 1px; }
+                        Rectangle { x: 16px; y: 16px; width: 8px; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.6); }
+                        Rectangle { x: 20px + (BluetoothState.sweepCos * 8) * 1px; y: 20px + (BluetoothState.sweepSin * 8) * 1px; width: 3px; height: 3px; border-radius: 1px; background: rgba(255, 255, 255, 0.8); }
+                        Rectangle { x: 20px + BluetoothState.dot1X * 1px; y: 20px + BluetoothState.dot1Y * 1px; width: 3px; height: 3px; border-radius: 1px; background: rgba(255, 255, 255, 0.6); }
+                        Rectangle { x: 20px + BluetoothState.dot2X * 1px; y: 20px + BluetoothState.dot2Y * 1px; width: 3px; height: 3px; border-radius: 1px; background: rgba(255, 255, 255, 0.5); }
+                        Rectangle { x: 20px + BluetoothState.dot3X * 1px; y: 20px + BluetoothState.dot3Y * 1px; width: 3px; height: 3px; border-radius: 1px; background: rgba(255, 255, 255, 0.5); }
+                    }
+                }
+                states [
+                    scanHover when scanTouchArea.has-hover && !BluetoothState.scanning: { scanCard.border-color: #3b82f6; in { animate scanCard.border-color { duration: 150ms; } } out { animate scanCard.border-color { duration: 150ms; } } }
+                ]
+            }
+        }
+
+        // ===== DEVICES SECTION =====
+        // Paired column starts higher, aligned with Adapter label level
+        Text { x: 22px; y: 135px; text: "DISCOVERED"; font-size: 11px; font-weight: 600; color: #8b949e; }
+        Text { x: 96px; y: 133px; text: root.discoveredModel.length >= 1 ? root.discoveredModel.length : ""; font-size: 13px; font-weight: 600; color: #f0c000; }
+        clearDiscoveredBtn := TouchArea {
+            x: 166px; y: 134px; width: 30px; height: 16px;
+            clicked => { BluetoothState.clearDiscovered(); }
+            clearBtn := Rectangle {
+                width: 30px; height: 16px; background: #21262d; border-color: #30363d; border-width: 1px; border-radius: 4px;
+                clearBtnText := Text { width: 30px; height: 16px; text: "Clear"; font-size: 8px; color: #8b949e; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            states [ hover when clearDiscoveredBtn.has-hover: { clearBtn.background: #f0c000; clearBtn.border-color: #f0c000; clearBtnText.color: #000000; in { animate clearBtn.background { duration: 150ms; } animate clearBtn.border-color { duration: 150ms; } } out { animate clearBtn.background { duration: 150ms; } animate clearBtn.border-color { duration: 150ms; } } } ]
+        }
+        Text { x: 208px; y: 91px; text: "PAIRED"; font-size: 11px; font-weight: 600; color: #8b949e; }
+        Text { x: 259px; y: 89px; text: root.pairedModel.length >= 1 ? root.pairedModel.length : ""; font-size: 13px; font-weight: 600; color: #f0c000; }
+        Text { x: 290px; y: 91px; text: " CONNECTED"; font-size: 11px; font-weight: 600; color: #8b949e; }
+        Text { x: 370px; y: 89px; text: BluetoothState.connectedCount >= 1 ? BluetoothState.connectedCount : ""; font-size: 13px; font-weight: 600; color: #3fb950; }
+
+        // Left column: Discovered devices (scrollbar on left)
+        discoveredListArea := TouchArea {
+            x: 22px; y: 154px; width: 178px; height: 131px;
+            scroll-event(event) => {
+                let rowCount = root.discoveredModel.length;
+                if rowCount > 3 {
+                    let contentHeight = 43 * rowCount;
+                    let maxScroll = contentHeight - 131;
+                    if maxScroll <= 0 {
+                        BluetoothState.scrollOffset = 0;
+                        BluetoothState.scrollThumbH = 131;
+                        BluetoothState.scrollThumbY = 0;
+                    } else {
+                        let raw = BluetoothState.scrollOffset - event.delta_y / 1px;
+                        if raw < 0 { BluetoothState.scrollOffset = 0; }
+                        else if raw > maxScroll { BluetoothState.scrollOffset = maxScroll; }
+                        else { BluetoothState.scrollOffset = raw; }
+                        // Update scrollbar thumb
+                        let thumbH = 131.0 * 131.0 / contentHeight;
+                        BluetoothState.scrollThumbH = thumbH;
+                        let trackSpace = 131.0 - thumbH;
+                        BluetoothState.scrollThumbY = (BluetoothState.scrollOffset / maxScroll) * trackSpace;
+                    }
+                }
+                accept;
+            }
+            Rectangle {
+                x: 0px; y: 0px; width: 174px; height: 131px; clip: true;
+                noDevicesPlaceholder := Rectangle {
+                    width: 174px; height: 131px; background: #21262d; border-color: #30363d; border-width: 1px; border-radius: 6px;
+                    Text { width: 184px; height: 131px; text: "No devices available"; font-size: 10px; color: #484f58; horizontal-alignment: center; vertical-alignment: center; }
+                    states [ hidden when root.discoveredModel.length > 0: { noDevicesPlaceholder.opacity: 0; in { animate noDevicesPlaceholder.opacity { duration: 200ms; } } out { animate noDevicesPlaceholder.opacity { duration: 200ms; } } } ]
+                }
+                for device[idx] in root.discoveredModel : deviceCardArea := TouchArea {
+                    x: 0px; y: (43px * idx) - BluetoothState.scrollOffset * 1px; width: 174px; height: 39px;
+                    deviceCard := Rectangle {
+                        width: 174px; height: 39px; background: #21262d; border-color: #30363d; border-width: 1px; border-radius: 6px;
+                        Rectangle { x: 8px; y: 10px; width: 20px; height: 20px; background: #30363d; border-radius: 5px; }
+                        deviceNameText := Text { x: 36px; y: 8px; text: device.name; font-size: 11px; font-weight: 500; color: #c9d1d9; }
+                        deviceStatusText := Text { x: 36px; y: 22px; text: device.status; font-size: 9px; color: #8b949e; }
+                        deviceBtnArea := TouchArea {
+                            x: 123px; y: 0px; width: 51px; height: 39px;
+                            clicked => { BluetoothState.deviceConnect(idx, false); }
+                            deviceBtn := Rectangle {
+                                width: 51px; height: 39px; background: #21262d; border-color: #30363d; border-width: 1px; border-radius: 4px;
+                                deviceBtnText := Text { width: 51px; height: 39px; text: device.buttonText; font-size: 9px; font-weight: 500; color: #c9d1d9; horizontal-alignment: center; vertical-alignment: center; }
+                            }
+                        }
+                    }
+                    states [
+                        connected when device.connected && BluetoothState.powerOn: {
+                            deviceStatusText.text: "Connected"; deviceStatusText.color: #3fb950;
+                            deviceBtn.background: #3fb950; deviceBtn.border-color: #3fb950;
+                            deviceBtnText.text: "Connected"; deviceBtnText.color: #000000;
+                            in { animate deviceStatusText.color { duration: 200ms; } animate deviceBtn.background { duration: 200ms; } animate deviceBtn.border-color { duration: 200ms; } }
+                            out { animate deviceStatusText.color { duration: 200ms; } animate deviceBtn.background { duration: 200ms; } animate deviceBtn.border-color { duration: 200ms; } }
+                        }
+                        cardHover when deviceCardArea.has-hover && !(device.connected && BluetoothState.powerOn): {
+                            deviceCard.border-color: #3b82f6; deviceBtn.background: #3b82f6; deviceBtn.border-color: #3b82f6;
+                            in { animate deviceCard.border-color { duration: 150ms; } animate deviceBtn.background { duration: 150ms; } animate deviceBtn.border-color { duration: 150ms; } }
+                            out { animate deviceCard.border-color { duration: 150ms; } animate deviceBtn.background { duration: 150ms; } animate deviceBtn.border-color { duration: 150ms; } }
+                        }
+                    ]
+                }
+            }
+            // Scrollbar on the LEFT border of discovered column (with padding from edge)
+            Rectangle { x: -12px; y: 0px; width: 8px; height: 131px; background: #161b22; opacity: root.discoveredModel.length > 3 ? 0.5 : 0; }
+            Rectangle { x: -12px; y: BluetoothState.scrollThumbY * 1px; width: 8px; height: BluetoothState.scrollThumbH * 1px; border-radius: 4px; background: #30363d; opacity: root.discoveredModel.length > 3 ? 1 : 0; }
+        }
+
+        // Right column: Paired devices (scrollbar on right)
+        pairedListArea := TouchArea {
+            x: 208px; y: 111px; width: 178px; height: 176px;
+            scroll-event(event) => {
+                let rowCount = root.pairedModel.length;
+                if rowCount > 4 {
+                    let contentHeight = 43 * rowCount;
+                    let maxScroll = contentHeight - 176;
+                    if maxScroll < 0 { BluetoothState.pairedScrollOffset = 0; }
+                    let raw = BluetoothState.pairedScrollOffset - event.delta_y / 1px;
+                    if raw < 0 { BluetoothState.pairedScrollOffset = 0; }
+                    else if raw > maxScroll { BluetoothState.pairedScrollOffset = maxScroll; }
+                    else { BluetoothState.pairedScrollOffset = raw; }
+                    // Update scrollbar thumb
+                    if contentHeight <= 176 {
+                        BluetoothState.pairedScrollThumbH = 176;
+                        BluetoothState.pairedScrollThumbY = 0;
+                    } else {
+                        let thumbH = 176.0 * 176.0 / contentHeight;
+                        BluetoothState.pairedScrollThumbH = thumbH;
+                        let trackSpace = 176.0 - thumbH;
+                        BluetoothState.pairedScrollThumbY = (BluetoothState.pairedScrollOffset / maxScroll) * trackSpace;
+                    }
+                }
+                accept;
+            }
+            Rectangle {
+                x: 0px; y: 0px; width: 174px; height: 176px; clip: true;
+                noPairedPlaceholder := Rectangle {
+                    width: 174px; height: 176px; background: #21262d; border-color: #30363d; border-width: 1px; border-radius: 6px; opacity: 1;
+                    Text { width: 174px; height: 176px; text: "No paired devices"; font-size: 10px; color: #484f58; horizontal-alignment: center; vertical-alignment: center; }
+                    states [ hidden when root.pairedModel.length > 0: { noPairedPlaceholder.opacity: 0; in { animate noPairedPlaceholder.opacity { duration: 200ms; } } out { animate noPairedPlaceholder.opacity { duration: 200ms; } } } ]
+                }
+                for device[idx] in root.pairedModel : pairedCardArea := TouchArea {
+                    x: 0px; y: (43px * idx) - BluetoothState.pairedScrollOffset * 1px; width: 174px; height: 39px;
+                    pairedCard := Rectangle {
+                        width: 174px; height: 39px; background: #21262d; border-color: #30363d; border-width: 1px; border-radius: 6px;
+                        Rectangle { x: 8px; y: 10px; width: 20px; height: 20px; background: #30363d; border-radius: 5px; }
+                        pairedNameText := Text { x: 36px; y: 8px; text: device.name; font-size: 11px; font-weight: 500; color: #c9d1d9; }
+                        pairedStatusText := Text { x: 36px; y: 22px; text: device.status; font-size: 9px; color: #8b949e; }
+                        pairedBtnArea := TouchArea {
+                            x: 123px; y: 0px; width: 51px; height: 23px;
+                            clicked => { BluetoothState.deviceConnect(idx, true); }
+                            pairedBtn := Rectangle {
+                                width: 51px; height: 23px; background: #21262d; border-color: #30363d; border-width: 1px; border-radius: 4px;
+                                pairedBtnText := Text { width: 51px; height: 23px; text: device.buttonText; font-size: 9px; font-weight: 500; color: #c9d1d9; horizontal-alignment: center; vertical-alignment: center; }
+                            }
+                        }
+                        pairedUnpairArea := TouchArea {
+                            x: 123px; y: 23px; width: 51px; height: 16px;
+                            clicked => { BluetoothState.deviceUnpair(idx, true); }
+                            pairedUnpairBtn := Rectangle {
+                                width: 51px; height: 16px; background: #21262d; border-color: #30363d; border-width: 1px; border-radius: 4px; opacity: 1;
+                                pairedUnpairBtnText := Text { width: 51px; height: 16px; text: "Unpair"; font-size: 9px; font-weight: 500; color: #c9d1d9; horizontal-alignment: center; vertical-alignment: center; }
+                            }
+                        }
+                    }
+                    states [
+                        pairedUnpairHover when pairedUnpairArea.has-hover: {
+                            pairedUnpairBtn.background: #f85149; pairedUnpairBtn.border-color: #f85149; pairedUnpairBtnText.color: #000000; pairedCard.border-color: #f85149;
+                            in { animate pairedUnpairBtn.background { duration: 150ms; } animate pairedUnpairBtn.border-color { duration: 150ms; } animate pairedCard.border-color { duration: 150ms; } }
+                            out { animate pairedUnpairBtn.background { duration: 150ms; } animate pairedUnpairBtn.border-color { duration: 150ms; } animate pairedCard.border-color { duration: 150ms; } }
+                        }
+                        connected when device.connected && BluetoothState.powerOn: {
+                            pairedStatusText.text: "Connected"; pairedStatusText.color: #3fb950;
+                            pairedBtn.background: #3fb950; pairedBtn.border-color: #3fb950;
+                            pairedBtnText.text: "Connected"; pairedBtnText.color: #000000;
+                            in { animate pairedStatusText.color { duration: 200ms; } animate pairedBtn.background { duration: 200ms; } animate pairedBtn.border-color { duration: 200ms; } }
+                            out { animate pairedStatusText.color { duration: 200ms; } animate pairedBtn.background { duration: 200ms; } animate pairedBtn.border-color { duration: 200ms; } }
+                        }
+                        pairedCardHover when pairedCardArea.has-hover && !(device.connected && BluetoothState.powerOn): {
+                            pairedCard.border-color: #3fb950; pairedBtn.background: #3fb950; pairedBtn.border-color: #3fb950;
+                            in { animate pairedCard.border-color { duration: 150ms; } animate pairedBtn.background { duration: 150ms; } animate pairedBtn.border-color { duration: 150ms; } }
+                            out { animate pairedCard.border-color { duration: 150ms; } animate pairedBtn.background { duration: 150ms; } animate pairedBtn.border-color { duration: 150ms; } }
+                        }
+                    ]
+                }
+            }
+            // Scrollbar on the RIGHT border of paired column (with padding from edge)
+            Rectangle { x: 179px; y: 0px; width: 8px; height: 176px; background: #161b22; opacity: 0.5; }
+            Rectangle { x: 179px; y: BluetoothState.pairedScrollThumbY * 1px; width: 8px; height: BluetoothState.pairedScrollThumbH * 1px; border-radius: 4px; background: #30363d; opacity: root.pairedModel.length > 4 ? 1 : 0; }
+        }
+
+        // ===== FOOTER =====
+        Rectangle {
+            x: 1px; y: 302px; width: 398px; height: 16px;
+            Rectangle { x: 0px; y: 0px; width: 398px; height: 1px; background: #30363d; }
+            footerText := Text {
+                width: 398px; height: 16px;
+                text: BluetoothState.footerText;
+                font-size: 9px; color: #484f58; horizontal-alignment: center; vertical-alignment: center;
+            }
+        }
+
+    }
+}

@@ -27,6 +27,9 @@ pub use dock::{
 pub use popup::*;
 pub use text::draw_text;
 pub use utils::hsl_to_rgb;
+pub mod color_check;
+pub mod date_time_block;
+pub mod dashed_block;
 pub mod processes;
 pub mod rclone;
 pub mod slint_dock;

@@ -1,14 +1,83 @@
-//! CPU/RAM resource monitor.
+//! CPU, RAM, and VRAM resource monitor.
 //!
-//! Background thread that prints CPU and RAM usage every 2 seconds.
+//! Background thread that tracks the dock process's resource consumption
+//! and prints debug stats to stderr every 2 seconds.
+//!
+//! # Metrics
+//! - **CPU**: Per-process CPU usage percentage (can exceed 100% on multi-core).
+//! - **RAM**: Resident Set Size (RSS) in MB — actual physical memory used.
+//! - **VRAM**: GPU dedicated memory usage in MB, queried via `nvidia-smi`
+//!   for NVIDIA GPUs. Falls back to "N/A" if not available.
 
+use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 
+/// Query VRAM usage from `nvidia-smi` for the current process.
+///
+/// Parses the output of `nvidia-smi pmon -c 1 -d MEM -q -p <pid>` to extract
+/// the dedicated GPU memory usage in MB. Returns `None` if `nvidia-smi` is
+/// not available, fails, or the process is not found in the output.
+fn query_vram_mb(pid: u32) -> Option<u64> {
+    let output = Command::new("nvidia-smi")
+        .args(&[
+            "pmon", "-c", "1", "-d", "MEM", "-q",
+            "-p", &pid.to_string(),
+        ])
+        .output()
+        .ok()?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // nvidia-smi pmon output has a table with "used-mem" column (in MB).
+    // Look for lines containing the PID and extract the used memory value.
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+        // Skip header lines
+        if trimmed.is_empty() || trimmed.starts_with('-') || trimmed.starts_with('[')
+            || trimmed.starts_with("Computing") || trimmed.starts_with("GPU")
+            || trimmed.starts_with("Timestamp") || trimmed.starts_with("PID")
+        {
+            continue;
+        }
+
+        // Parse the used memory value — typically appears as a number followed by "MiB" or "MB"
+        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+        for part in &parts {
+            if let Ok(val) = part.trim_end_matches('M').trim_end_matches("iB").parse::<u64>() {
+                if val > 0 {
+                    return Some(val);
+                }
+            }
+        }
+    }
+
+    // Fallback: try `nvidia-smi --query-gpu=memory.used --format=csv,noheader`
+    // for total GPU VRAM usage (not per-process)
+    let output2 = Command::new("nvidia-smi")
+        .args(&["--query-gpu=memory.used", "--format=csv,noheader"])
+        .output()
+        .ok()?;
+
+    let stdout2 = String::from_utf8_lossy(&output2.stdout);
+    for line in stdout2.lines() {
+        let trimmed = line.trim().trim_end_matches('M').trim_end_matches("iB");
+        if let Ok(val) = trimmed.parse::<u64>() {
+            return Some(val);
+        }
+    }
+
+    None
+}
+
 /// Spawn a background thread that periodically prints resource usage stats
-/// for the dock process (CPU, RAM). VRAM tracking removed due to NVML conflicts.
+/// for the dock process (CPU, RAM, VRAM).
+///
+/// The thread sleeps 1 second before the first reading to let CPU usage
+/// accumulate, then prints stats every 2 seconds. VRAM is queried via
+/// `nvidia-smi` and shows "N/A" if the command is unavailable.
 pub fn start_resource_monitor() {
     thread::spawn(|| {
         let mut sys = System::new_all();
@@ -25,6 +94,7 @@ pub fn start_resource_monitor() {
         thread::sleep(Duration::from_secs(1));
 
         loop {
+            // Refresh process info for CPU and RAM
             sys.refresh_processes_specifics(
                 ProcessesToUpdate::Some(&[pid]),
                 true,
@@ -33,10 +103,17 @@ pub fn start_resource_monitor() {
 
             if let Some(process) = sys.process(pid) {
                 let memory_mb = process.memory() / 1024 / 1024;
+                let virtual_memory_mb = process.virtual_memory() / 1024 / 1024;
                 let cpu_usage = process.cpu_usage();
+
+                // Query VRAM from nvidia-smi
+                let vram_str = query_vram_mb(pid.as_u32())
+                    .map(|mb| format!("{} MB", mb))
+                    .unwrap_or_else(|| "N/A".to_string());
+
                 eprintln!(
-                    "[RESOURCE] CPU: {:.1}% | RAM: {} MB",
-                    cpu_usage, memory_mb
+                    "[RESOURCE] CPU: {:.1}% | RAM: {} MB | Virtual: {} MB | VRAM: {}",
+                    cpu_usage, memory_mb, virtual_memory_mb, vram_str
                 );
             } else {
                 break;

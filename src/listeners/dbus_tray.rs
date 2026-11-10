@@ -254,7 +254,7 @@ pub async fn start_status_notifier_listener(
 
     let host_name = format!("org.freedesktop.StatusNotifierHost-{}", std::process::id());
     for watcher in &watchers {
-        if let Err(e) = watcher
+        if let Err(_e) = watcher
             .call_noreply("RegisterStatusNotifierHost", &(host_name.as_str(),))
             .await
         {
@@ -315,7 +315,7 @@ async fn refresh_all_items(
             .await
         {
             Ok(list) => registered.extend(list),
-            Err(error) if std::env::var_os("DOCK_TRAY_DEBUG").is_some() => {
+            Err(_error) if std::env::var_os("DOCK_TRAY_DEBUG").is_some() => {
             }
             Err(_) => {}
         }
@@ -528,7 +528,7 @@ async fn load_tray_item(
             let props: HashMap<String, OwnedValue> =
                 match props_proxy.call("GetAll", &(interface_name,)).await {
                     Ok(value) => value,
-                    Err(get_all_error) => {
+                    Err(_get_all_error) => {
                         // Some legacy SNI implementations (notably Steam/Ayatana)
                         // expose the interface but return an error for the aggregate
                         // GetAll call. Fetch the useful properties one by one instead

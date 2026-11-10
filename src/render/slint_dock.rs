@@ -13,7 +13,10 @@ use slint::{Image, ModelRc, PhysicalSize, SharedPixelBuffer, SharedString};
 use crate::config::DockConfig;
 use crate::types::DockState;
 
-slint::include_modules!();
+// Include both Slint-generated modules manually.
+// `include_modules!()` only picks up the last compiled file, so we include both.
+include!(env!("SLINT_INCLUDE_GENERATED"));
+include!(env!("SLINT_INCLUDE_BLUETOOTH"));
 
 /// A custom Slint platform that uses MinimalSoftwareWindow for headless rendering.
 struct SlintPlatform {
@@ -205,7 +208,7 @@ impl SlintDockRenderer {
                 );
             }
         }
-        
+    
         // Set the Slint window size
         self.window.set_size(PhysicalSize::new(slint_width as u32, slint_height as u32));
 
@@ -397,7 +400,7 @@ impl SlintDockRenderer {
             })
             .collect();
 
-        let data_time = start.elapsed();
+        let _data_time = start.elapsed();
 
         // Compute state hash to detect if anything changed
         // Use drag_target_slot instead of raw pointer_x so Slint only re-renders when
@@ -440,7 +443,7 @@ impl SlintDockRenderer {
         self.window.draw_if_needed(|renderer| {
             renderer.render(slint_buffer, slint_width);
         });
-        let render_time = render_start.elapsed();
+        let _render_time = render_start.elapsed();
 
         // Convert Slint's RGBA buffer to BGRA for Wayland SHM
         let copy_width = slint_width.min(phys_width as usize);
@@ -458,7 +461,7 @@ impl SlintDockRenderer {
             }
         }
 
-        let total_time = start.elapsed();
+        let _total_time = start.elapsed();
         // Print frame debug stats every 3 seconds instead of every frame
         if self.last_debug_instant.elapsed() >= std::time::Duration::from_secs(3) {
             self.last_debug_instant = std::time::Instant::now();

@@ -54,7 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(gpu) => {
             state.gpu_context = Some(gpu);
         }
-        Err(e) => {
+        Err(_e) => {
         }
     }
 
@@ -110,13 +110,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // Resource monitor disabled
-    // library::services::resource_monitor::start_resource_monitor();
+    // Resource monitor: prints CPU, RAM, VRAM usage every 2 seconds
+    library::services::resource_monitor::start_resource_monitor();
 
     // --- MAIN EVENT LOOP ---
     loop {
         // 1. INPUT: Dispatch Wayland socket events from event queue
-        if let Err(e) = event_queue.dispatch_pending(&mut state) {
+        if let Err(_e) = event_queue.dispatch_pending(&mut state) {
             break;
         }
 

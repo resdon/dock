@@ -78,6 +78,13 @@ impl AppState {
                 .unwrap_or_else(|| normalized.clone());
         }
 
+        // The bluetooth-widget-complete app reports its window title as "Bluetooth"
+        // and its binary name as "widget-test". Canonicalize both to "bluetooth"
+        // so the dock shows the system Bluetooth icon and groups the window correctly.
+        if lowered == "bluetooth" || lowered == "widget-test" {
+            return "bluetooth".to_string();
+        }
+
         normalized
     }
 
@@ -269,10 +276,106 @@ impl AppState {
             changed = true;
         }
 
+        // Reposition both blocks to follow the dock's new width.
+        self.sync_dashed_block_position();
+        self.sync_date_time_block_position();
+
         if changed {
             self.needs_redraw = true;
         }
         changed
+    }
+
+    /// Reposition the dashed block layer surface when the dock's width changes.
+    ///
+    /// The dashed block is anchored to BOTTOM|LEFT (for bottom dock), so we
+    /// recalculate the left margin to keep it immediately beside the dock's
+    /// left edge.
+    pub fn sync_dashed_block_position(&mut self) {
+        let config = &self.config;
+        let gap = config.dashed_block_gap_from_dock as i32;
+        let margin = config.margin;
+
+        for dock in &mut self.docks {
+            let Some(ref mut db) = dock.dashed_block_surface else { continue };
+            let output_size = self.output_state.info(&dock.output)
+                .and_then(|info| info.logical_size)
+                .unwrap_or((1920, 1080));
+            let output_width = output_size.0 as i32;
+            let dock_width = dock.width as i32;
+            let surface_height = dock.height as i32;
+            let db_width = config.dashed_block_width as i32;
+
+            match config.anchor {
+                crate::config::DockAnchor::Bottom => {
+                    let dock_left_edge = (output_width / 2) - (dock_width / 2);
+                    let left_margin = dock_left_edge - gap - db_width;
+                    db.surface.set_margin(0, 0, margin, left_margin.max(0));
+                }
+                crate::config::DockAnchor::Top => {
+                    let dock_left_edge = (output_width / 2) - (dock_width / 2);
+                    let left_margin = dock_left_edge - gap - db_width;
+                    db.surface.set_margin(margin, 0, 0, left_margin.max(0));
+                }
+                crate::config::DockAnchor::Left => {
+                    let dock_bottom_edge = (output_size.1 as i32 / 2) + (surface_height / 2);
+                    let bottom_margin = output_size.1 as i32 - dock_bottom_edge - gap;
+                    db.surface.set_margin(0, 0, bottom_margin.max(0), margin);
+                }
+                crate::config::DockAnchor::Right => {
+                    let dock_bottom_edge = (output_size.1 as i32 / 2) + (surface_height / 2);
+                    let bottom_margin = output_size.1 as i32 - dock_bottom_edge - gap;
+                    db.surface.set_margin(0, margin, bottom_margin.max(0), 0);
+                }
+            }
+            db.surface.wl_surface().commit();
+        }
+    }
+
+    /// Reposition the date/time block layer surface when the dock's width changes.
+    ///
+    /// The date/time block is anchored to BOTTOM|RIGHT (for bottom dock), so we
+    /// recalculate the right margin to keep it immediately beside the dock's
+    /// right edge.
+    pub fn sync_date_time_block_position(&mut self) {
+        let config = &self.config;
+        let gap = config.date_time_block_gap_from_dock as i32;
+        let margin = config.margin;
+
+        for dock in &mut self.docks {
+            let Some(ref mut dt) = dock.date_time_block_surface else { continue };
+            let output_size = self.output_state.info(&dock.output)
+                .and_then(|info| info.logical_size)
+                .unwrap_or((1920, 1080));
+            let output_width = output_size.0 as i32;
+            let dock_width = dock.width as i32;
+            let surface_height = dock.height as i32;
+            let dt_width = config.date_time_block_width as i32;
+
+            match config.anchor {
+                crate::config::DockAnchor::Bottom => {
+                    let dock_right_edge = (output_width / 2) + (dock_width / 2);
+                    let right_margin = output_width - dock_right_edge - gap - dt_width;
+                    dt.surface.set_margin(0, right_margin.max(0), margin, 0);
+                }
+                crate::config::DockAnchor::Top => {
+                    let dock_right_edge = (output_width / 2) + (dock_width / 2);
+                    let right_margin = output_width - dock_right_edge - gap - dt_width;
+                    dt.surface.set_margin(margin, right_margin.max(0), 0, 0);
+                }
+                crate::config::DockAnchor::Left => {
+                    let dock_bottom_edge = (output_size.1 as i32 / 2) + (surface_height / 2);
+                    let bottom_margin = output_size.1 as i32 - dock_bottom_edge - gap;
+                    dt.surface.set_margin(0, 0, bottom_margin.max(0), margin);
+                }
+                crate::config::DockAnchor::Right => {
+                    let dock_bottom_edge = (output_size.1 as i32 / 2) + (surface_height / 2);
+                    let bottom_margin = output_size.1 as i32 - dock_bottom_edge - gap;
+                    dt.surface.set_margin(0, margin, bottom_margin.max(0), 0);
+                }
+            }
+            dt.surface.wl_surface().commit();
+        }
     }
 
     pub fn set_dock_input_region(

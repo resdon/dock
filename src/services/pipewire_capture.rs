@@ -210,7 +210,7 @@ impl PipewireCaptureService {
     /// Create a new capture service with empty state.
     ///
     /// Loads any saved restore token from disk and initializes the default
-    /// scale factor to 0.25 (overridden by config in `main.rs`).
+    /// scale factor to 0.5 (overridden by config in `main.rs`).
     pub fn new() -> Self {
         Self {
             capture_state: Arc::new(Mutex::new(CaptureState {
@@ -227,7 +227,7 @@ impl PipewireCaptureService {
             window_ids: Arc::new(Mutex::new(HashMap::new())),
             bindings: Arc::new(Mutex::new(HashMap::new())),
             restore_token: Arc::new(Mutex::new(load_restore_token())),
-            scale_factor: Arc::new(Mutex::new(0.25)),
+            scale_factor: Arc::new(Mutex::new(0.5)),
         }
     }
 
@@ -300,7 +300,7 @@ impl PipewireCaptureService {
     ///
     /// Uses a timeout lock so the draw thread never freezes if the monitor task
     /// holds the lock for an extended period.
-    pub fn bind_window_to_stream(&self, window_id: u32, stream_idx: usize, title: &str) {
+    pub fn bind_window_to_stream(&self, window_id: u32, stream_idx: usize, _title: &str) {
         let Some(mut bindings) = self.bindings.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) else {
             return;
         };
@@ -467,19 +467,34 @@ impl PipewireCaptureService {
 
     /// Get the latest captured frame for the active (hovered) row, converted to RGBA.
     ///
-    /// Applies the configurable `scale_factor` downscaling. Returns `None` if the
-    /// row is out of bounds or the stream hasn't received a frame yet.
-    /// Called by the render thread to get the thumbnail for the hovered popup row.
+    /// Accepts optional target display dimensions `(target_w, target_h)` in pixels.
+    /// If provided, the frame is downscaled only when the source dimensions exceed
+    /// the target — the output matches the display area exactly, avoiding wasted
+    /// memory on oversized frames. If the source is the same size or smaller than
+    /// the target, no downscaling is applied (scale factor 1.0).
+    ///
+    /// The configurable `scale_factor` acts as a maximum quality cap: even when
+    /// the target is large, the frame won't exceed `source × scale_factor`.
+    ///
+    /// Returns `None` if the row is out of bounds or the stream hasn't received
+    /// a frame yet. Called by the render thread to get the thumbnail for the
+    /// hovered popup row.
     ///
     /// Uses timeout-based lock acquisition so a blocked stream thread (e.g.,
     /// pcmanfm-qt) cannot freeze the dock. If the lock times out, returns `None`
     /// for that frame.
-    pub fn get_active_frame(&self) -> Option<(u32, u32, Vec<u8>)> {
+    pub fn get_active_frame(&self, target_w: Option<u32>, target_h: Option<u32>) -> Option<(u32, u32, Vec<u8>)> {
         let row = match self.active_row.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) {
             Some(g) => *g,
-            None => return None,
+            None => {
+                static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+                if COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % 120 == 0 {
+                    eprintln!("[PIPEWIRE] get_active_frame: active_row lock timeout");
+                }
+                return None;
+            }
         };
-        let scale = match self.scale_factor.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) {
+        let max_scale = match self.scale_factor.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) {
             Some(g) => *g,
             None => return None,
         };
@@ -489,11 +504,13 @@ impl PipewireCaptureService {
         // the draw thread holds stream_frames while a stream thread holds frame.
         let stream = {
             let Some(frames) = self.stream_frames.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) else {
-                eprintln!("[PIPEWIRE] get_active_frame: stream_frames lock timeout for row {}", row);
+                static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+                if COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % 120 == 0 {
+                    eprintln!("[PIPEWIRE] get_active_frame: stream_frames lock timeout");
+                }
                 return None;
             };
             if row >= frames.len() {
-                eprintln!("[PIPEWIRE] get_active_frame: row {} out of bounds (streams={})", row, frames.len());
                 return None;
             }
             frames[row].clone()
@@ -503,20 +520,34 @@ impl PipewireCaptureService {
         let frame_data = match stream.frame.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) {
             Some(guard) => (*guard).clone(),
             None => {
-                eprintln!("[PIPEWIRE] get_active_frame: frame lock timeout for stream {} (title={})", row, stream.title);
+                static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+                if COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % 120 == 0 {
+                    eprintln!("[PIPEWIRE] get_active_frame: per-stream frame lock timeout, row={}", row);
+                }
                 return None;
             }
         };
 
         match frame_data {
             Some((w, h, fmt, bytes)) => {
-                eprintln!("[PIPEWIRE] get_active_frame: stream {} (title={}) has frame {}x{} fmt={:?}", row, stream.title, w, h, fmt);
+                // Compute adaptive scale: downscale only if source exceeds target
+                let scale = if let (Some(tw), Some(th)) = (target_w, target_h) {
+                    if w > tw || h > th {
+                        // Source is larger than target — compute scale to fit within target
+                        let scale_w = tw as f32 / w as f32;
+                        let scale_h = th as f32 / h as f32;
+                        (scale_w.min(scale_h)).min(max_scale)
+                    } else {
+                        // Source fits within target — no downscaling needed
+                        1.0
+                    }
+                } else {
+                    // No target provided — use the configured max scale factor
+                    max_scale
+                };
                 Some(convert_to_rgba(w, h, fmt, &bytes, scale))
             },
-            None => {
-                eprintln!("[PIPEWIRE] get_active_frame: stream {} (title={}) has NO frame data", row, stream.title);
-                None
-            }
+            None => None,
         }
     }
 
@@ -705,14 +736,11 @@ pub async fn init_capture_service(
         let token = service.restore_token.lock();
         token.clone()
     };
-    eprintln!("[PIPEWIRE] Init: has_token={}, max_windows={}", restore_token.is_some(), max_windows);
-
     // Capture all windows
     let (results, new_restore_token) = match capture_windows_range(connection, desktop, 0, max_windows, restore_token.clone()).await {
         Ok(r) => r,
         Err(_e) => (Vec::new(), None)
     };
-    eprintln!("[PIPEWIRE] Captured {} streams", results.len());
 
     // Update the in-memory restore token from the portal response
     if let Some(ref token) = new_restore_token {
@@ -720,7 +748,6 @@ pub async fn init_capture_service(
             let mut saved_token = service.restore_token.lock();
             *saved_token = Some(token.clone());
         }
-        eprintln!("[PIPEWIRE] Restore token saved: true");
     }
 
     if results.is_empty() {
@@ -729,7 +756,6 @@ pub async fn init_capture_service(
             let mut token = service.restore_token.lock();
             *token = None;
         }
-        eprintln!("[PIPEWIRE] No streams — check portal permission");
         return Ok(());
     }
 
@@ -1157,13 +1183,13 @@ async fn open_pipewire_remote(
     let msg = desktop.call_method("OpenPipeWireRemote", &(session, options)).await?;
 
     let body = msg.body();
-    let fd_val: zvariant::Fd<'_> = body.deserialize().map_err(|e| {
+    let fd_val: zvariant::Fd<'_> = body.deserialize().map_err(|_e| {
         "Failed to deserialize PipeWire FD"
     })?;
 
     let owned_fd = match fd_val {
         zvariant::Fd::Borrowed(borrowed) => {
-            borrowed.try_clone_to_owned().map_err(|e| {
+            borrowed.try_clone_to_owned().map_err(|_e| {
                 "Failed to clone file descriptor"
             })?
         }
@@ -1239,7 +1265,6 @@ async fn capture_windows_range(
     // This prevents failed portal sessions and "wlroots: no output found" errors.
     let actual_count = probe_window_count(connection, desktop, restore_token.as_deref()).await;
     let end_idx = end_idx.min(actual_count);
-    eprintln!("[PIPEWIRE] Probe found {} windows, capturing indices {}..{}", actual_count, start_idx, end_idx);
 
     for idx in start_idx..end_idx {
         // Tell the chooser which window to select (0-based)
@@ -1434,7 +1459,7 @@ fn spawn_stream_thread(fd: OwnedFd, node_id: u32, idx: usize, stream_data: Arc<S
                                     });
                                     if stream_idx_for_log < counters.len() {
                                         let count = counters[stream_idx_for_log].fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-                                        if count % 60 == 0 {
+                                        if count % 120 == 0 {
                                             eprintln!("[PIPEWIRE] Stream {} (title={}) frame count: {}", stream_idx_for_log, title_for_log, count);
                                         }
                                     }
@@ -1542,7 +1567,7 @@ pub async fn start_monitor_inner(
     let probe_signal = service.probe_signal.clone();
     let initial_count = service.capture_state.lock().count;
 
-    let mut last_count = initial_count;
+    let mut _last_count = initial_count;
     loop {
         // Wait for a probe signal, but with a timeout on the first iteration.
         // On startup, no WindowEvent::Created fires because all windows already
@@ -1568,7 +1593,7 @@ pub async fn start_monitor_inner(
         // when certain windows (e.g., pcmanfm-qt) cause the wlr portal to stall.
         {
             let _ = std::fs::write("/tmp/chooser-index.txt", "0");
-            let portal_result = tokio::time::timeout(
+            let _portal_result = tokio::time::timeout(
                 std::time::Duration::from_secs(15),
                 async {
                     let session = match create_session(&connection, &desktop).await {
@@ -1586,9 +1611,6 @@ pub async fn start_monitor_inner(
             ).await;
             // If the timeout fired, the portal session was abandoned — the chooser file
             // may be stale, but the monitor continues instead of freezing.
-            if portal_result.is_err() {
-                eprintln!("[PIPEWIRE] Monitor portal session timed out — continuing with stale chooser data");
-            }
         }
 
         // Small async delay to let the chooser script finish writing the file
@@ -1606,10 +1628,11 @@ pub async fn start_monitor_inner(
             continue;
         };
 
-        // Truncated titles for debug logging only
-        let chooser_titles_truncated: Vec<String> = chooser_titles.iter().map(|t| {
-            if t.len() > 20 {
-                format!("{}...", &t[..17])
+        // Truncated titles for debug logging only — use char indices, not byte indices,
+        // to avoid panics on multi-byte Unicode characters (e.g., apostrophes, emojis).
+        let _chooser_titles_truncated: Vec<String> = chooser_titles.iter().map(|t| {
+            if t.chars().count() > 20 {
+                format!("{}...", t.chars().take(17).collect::<String>())
             } else {
                 t.clone()
             }
@@ -1696,6 +1719,7 @@ pub async fn start_monitor_inner(
 
         // Phase 1: Remove stale streams
         // First, collect which indices to remove, then remove them in one pass.
+        eprintln!("[PIPEWIRE] Monitor Phase 1: checking {} streams for stale entries", { service_frames.lock().len() });
         let indices_to_remove: Vec<usize> = {
             let frames = service_frames.lock();
             let mut to_remove = Vec::new();
@@ -1760,7 +1784,7 @@ pub async fn start_monitor_inner(
         {
             let window_ids_map = service.window_ids.lock();
             let bindings = service.bindings.lock();
-            let bound_window_ids: HashSet<u32> = bindings.keys().copied().collect();
+            let _bound_window_ids: HashSet<u32> = bindings.keys().copied().collect();
             drop(bindings);
 
             // Collect unbound streams info
@@ -1907,7 +1931,7 @@ pub async fn start_monitor_inner(
                 state.titles = chooser_titles.clone();
                 state.count = current_stream_count;
             }
-            last_count = current_stream_count;
+            _last_count = current_stream_count;
             continue;
         }
 
@@ -1989,15 +2013,21 @@ pub async fn start_monitor_inner(
             state.count = current_stream_count + added_count;
             state.titles = chooser_titles.clone();
         }
-        last_count = current_stream_count + added_count;
+        _last_count = current_stream_count + added_count;
     }
 }
 
-/// Convert a raw video frame to RGBA with optional downscaling.
+/// Convert a raw video frame to RGBA with adaptive downscaling.
 ///
-/// Supports BGRx, BGRA, RGBA, and RGB input formats. For downscaling,
-/// uses simple pixel decimation (sampling every Nth pixel) rather than
-/// bilinear interpolation — fast enough for popup thumbnails.
+/// Supports BGRx, BGRA, RGBA, and RGB input formats. The `scale_factor`
+/// parameter is computed by `get_active_frame()` based on the target display
+/// dimensions: if the source frame is larger than the target, the scale is
+/// computed to fit within the target; otherwise scale is 1.0 (no downscaling).
+///
+/// For downscaling, uses bilinear interpolation to produce smooth, anti-aliased
+/// text and edges. Each output pixel is a weighted average of the 4 nearest
+/// source pixels, eliminating the choppy aliasing artifacts of nearest-neighbor
+/// sampling.
 ///
 /// Returns `(width, height, rgba_bytes)` where `rgba_bytes` is a flat
 /// vector of RGBA pixels (4 bytes per pixel, row-major order).
@@ -2021,18 +2051,58 @@ fn convert_to_rgba(
     match fmt {
         pw::spa::param::video::VideoFormat::BGRx | pw::spa::param::video::VideoFormat::BGRA => {
             if scale_factor < 1.0 {
-                let step_x = (w as f32 / out_w as f32) as usize;
-                let step_y = (h as f32 / out_h as f32) as usize;
-                for y in 0..out_h as usize {
-                    let src_row = y * step_y * w as usize * 4;
-                    for x in 0..out_w as usize {
-                        let src = src_row + x * step_x * 4;
-                        let dst = (y * out_w as usize + x) * 4;
-                        if src + 3 < bytes.len() && dst + 3 < rgba.len() {
-                            rgba[dst] = bytes[src + 2];     // R
-                            rgba[dst + 1] = bytes[src + 1]; // G
-                            rgba[dst + 2] = bytes[src];     // B
-                            rgba[dst + 3] = 255;            // A
+                // Bilinear interpolation for BGRx/BGRA → RGBA downscaling.
+                // Each output pixel is a weighted average of 4 source pixels,
+                // producing smooth text and edges instead of choppy aliasing.
+                let src_w = w as usize;
+                let src_h = h as usize;
+                let dst_w = out_w as usize;
+                let dst_h = out_h as usize;
+                let scale_x = src_w as f64 / dst_w as f64;
+                let scale_y = src_h as f64 / dst_h as f64;
+
+                for y in 0..dst_h {
+                    let y0 = (y as f64 * scale_y) as f64;
+                    let x0_row = y0.floor() as usize * src_w * 4;
+                    let y1_row = (y0.floor() as usize + 1).min(src_h - 1) * src_w * 4;
+                    let dy = y0 - y0.floor();
+
+                    for x in 0..dst_w {
+                        let x0 = (x as f64 * scale_x) as f64;
+                        let x0i = x0.floor() as usize;
+                        let x1i = (x0i + 1).min(src_w - 1);
+                        let dx = x0 - x0i as f64;
+
+                        // Bilinear weights
+                        let w00 = (1.0 - dx) * (1.0 - dy);
+                        let w10 = dx * (1.0 - dy);
+                        let w01 = (1.0 - dx) * dy;
+                        let w11 = dx * dy;
+
+                        // Source pixel offsets (BGRx/BGRA: B=0, G=1, R=2)
+                        let s00 = x0_row + x0i * 4;
+                        let s10 = x0_row + x1i * 4;
+                        let s01 = y1_row + x0i * 4;
+                        let s11 = y1_row + x1i * 4;
+                        let dst = (y * dst_w + x) * 4;
+
+                        if s11 + 3 < bytes.len() && dst + 3 < rgba.len() {
+                            // R channel (src index 2)
+                            rgba[dst] = ((bytes[s00 + 2] as f64 * w00
+                                + bytes[s10 + 2] as f64 * w10
+                                + bytes[s01 + 2] as f64 * w01
+                                + bytes[s11 + 2] as f64 * w11) + 0.5) as u8;
+                            // G channel (src index 1)
+                            rgba[dst + 1] = ((bytes[s00 + 1] as f64 * w00
+                                + bytes[s10 + 1] as f64 * w10
+                                + bytes[s01 + 1] as f64 * w01
+                                + bytes[s11 + 1] as f64 * w11) + 0.5) as u8;
+                            // B channel (src index 0)
+                            rgba[dst + 2] = ((bytes[s00] as f64 * w00
+                                + bytes[s10] as f64 * w10
+                                + bytes[s01] as f64 * w01
+                                + bytes[s11] as f64 * w11) + 0.5) as u8;
+                            rgba[dst + 3] = 255;
                         }
                     }
                 }
@@ -2050,15 +2120,58 @@ fn convert_to_rgba(
         }
         pw::spa::param::video::VideoFormat::RGBA => {
             if scale_factor < 1.0 {
-                let step_x = (w as f32 / out_w as f32) as usize;
-                let step_y = (h as f32 / out_h as f32) as usize;
-                for y in 0..out_h as usize {
-                    let src_row = y * step_y * w as usize * 4;
-                    for x in 0..out_w as usize {
-                        let src = src_row + x * step_x * 4;
-                        let dst = (y * out_w as usize + x) * 4;
-                        if src + 3 < bytes.len() && dst + 3 < rgba.len() {
-                            rgba[dst..dst + 4].copy_from_slice(&bytes[src..src + 4]);
+                // Bilinear interpolation for RGBA → RGBA downscaling.
+                let src_w = w as usize;
+                let src_h = h as usize;
+                let dst_w = out_w as usize;
+                let dst_h = out_h as usize;
+                let scale_x = src_w as f64 / dst_w as f64;
+                let scale_y = src_h as f64 / dst_h as f64;
+
+                for y in 0..dst_h {
+                    let y0 = (y as f64 * scale_y) as f64;
+                    let x0_row = y0.floor() as usize * src_w * 4;
+                    let y1_row = (y0.floor() as usize + 1).min(src_h - 1) * src_w * 4;
+                    let dy = y0 - y0.floor();
+
+                    for x in 0..dst_w {
+                        let x0 = (x as f64 * scale_x) as f64;
+                        let x0i = x0.floor() as usize;
+                        let x1i = (x0i + 1).min(src_w - 1);
+                        let dx = x0 - x0i as f64;
+
+                        let w00 = (1.0 - dx) * (1.0 - dy);
+                        let w10 = dx * (1.0 - dy);
+                        let w01 = (1.0 - dx) * dy;
+                        let w11 = dx * dy;
+
+                        let s00 = x0_row + x0i * 4;
+                        let s10 = x0_row + x1i * 4;
+                        let s01 = y1_row + x0i * 4;
+                        let s11 = y1_row + x1i * 4;
+                        let dst = (y * dst_w + x) * 4;
+
+                        if s11 + 3 < bytes.len() && dst + 3 < rgba.len() {
+                            // R channel
+                            rgba[dst] = ((bytes[s00] as f64 * w00
+                                + bytes[s10] as f64 * w10
+                                + bytes[s01] as f64 * w01
+                                + bytes[s11] as f64 * w11) + 0.5) as u8;
+                            // G channel
+                            rgba[dst + 1] = ((bytes[s00 + 1] as f64 * w00
+                                + bytes[s10 + 1] as f64 * w10
+                                + bytes[s01 + 1] as f64 * w01
+                                + bytes[s11 + 1] as f64 * w11) + 0.5) as u8;
+                            // B channel
+                            rgba[dst + 2] = ((bytes[s00 + 2] as f64 * w00
+                                + bytes[s10 + 2] as f64 * w10
+                                + bytes[s01 + 2] as f64 * w01
+                                + bytes[s11 + 2] as f64 * w11) + 0.5) as u8;
+                            // A channel
+                            rgba[dst + 3] = ((bytes[s00 + 3] as f64 * w00
+                                + bytes[s10 + 3] as f64 * w10
+                                + bytes[s01 + 3] as f64 * w01
+                                + bytes[s11 + 3] as f64 * w11) + 0.5) as u8;
                         }
                     }
                 }
@@ -2069,17 +2182,53 @@ fn convert_to_rgba(
         }
         pw::spa::param::video::VideoFormat::RGB => {
             if scale_factor < 1.0 {
-                let step_x = (w as f32 / out_w as f32) as usize;
-                let step_y = (h as f32 / out_h as f32) as usize;
-                for y in 0..out_h as usize {
-                    let src_row = y * step_y * w as usize * 3;
-                    for x in 0..out_w as usize {
-                        let src = src_row + x * step_x * 3;
-                        let dst = (y * out_w as usize + x) * 4;
-                        if src + 2 < bytes.len() && dst + 3 < rgba.len() {
-                            rgba[dst] = bytes[src];
-                            rgba[dst + 1] = bytes[src + 1];
-                            rgba[dst + 2] = bytes[src + 2];
+                // Bilinear interpolation for RGB → RGBA downscaling.
+                let src_w = w as usize;
+                let src_h = h as usize;
+                let dst_w = out_w as usize;
+                let dst_h = out_h as usize;
+                let scale_x = src_w as f64 / dst_w as f64;
+                let scale_y = src_h as f64 / dst_h as f64;
+
+                for y in 0..dst_h {
+                    let y0 = (y as f64 * scale_y) as f64;
+                    let x0_row = y0.floor() as usize * src_w * 3;
+                    let y1_row = (y0.floor() as usize + 1).min(src_h - 1) * src_w * 3;
+                    let dy = y0 - y0.floor();
+
+                    for x in 0..dst_w {
+                        let x0 = (x as f64 * scale_x) as f64;
+                        let x0i = x0.floor() as usize;
+                        let x1i = (x0i + 1).min(src_w - 1);
+                        let dx = x0 - x0i as f64;
+
+                        let w00 = (1.0 - dx) * (1.0 - dy);
+                        let w10 = dx * (1.0 - dy);
+                        let w01 = (1.0 - dx) * dy;
+                        let w11 = dx * dy;
+
+                        let s00 = x0_row + x0i * 3;
+                        let s10 = x0_row + x1i * 3;
+                        let s01 = y1_row + x0i * 3;
+                        let s11 = y1_row + x1i * 3;
+                        let dst = (y * dst_w + x) * 4;
+
+                        if s11 + 2 < bytes.len() && dst + 3 < rgba.len() {
+                            // R channel
+                            rgba[dst] = ((bytes[s00] as f64 * w00
+                                + bytes[s10] as f64 * w10
+                                + bytes[s01] as f64 * w01
+                                + bytes[s11] as f64 * w11) + 0.5) as u8;
+                            // G channel
+                            rgba[dst + 1] = ((bytes[s00 + 1] as f64 * w00
+                                + bytes[s10 + 1] as f64 * w10
+                                + bytes[s01 + 1] as f64 * w01
+                                + bytes[s11 + 1] as f64 * w11) + 0.5) as u8;
+                            // B channel
+                            rgba[dst + 2] = ((bytes[s00 + 2] as f64 * w00
+                                + bytes[s10 + 2] as f64 * w10
+                                + bytes[s01 + 2] as f64 * w01
+                                + bytes[s11 + 2] as f64 * w11) + 0.5) as u8;
                             rgba[dst + 3] = 255;
                         }
                     }
@@ -2097,19 +2246,51 @@ fn convert_to_rgba(
             }
         }
         _ => {
-            // Fallback: treat as BGRx
+            // Fallback: treat as BGRx with bilinear interpolation
             if scale_factor < 1.0 {
-                let step_x = (w as f32 / out_w as f32) as usize;
-                let step_y = (h as f32 / out_h as f32) as usize;
-                for y in 0..out_h as usize {
-                    let src_row = y * step_y * w as usize * 4;
-                    for x in 0..out_w as usize {
-                        let src = src_row + x * step_x * 4;
-                        let dst = (y * out_w as usize + x) * 4;
-                        if src + 3 < bytes.len() && dst + 3 < rgba.len() {
-                            rgba[dst] = bytes[src + 2];
-                            rgba[dst + 1] = bytes[src + 1];
-                            rgba[dst + 2] = bytes[src];
+                let src_w = w as usize;
+                let src_h = h as usize;
+                let dst_w = out_w as usize;
+                let dst_h = out_h as usize;
+                let scale_x = src_w as f64 / dst_w as f64;
+                let scale_y = src_h as f64 / dst_h as f64;
+
+                for y in 0..dst_h {
+                    let y0 = (y as f64 * scale_y) as f64;
+                    let x0_row = y0.floor() as usize * src_w * 4;
+                    let y1_row = (y0.floor() as usize + 1).min(src_h - 1) * src_w * 4;
+                    let dy = y0 - y0.floor();
+
+                    for x in 0..dst_w {
+                        let x0 = (x as f64 * scale_x) as f64;
+                        let x0i = x0.floor() as usize;
+                        let x1i = (x0i + 1).min(src_w - 1);
+                        let dx = x0 - x0i as f64;
+
+                        let w00 = (1.0 - dx) * (1.0 - dy);
+                        let w10 = dx * (1.0 - dy);
+                        let w01 = (1.0 - dx) * dy;
+                        let w11 = dx * dy;
+
+                        let s00 = x0_row + x0i * 4;
+                        let s10 = x0_row + x1i * 4;
+                        let s01 = y1_row + x0i * 4;
+                        let s11 = y1_row + x1i * 4;
+                        let dst = (y * dst_w + x) * 4;
+
+                        if s11 + 3 < bytes.len() && dst + 3 < rgba.len() {
+                            rgba[dst] = ((bytes[s00 + 2] as f64 * w00
+                                + bytes[s10 + 2] as f64 * w10
+                                + bytes[s01 + 2] as f64 * w01
+                                + bytes[s11 + 2] as f64 * w11) + 0.5) as u8;
+                            rgba[dst + 1] = ((bytes[s00 + 1] as f64 * w00
+                                + bytes[s10 + 1] as f64 * w10
+                                + bytes[s01 + 1] as f64 * w01
+                                + bytes[s11 + 1] as f64 * w11) + 0.5) as u8;
+                            rgba[dst + 2] = ((bytes[s00] as f64 * w00
+                                + bytes[s10] as f64 * w10
+                                + bytes[s01] as f64 * w01
+                                + bytes[s11] as f64 * w11) + 0.5) as u8;
                             rgba[dst + 3] = 255;
                         }
                     }

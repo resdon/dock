@@ -5,7 +5,6 @@
 use std::collections::HashMap;
 use std::time::Instant;
 use wayland_client::backend::ObjectId;
-use wayland_client::Proxy;
 
 use super::dock::{get_windows_for_app, launch_app, normalize_app_id};
 use crate::cache;

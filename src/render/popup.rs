@@ -257,7 +257,7 @@ pub fn render_window_list_surface(
     local_pointer_x: i32,
     local_pointer_y: i32,
     capture_frame: Option<&CaptureFrameData>,
-    active_row_idx: usize,
+    _active_row_idx: usize,
     config: &DockConfig,
 ) {
     if windows.is_empty() || geometry.phys_width <= 0 || geometry.phys_height <= 0 {
@@ -297,9 +297,7 @@ pub fn render_window_list_surface(
     let close_button_color = DockConfig::parse_hex_color_bgra(&config.popup_close_button_color);
     let close_button_hover_color = DockConfig::parse_hex_color_bgra(&config.popup_close_button_hover_color);
     let close_cross_color = DockConfig::parse_hex_color_bgra(&config.popup_close_cross_color);
-    let frame_bg_color = DockConfig::parse_hex_color_bgra(&config.popup_frame_bg_color);
-    // "No capture" placeholder text — green (#00FF00) against dark frame background
-    let no_capture_color = DockConfig::parse_hex_color(&config.popup_no_capture_color);
+    let _frame_bg_color = DockConfig::parse_hex_color_bgra(&config.popup_frame_bg_color);
     // Window title text — green (#00FF00) for high contrast readability
     let text_color = DockConfig::parse_hex_color(&config.popup_text_color);
     let close_btn_size_cfg = config.popup_close_button_size as f32;
@@ -307,7 +305,7 @@ pub fn render_window_list_surface(
 
     // Evaluate hovered item using logical coordinates
     // Pointer Y must be below the frame area to hit a row
-    let hovered_item_idx = if (local_pointer_x as f32) >= 0.0
+    let _hovered_item_idx = if (local_pointer_x as f32) >= 0.0
         && (local_pointer_x as f32) < (geometry.logical_width as f32)
         && (local_pointer_y as f32) >= frame_logical_h
         && (local_pointer_y as f32) < (frame_logical_h + rows_logical_h)
@@ -339,39 +337,8 @@ pub fn render_window_list_surface(
                 frame_data,
             );
         }
-    } else {
-        // No capture frame — draw placeholder
-        let frame_inner_h = frame_phys_h - frame_border * 2;
-        if frame_inner_w > 0 && frame_inner_h > 0 {
-            // Fill with dark background (ARGB byte order: [B,G,R,A])
-            for fy in 0..frame_inner_h {
-                for fx in 0..frame_inner_w {
-                    let px = frame_border + fx;
-                    let py = frame_border + fy;
-                    if px >= 0 && py >= 0 && px < menu_width && py < menu_height {
-                        let idx = ((py * menu_width + px) * 4) as usize;
-                        if idx + 3 < canvas.len() {
-                            canvas[idx..idx + 4].copy_from_slice(&frame_bg_color);
-                        }
-                    }
-                }
-            }
-            // Draw "No capture" text centered
-            let text_x = (frame_border + frame_inner_w / 2) as f32;
-            let text_y = (frame_border + frame_inner_h / 2) as f32;
-            draw_text(
-                canvas,
-                menu_width,
-                menu_height,
-                font_manager,
-                "No capture",
-                (config.popup_font_size as f32 * scale_factor) as i32,
-                text_x as i32,
-                text_y as i32,
-                no_capture_color,
-            );
-        }
     }
+    // No capture frame — leave the frame area empty (transparent)
 
     // 1. Render row backgrounds — transparent by default, red only when close button is hovered
     // Convert logical pointer coordinates to physical pixels for close button bounds check

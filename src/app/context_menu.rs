@@ -132,7 +132,7 @@ pub fn draw_context_menu_popup(
             let local_ptr_x = (interaction.pointer_position.x - popup_x_logical).round() as i32;
             let local_ptr_y = (interaction.pointer_position.y - popup_y_logical).round() as i32;
             let item_h = (geom.logical_height / item_count.max(1)).max(1) as i32;
-            let hovered_item = if local_ptr_x >= 0
+            let _hovered_item = if local_ptr_x >= 0
                 && local_ptr_x < geom.logical_width as i32
                 && local_ptr_y >= 0
                 && local_ptr_y < geom.logical_height as i32

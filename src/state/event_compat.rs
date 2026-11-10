@@ -348,6 +348,7 @@ impl AppState {
                 height: _height,
             } => {
                 let surface_id = surface_id.0.clone();
+                let mut found = false;
                 for dock in &mut self.docks {
                     if dock.surface.wl_surface().id() == surface_id.clone() {
                         // A zero dimension means the compositor accepted the
@@ -359,10 +360,10 @@ impl AppState {
                         // Use config dock height, ignoring compositor-reported height
                         dock.height = self.config.dock_height;
                         dock.configured = true;
-                        return (false, true);
+                        found = true;
                     }
                 }
-                (false, false)
+                (false, found)
             }
             SystemEvent::LayerClosed { surface_id } => {
                 let surface_id = surface_id.0.clone();
@@ -492,3 +493,4 @@ impl AppState {
         }
     }
 }
+

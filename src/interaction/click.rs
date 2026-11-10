@@ -143,29 +143,59 @@ pub fn handle_click_events(
                     continue;
                 }
 
-                if (event_on_dock_surface || event_on_widget_bar_surface)
+                let event_on_dashed_block_surface = state
+                    .docks
+                    .iter()
+                    .any(|dock| {
+                        dock.dashed_block_surface
+                            .as_ref()
+                            .is_some_and(|block| block.surface.wl_surface() == &event.surface)
+                    });
+
+                // Click on the Bluetooth icon toggles the bluetooth-widget-complete
+                // application. If it's already running, sends SIGTERM to close it.
+                // If not, spawns a new process. Works from both the widget bar
+                // and the dashed block.
+                if (event_on_dock_surface || event_on_widget_bar_surface || event_on_dashed_block_surface)
                     && button == BTN_LEFT
-                    && state.bluetooth_button_at_surface(
+                    && (state.bluetooth_button_at_surface(
                         &event.surface,
                         event.position.0,
                         event.position.1,
-                    )
+                    ) || state.bluetooth_button_at_dashed_block(
+                        &event.surface,
+                        event.position.0,
+                        event.position.1,
+                    ))
                 {
-                    state.bluetooth_panel_open = !state.bluetooth_panel_open;
-                    if state.bluetooth_panel_open {
-                        state.audio_panel_open = false;
-                        state.audio_slider_drag = None;
-                        state.rclone_panel_open = false;
-                        state.process_panel_open = false;
-                        state.set_rclone_monitor_enabled(false);
-                        state.set_process_monitor_enabled(false);
-                        state.close_context_menu_now();
-                        state.close_window_list_now();
+                    // Check if the widget is already running
+                    if let Some(pid) = state.bluetooth_widget_pid {
+                        // Try to kill the running widget process
+                        let _ = std::process::Command::new("kill")
+                            .arg(pid.to_string())
+                            .status();
+                        state.bluetooth_widget_pid = None;
+                    } else {
+                        // Spawn a new widget process and track its PID
+                        let (bt_x, bt_y) = state.bluetooth_widget_position();
+                        if let Ok(child) = std::process::Command::new("sh")
+                            .args(&["-c", "~/m.2/Rust/bluetooth-widget-complete/target/release/widget-test"])
+                            .env("BT_WIDGET_X", bt_x.to_string())
+                            .env("BT_WIDGET_Y", bt_y.to_string())
+                            .spawn()
+                        {
+                            state.bluetooth_widget_pid = Some(child.id());
+                        }
                     }
+                    state.bluetooth_panel_open = false;
+                    state.audio_panel_open = false;
+                    state.rclone_panel_open = false;
+                    state.process_panel_open = false;
                     state.needs_redraw = true;
                     layer_changed = true;
                     continue;
                 }
+
 
                 if (event_on_dock_surface || event_on_widget_bar_surface)
                     && button == BTN_LEFT
@@ -530,6 +560,10 @@ pub fn handle_click_events(
                             .audio_player_bar
                             .as_ref()
                             .is_some_and(|bar| bar.surface == event.surface)
+                        || dock
+                            .dashed_block_surface
+                            .as_ref()
+                            .is_some_and(|block| block.surface.wl_surface() == &event.surface)
                 });
                 if event_on_dock_for_audio
                     && state.audio_button_at_surface(

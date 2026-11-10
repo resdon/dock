@@ -23,7 +23,7 @@ pub fn get_icon_list_path() -> PathBuf {
 pub fn spawn_startup_indexer() {
     thread::spawn(|| {
         let list_path = get_icon_list_path();
-        let start = Instant::now();
+        let _start = Instant::now();
 
         let home = std::env::var("HOME").unwrap_or_default();
         let search_dirs = vec![
@@ -115,7 +115,7 @@ fn scan_directory_to_writer(dir: &Path, writer: &mut BufWriter<File>) {
 /// Searches candidate icon list files in parallel across multiple worker threads using byte-offset
 /// chunking, supporting early-exit cancellation and fallback scoring.
 pub fn search_icon_list_file(query: &str) -> Option<PathBuf> {
-    let search_start = Instant::now(); // <-- Start timer here
+    let _search_start = Instant::now(); // <-- Start timer here
     let home = std::env::var("HOME").unwrap_or_default();
 
     let candidate_paths = [

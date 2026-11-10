@@ -33,7 +33,7 @@ use smithay_client_toolkit::{
 use wayland_client::globals::registry_queue_init;
 use wayland_client::protocol::wl_data_device_manager::WlDataDeviceManager;
 use wayland_client::protocol::wl_subcompositor::WlSubcompositor;
-use wayland_client::{Connection, Proxy, QueueHandle};
+use wayland_client::{Connection, QueueHandle};
 
 use wayland_protocols::wp::fractional_scale::v1::client::wp_fractional_scale_manager_v1::WpFractionalScaleManagerV1;
 use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_manager_v1::ZwlrForeignToplevelManagerV1;
@@ -121,7 +121,7 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
     thread::spawn(move || {
         if let Ok(runtime) = tokio::runtime::Runtime::new() {
             runtime.block_on(async move {
-                if let Err(e) =
+                if let Err(_e) =
                     crate::listeners::start_status_notifier_listener(tray_tx, tray_action_rx).await
                 {
                 }
@@ -309,6 +309,7 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
         bluetooth_snapshot: crate::models::BluetoothSnapshot::default(),
         bluetooth_action_tx,
         bluetooth_panel_open: false,
+        bluetooth_widget_pid: None,
         rclone_snapshot: crate::models::RcloneSnapshot::default(),
         rclone_monitor_tx,
         rclone_panel_open: false,
@@ -337,12 +338,11 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
         pipewire_capture: None,
     };
 
-    // Initialize Slint renderer (software renderer - direct buffer rendering)
+    // Initialize Slint renderers (software renderer - direct buffer rendering)
     state.slint_renderer = match crate::render::slint_dock::SlintDockRenderer::new() {
-        Ok(renderer) => {
-            Some(renderer)
-        }
+        Ok(renderer) => Some(renderer),
         Err(e) => {
+            eprintln!("[SLINT] Dock renderer init failed: {}", e);
             None
         }
     };
@@ -433,6 +433,137 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
         // dispatched before the main loop's first render attempt.
         layer_surface.wl_surface().commit();
 
+        // Create dashed block as a separate layer surface to the left of the dock.
+        // The block displays status icons and keyboard layout.
+        let output_size = state.output_state.info(&output)
+            .and_then(|info| info.logical_size)
+            .unwrap_or((1920, 1080));
+        let output_width = output_size.0 as i32;
+        let gap = state.config.dashed_block_gap_from_dock as i32;
+        let margin = state.config.margin;
+
+        // Anchor to the LEFT of the dock (BOTTOM|LEFT for bottom dock)
+        let block_anchor = match state.config.anchor {
+            crate::config::DockAnchor::Bottom => Anchor::BOTTOM | Anchor::LEFT,
+            crate::config::DockAnchor::Top => Anchor::TOP | Anchor::LEFT,
+            crate::config::DockAnchor::Left => Anchor::LEFT | Anchor::BOTTOM,
+            crate::config::DockAnchor::Right => Anchor::RIGHT | Anchor::BOTTOM,
+        };
+
+        let db_width = state.config.dashed_block_width;
+        let db_height = state.config.dashed_block_height;
+        let db_raw = state.compositor_state.create_surface(&qh);
+        let db_layer = state.layer_shell.create_layer_surface(
+            &qh,
+            db_raw.clone(),
+            Layer::Top,
+            Some("dashed_block"),
+            Some(&output),
+        );
+        db_layer.set_keyboard_interactivity(
+            smithay_client_toolkit::shell::wlr_layer::KeyboardInteractivity::None,
+        );
+        db_layer.set_size(db_width, db_height);
+        db_layer.set_exclusive_zone(0);
+        db_layer.set_anchor(block_anchor);
+
+        // Position the block to the left of the dock
+        match state.config.anchor {
+            crate::config::DockAnchor::Bottom => {
+                let dock_left_edge = (output_width / 2) - ((dock_width as i32) / 2);
+                let left_margin = dock_left_edge - gap - db_width as i32;
+                db_layer.set_margin(0, 0, margin, left_margin.max(0));
+            }
+            crate::config::DockAnchor::Top => {
+                let dock_left_edge = (output_width / 2) - ((dock_width as i32) / 2);
+                let left_margin = dock_left_edge - gap - db_width as i32;
+                db_layer.set_margin(margin, 0, 0, left_margin.max(0));
+            }
+            crate::config::DockAnchor::Left => {
+                let dock_bottom_edge = (output_size.1 as i32 / 2) + ((surface_height as i32) / 2);
+                let bottom_margin = output_size.1 as i32 - dock_bottom_edge - gap;
+                db_layer.set_margin(0, 0, bottom_margin.max(0), margin);
+            }
+            crate::config::DockAnchor::Right => {
+                let dock_bottom_edge = (output_size.1 as i32 / 2) + ((surface_height as i32) / 2);
+                let bottom_margin = output_size.1 as i32 - dock_bottom_edge - gap;
+                db_layer.set_margin(0, margin, bottom_margin.max(0), 0);
+            }
+        }
+        db_layer.wl_surface().commit();
+
+        // Create date/time block as a separate layer surface to the right of the dock.
+        // The block displays time, day+month, and year.
+        let dt_gap = state.config.date_time_block_gap_from_dock as i32;
+        let dt_anchor = match state.config.anchor {
+            crate::config::DockAnchor::Bottom => Anchor::BOTTOM | Anchor::RIGHT,
+            crate::config::DockAnchor::Top => Anchor::TOP | Anchor::RIGHT,
+            crate::config::DockAnchor::Left => Anchor::LEFT | Anchor::BOTTOM,
+            crate::config::DockAnchor::Right => Anchor::RIGHT | Anchor::BOTTOM,
+        };
+
+        let dt_width = state.config.date_time_block_width;
+        let dt_height = state.config.date_time_block_height;
+        let dt_raw = state.compositor_state.create_surface(&qh);
+        let dt_layer = state.layer_shell.create_layer_surface(
+            &qh,
+            dt_raw.clone(),
+            Layer::Top,
+            Some("date_time_block"),
+            Some(&output),
+        );
+        dt_layer.set_keyboard_interactivity(
+            smithay_client_toolkit::shell::wlr_layer::KeyboardInteractivity::None,
+        );
+        dt_layer.set_size(dt_width, dt_height);
+        dt_layer.set_exclusive_zone(0);
+        dt_layer.set_anchor(dt_anchor);
+
+        // Position the block to the right of the dock
+        match state.config.anchor {
+            crate::config::DockAnchor::Bottom => {
+                let dock_right_edge = (output_width / 2) + ((dock_width as i32) / 2);
+                let right_margin = output_width - dock_right_edge - dt_gap - dt_width as i32;
+                dt_layer.set_margin(0, right_margin.max(0), margin, 0);
+            }
+            crate::config::DockAnchor::Top => {
+                let dock_right_edge = (output_width / 2) + ((dock_width as i32) / 2);
+                let right_margin = output_width - dock_right_edge - dt_gap - dt_width as i32;
+                dt_layer.set_margin(margin, right_margin.max(0), 0, 0);
+            }
+            crate::config::DockAnchor::Left => {
+                let dock_bottom_edge = (output_size.1 as i32 / 2) + ((surface_height as i32) / 2);
+                let bottom_margin = output_size.1 as i32 - dock_bottom_edge - dt_gap;
+                dt_layer.set_margin(0, 0, bottom_margin.max(0), margin);
+            }
+            crate::config::DockAnchor::Right => {
+                let dock_bottom_edge = (output_size.1 as i32 / 2) + ((surface_height as i32) / 2);
+                let bottom_margin = output_size.1 as i32 - dock_bottom_edge - dt_gap;
+                dt_layer.set_margin(0, margin, bottom_margin.max(0), 0);
+            }
+        }
+        dt_layer.wl_surface().commit();
+
+        let dashed_block_surface = crate::types::DashedBlockSurface {
+            surface: db_layer,
+            current_buffer: None,
+            width: db_width,
+            height: db_height,
+            cached_content: Vec::new(),
+            cached_phys_width: 0,
+            cached_phys_height: 0,
+        };
+
+        let date_time_block_surface = crate::types::DateTimeBlockSurface {
+            surface: dt_layer,
+            current_buffer: None,
+            width: dt_width,
+            height: dt_height,
+            cached_content: Vec::new(),
+            cached_phys_width: 0,
+            cached_phys_height: 0,
+        };
+
         state.docks.push(DockInstance {
             surface: layer_surface,
             output,
@@ -454,6 +585,8 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
             audio_player_bar: None,
             audio_player_expanded: false,
             system_status_bar: None,
+            date_time_block_surface: Some(date_time_block_surface),
+            dashed_block_surface: Some(dashed_block_surface),
             configured: false,
             status_strip_rendered: false,
             context_menu_popup: None,
@@ -476,7 +609,6 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
         // initial needs_redraw flag before the configure event is handled.
         event_queue.roundtrip(&mut state)?;
         let _ = state.process_pending_events();
-        let configured = state.docks.iter().filter(|dock| dock.configured).count();
         state.needs_redraw = true;
     }
 

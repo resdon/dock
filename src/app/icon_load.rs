@@ -22,17 +22,10 @@ impl IconLoader {
 
         thread::spawn(move || {
             while let Ok(req) = rx.recv() {
-                let mut source_used = "none";
                 let icon_path = match crate::resolvers::get_icon_path(&req.app_id) {
-                    Some(path) => {
-                        source_used = "XDG get_icon_path";
-                        Some(path)
-                    }
+                    Some(path) => Some(path),
                     None => match crate::resolvers::search_icon_list_file(&req.app_id) {
-                        Some(path) => {
-                            source_used = "icon_list.txt cache";
-                            Some(path)
-                        }
+                        Some(path) => Some(path),
                         None => None,
                     },
                 };

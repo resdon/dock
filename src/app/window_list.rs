@@ -24,7 +24,6 @@ use smithay_client_toolkit::{
 use wayland_client::protocol::wl_shm;
 use wayland_client::QueueHandle;
 
-use crate::geometry::popup::PopupGeometry;
 use crate::render::font::FontManager;
 use crate::render::popup::{render_window_list_surface, CaptureFrameData};
 use crate::services::pipewire_capture::PipewireCaptureService;
@@ -109,9 +108,6 @@ pub fn draw_window_list_popup(
                                     service.find_stream_by_title(&w.title, &used_streams)
                                 }
                             };
-
-                            eprintln!("[WINDOW_LIST] Match: title='{}' window_id={} -> stream_idx={:?}",
-                                w.title, window_id, stream_idx);
 
                             // Mark this stream as used so the next window can't claim it
                             if let Some(idx) = stream_idx {
@@ -364,15 +360,16 @@ pub fn draw_window_list_popup(
                             && (hovered_item as usize) < matched_windows.len()
                         {
                             let stream_idx = matched_windows[hovered_item as usize].1.unwrap();
-                            eprintln!("[WINDOW_LIST] hovered_item={}, stream_idx={}, local_ptr_y={}, frame_logical_h={}, item_h={}, item_count={}",
-                                hovered_item, stream_idx, local_ptr_y, frame_logical_h, item_h, item_count_usize);
                             service.set_active_row(stream_idx);
-                        } else {
-                            eprintln!("[WINDOW_LIST] Skipping set_active_row: has_valid={}, use_matched={}, in_bounds={}, hovered_item={}, local_ptr_y={}, frame_logical_h={}",
-                                has_valid_stream, use_matched, (hovered_item as usize) < matched_windows.len(),
-                                hovered_item, local_ptr_y, frame_logical_h);
                         }
                     }
+
+                    // Calculate the target frame display dimensions (inner area, excluding border).
+                    // These are passed to get_active_frame() so it can downscale the capture
+                    // to match the display size exactly, instead of using a fixed scale factor.
+                    let frame_border = 8.0; // 4px on each side, matches popup.rs
+                    let target_frame_w = (popup_width as f32 - frame_border).max(1.0) as u32;
+                    let target_frame_h = (frame_logical_h as f32 - frame_border).max(1.0) as u32;
 
                     // Get the capture frame for the active row with original dimensions.
                     // Only show frame data if the hovered row has a valid PipeWire stream match.
@@ -381,9 +378,10 @@ pub fn draw_window_list_popup(
                             let row = *service.active_row.lock();
                             let (orig_w, orig_h) = service.get_stream_dimensions(row)
                                 .unwrap_or((0, 0));
-                            service.get_active_frame().map(|(w, h, rgba)| {
-                                CaptureFrameData { width: w, height: h, rgba, original_width: orig_w, original_height: orig_h }
-                            })
+                            service.get_active_frame(Some(target_frame_w), Some(target_frame_h))
+                                .map(|(w, h, rgba)| {
+                                    CaptureFrameData { width: w, height: h, rgba, original_width: orig_w, original_height: orig_h }
+                                })
                         })
                     } else {
                         // No matching stream for this window — show a placeholder frame
