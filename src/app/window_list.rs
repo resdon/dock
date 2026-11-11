@@ -592,13 +592,28 @@ pub fn draw_window_list_popup(
                         // Draw window title text
                         let text_y = item_top
                             + item_h / 2.0
-                            + 6.0 * scale
-                            + config.popup_font_size as f32 * scale / 2.0;
+                            - 1.0 * scale
+                            + (config.popup_font_size as f32 * 2.0 * scale) / 2.0;
                         let text_x = config.popup_text_padding as f32 * scale;
+
+                        // Truncate title so it doesn't overflow the close button
+                        let truncate_len = config.popup_text_truncate as usize;
+                        let title = if window.title.chars().count() > truncate_len {
+                            format!(
+                                "{}...",
+                                window.title
+                                    .chars()
+                                    .take(truncate_len.saturating_sub(3))
+                                    .collect::<String>()
+                            )
+                        } else {
+                            window.title.clone()
+                        };
+
                         draw_commands.push(wgpu_api::DrawCommand::Text {
                             position: wgpu_api::Point::new(text_x, text_y),
-                            content: window.title.clone(),
-                            font_size: config.popup_font_size as f32 * scale,
+                            content: title,
+                            font_size: config.popup_font_size as f32 * 2.0 * scale,
                             color: wgpu_api::Color {
                                 r: text_color.0 as f32 / 255.0,
                                 g: text_color.1 as f32 / 255.0,

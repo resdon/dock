@@ -434,8 +434,8 @@ pub fn render_window_list_surface(
         let text_y = item_top_phys
             + text_offset_y
             + POPUP_TEXT_BASELINE_NUDGE_PX
-            + (6.0 * scale_factor).round() as i32
-            + (font_size_cfg * scale_factor / 2.0).round() as i32;
+            + (font_size_cfg * scale_factor / 2.0).round() as i32
+            - 6;
 
         if text_y < menu_height {
             crate::render::text::draw_text(

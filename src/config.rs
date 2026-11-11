@@ -284,6 +284,12 @@ pub struct DockConfig {
     // ═══════════════════════════════════════════════════════════
     // TIMING — Fade-in durations and auto-close timeouts
     // ═══════════════════════════════════════════════════════════
+    /// Enable dock auto-hide fade animation. When enabled, the dock fades to
+    /// reduced opacity after a period of inactivity, and only a thin trigger
+    /// strip at the edge remains clickable. When disabled, the dock stays fully
+    /// opaque and fully clickable at all times.
+    #[serde(default = "default_auto_hide_enabled")]
+    pub auto_hide_enabled: bool,
     /// Window list popup fade-in duration in seconds
     #[serde(default = "default_popup_fade_in")]
     pub popup_fade_in: f32,
@@ -648,6 +654,9 @@ fn default_context_menu_text_color() -> String {
 pub fn default_popup_fade_in() -> f32 {
     0.15
 }
+fn default_auto_hide_enabled() -> bool {
+    false
+}
 fn default_context_menu_fade_in() -> f32 {
     0.25
 }
@@ -891,6 +900,7 @@ impl Default for DockConfig {
             popup_launch_color: default_popup_launch_color(),
             popup_quit_color: default_popup_quit_color(),
             // Fade/timing
+            auto_hide_enabled: default_auto_hide_enabled(),
             popup_fade_in: default_popup_fade_in(),
             context_menu_fade_in: default_context_menu_fade_in(),
             popup_timeout: default_popup_timeout(),
@@ -1296,6 +1306,7 @@ impl DockConfig {
             ),
 
             // Fade/timing
+            auto_hide_enabled: self.auto_hide_enabled,
             popup_fade_in: Self::validate_positive_float(
                 self.popup_fade_in,
                 "popup_fade_in",

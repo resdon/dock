@@ -14,6 +14,7 @@ use crate::models::system::WindowId;
 use crate::state::AppState;
 use crate::state::WindowState;
 
+use super::bluetooth_popup;
 use super::context_menu;
 use super::dock;
 use super::window_list;
@@ -173,8 +174,24 @@ impl AppState {
                 &self.dmabuf_state,
             );
             // audio_popup::draw_audio_popup(...);
-            // Bluetooth popup — the widget bar BT button opens a subsurface popup,
-            // while the dashed block BT icon spawns the bluetooth-widget-complete app.
+            // Bluetooth popup — the BT icon on the dashed block opens a subsurface popup.
+            if let Some(ref mut bt_renderer) = self.bluetooth_renderer {
+                bluetooth_popup::draw_bluetooth_popup(
+                    dock_instance,
+                    qh,
+                    &frame,
+                    &mut self.pool,
+                    &self.compositor_state,
+                    self.subcompositor.as_ref(),
+                    bt_renderer,
+                    self.bluetooth_panel_open,
+                    &self.bluetooth_snapshot,
+                    self.tray_items.len(),
+                    self.gpu_context.as_mut(),
+                    &self.dmabuf_state,
+                    &self.config,
+                );
+            }
             // rclone_popup::draw_rclone_popup(...);
             // process_popup::draw_process_popup(...);
 

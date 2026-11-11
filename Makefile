@@ -1,9 +1,18 @@
 # Makefile for dock
-BINARY_NAME=dock
-INSTALL_BIN=$(HOME)/.local/bin
-DATA_DIR=$(HOME)/.local/share/dock
+BINARY_NAME ?= dock
+PREFIX ?= $(HOME)/.local
+BINDIR ?= $(PREFIX)/bin
+DATADIR ?= $(PREFIX)/share/dock
 
-.PHONY: build install uninstall dist
+# Support standard DESTDIR for packaging
+DESTDIR ?=
+
+FINAL_BINDIR = $(DESTDIR)$(BINDIR)
+FINAL_DATADIR = $(DESTDIR)$(DATADIR)
+
+.PHONY: all build install uninstall dist clean
+
+all: build
 
 build:
 	@if [ ! -f target/release/$(BINARY_NAME) ] && [ ! -f target/debug/$(BINARY_NAME) ]; then \
@@ -12,25 +21,25 @@ build:
 	fi
 
 install: build
-	@echo "Installing $(BINARY_NAME) binary to $(INSTALL_BIN)..."
-	mkdir -p $(INSTALL_BIN)
+	@echo "Installing $(BINARY_NAME) binary to $(FINAL_BINDIR)..."
+	mkdir -p $(FINAL_BINDIR)
 	@if [ -f target/release/$(BINARY_NAME) ]; then \
-		install -m 755 target/release/$(BINARY_NAME) $(INSTALL_BIN)/$(BINARY_NAME); \
+		install -m 755 target/release/$(BINARY_NAME) $(FINAL_BINDIR)/$(BINARY_NAME); \
 	elif [ -f target/debug/$(BINARY_NAME) ]; then \
-		install -m 755 target/debug/$(BINARY_NAME) $(INSTALL_BIN)/$(BINARY_NAME); \
+		install -m 755 target/debug/$(BINARY_NAME) $(FINAL_BINDIR)/$(BINARY_NAME); \
 	else \
 		echo "Build artifact not found for $(BINARY_NAME)" >&2; \
 		exit 1; \
 	fi
 	
-	@echo "Installing assets to $(DATA_DIR)..."
-	mkdir -p $(DATA_DIR)/24
-	install -m 755 scripts/launcher.sh $(DATA_DIR)/launcher.sh
-	install -m 644 assets/font.ttf $(DATA_DIR)/font.ttf
-	cp -r assets/24/* $(DATA_DIR)/24/
+	@echo "Installing assets to $(FINAL_DATADIR)..."
+	mkdir -p $(FINAL_DATADIR)/24
+	install -m 755 scripts/launcher.sh $(FINAL_DATADIR)/launcher.sh
+	install -m 644 assets/font.ttf $(FINAL_DATADIR)/font.ttf
+	cp -r assets/24/* $(FINAL_DATADIR)/24/
 
 	@echo "Indexing icon paths..."
-	./scripts/list_icons.sh $(DATA_DIR)/icon_list.txt
+	bash ./scripts/list_icons.sh $(FINAL_DATADIR)/icon_list.txt
 
 	@echo "Installation complete!"
 
@@ -49,7 +58,11 @@ dist: build
 	rm -rf dock-linux-amd64
 	@echo "Archive dock-linux-amd64.tar.gz successfully created!"
 
+clean:
+	cargo clean
+	rm -f dock-linux-amd64.tar.gz
+
 uninstall:
-	rm -f $(INSTALL_BIN)/$(BINARY_NAME)
-	rm -rf $(DATA_DIR)
+	rm -f $(FINAL_BINDIR)/$(BINARY_NAME)
+	rm -rf $(FINAL_DATADIR)
 	@echo "Uninstallation complete."

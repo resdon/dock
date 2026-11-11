@@ -165,6 +165,12 @@ impl AutoHideState {
             && (self.current_alpha - HIDDEN_ALPHA).abs() <= ALPHA_EPSILON
     }
 
+    pub fn is_fully_visible(&self) -> bool {
+        self.mode == Mode::Visible
+            && (self.target_alpha - 1.0).abs() <= ALPHA_EPSILON
+            && (self.current_alpha - 1.0).abs() <= ALPHA_EPSILON
+    }
+
     pub fn apply_alpha_to_canvas(&self, canvas: &mut [u8]) {
         let alpha = (self.current_alpha.clamp(0.0, 1.0) * 255.0 + 0.5) as u16;
         if alpha >= 255 {

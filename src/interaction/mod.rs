@@ -37,14 +37,15 @@ pub fn update(
 ) -> bool {
     // PARAMETERS from config:
     // ----------
-    let cfg = &state.config;
-    let hard_timeout = Duration::from_millis(cfg.hard_timeout);
-    let menu_time_out = Duration::from_millis(cfg.context_menu_timeout);
-    let menu_fade_time: f32 = cfg.context_menu_fade_in;
+    let hard_timeout = Duration::from_millis(state.config.hard_timeout);
+    let menu_time_out = Duration::from_millis(state.config.context_menu_timeout);
+    let menu_fade_time: f32 = state.config.context_menu_fade_in;
     // Keep configured shorter delays, but don't leave the window list lingering
     // for more than two seconds after the pointer leaves it.
-    let list_time_out = Duration::from_millis(cfg.popup_timeout).min(Duration::from_secs(2));
-    let list_fade_time: f32 = cfg.popup_fade_in;
+    let list_time_out =
+        Duration::from_millis(state.config.popup_timeout).min(Duration::from_secs(2));
+    let list_fade_time: f32 = state.config.popup_fade_in;
+    let auto_hide_enabled = state.config.auto_hide_enabled;
     let dock_time_out = Duration::from_millis(1000);
     let dock_time_delay_ms: u64 = 500;
     // ----------
@@ -189,33 +190,44 @@ pub fn update(
     state.menu_state.cursor_moved = false;
 
     // --- AUTO-HIDE STATE ENGINE ---
-    let pointer_near_edge = state.interaction.is_pointer_near;
-    let auto_hide_timed_out = elapsed.no_motion >= dock_time_out;
+    // When auto-hide is disabled in config, keep the dock fully visible and
+    // clickable at all times — skip the fade animation and input region shrink.
+    if auto_hide_enabled {
+        let pointer_near_edge = state.interaction.is_pointer_near;
+        let auto_hide_timed_out = elapsed.no_motion >= dock_time_out;
 
-    if is_active_drag {
-        if state.hide_state.is_fully_hidden()
-            || state.hide_state.mode == crate::graphics::hide::Mode::Hiding
-        {
-            state.hide_state.show();
+        if is_active_drag {
+            if state.hide_state.is_fully_hidden()
+                || state.hide_state.mode == crate::graphics::hide::Mode::Hiding
+            {
+                state.hide_state.show();
+                layer_changed = true;
+            }
+            state.hide_state.hide_timer = None;
+        } else if pointer_near_edge && !auto_hide_timed_out {
+            if state.hide_state.is_fully_hidden()
+                || state.hide_state.mode == crate::graphics::hide::Mode::Hiding
+            {
+                state.hide_state.show();
+                layer_changed = true;
+            }
+        } else if pointer_inside_dock && !auto_hide_timed_out {
+            state.hide_state.hide_timer = None;
+        } else {
+            state.hide_state.start_hide_timer();
+            state.hide_state.update_timer(dock_time_delay_ms);
+        }
+
+        if state.hide_state.tick() {
             layer_changed = true;
         }
-        state.hide_state.hide_timer = None;
-    } else if pointer_near_edge && !auto_hide_timed_out {
-        if state.hide_state.is_fully_hidden()
-            || state.hide_state.mode == crate::graphics::hide::Mode::Hiding
-        {
-            state.hide_state.show();
-            layer_changed = true;
-        }
-    } else if pointer_inside_dock && !auto_hide_timed_out {
-        state.hide_state.hide_timer = None;
     } else {
-        state.hide_state.start_hide_timer();
-        state.hide_state.update_timer(dock_time_delay_ms);
-    }
-
-    if state.hide_state.tick() {
-        layer_changed = true;
+        // Auto-hide disabled: ensure dock stays fully visible
+        if !state.hide_state.is_fully_visible() {
+            state.hide_state.show();
+            layer_changed = true;
+        }
+        state.hide_state.hide_timer = None;
     }
 
     // Animate popup fade alphas toward their targets

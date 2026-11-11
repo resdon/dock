@@ -346,6 +346,7 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
         dmabuf_state: smithay_client_toolkit::dmabuf::DmabufState::new(&globals, &qh),
         config: crate::config::DockConfig::load(),
         slint_renderer: None,
+        bluetooth_renderer: None,
         bounce_app_id: None,
         click_app_id: None,
         pending_focus_app_id: None,
@@ -360,6 +361,13 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
     state.slint_renderer = match crate::render::slint_dock::SlintDockRenderer::new() {
         Ok(renderer) => Some(renderer),
         Err(_e) => None,
+    };
+    state.bluetooth_renderer = match crate::render::bluetooth::SlintBluetoothRenderer::new() {
+        Ok(renderer) => Some(renderer),
+        Err(_e) => {
+            tracing::warn!("Failed to initialize Bluetooth renderer: {}", _e);
+            None
+        }
     };
 
     state.data_device_manager = state
@@ -477,8 +485,10 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
             Some("dashed_block"),
             Some(&output),
         );
+        // Enable pointer interactivity so the Bluetooth icon on the dashed block
+        // can receive click events to open its popup panel.
         db_layer.set_keyboard_interactivity(
-            smithay_client_toolkit::shell::wlr_layer::KeyboardInteractivity::None,
+            smithay_client_toolkit::shell::wlr_layer::KeyboardInteractivity::OnDemand,
         );
         db_layer.set_size(db_width, db_height);
         db_layer.set_exclusive_zone(0);

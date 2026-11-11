@@ -536,6 +536,94 @@ pub fn draw_main_dock(
             }
         }
 
+        // Draw the dragged icon ghost at the cursor position.
+        // The ghost follows the pointer while dragging, centered on the cursor,
+        // with window count dashes below it. The pointer position is in screen
+        // coordinates relative to the dock surface, so scale it to physical pixels.
+        if is_dragging {
+            if let Some(app_id) = dragged_app_id {
+                if let Some(texture_id) = icon_textures.get(app_id) {
+                    // Find the dragged item's properties for dashes
+                    let dragged_pin = dock_state.pins.iter().find(|p| p.app_id == *app_id);
+                    let ghost_size = icon_size_px;
+                    let half = ghost_size / 2.0;
+
+                    // Pointer position in dock-relative physical pixel coordinates.
+                    // The pointer_position is in screen coordinates; the dock surface
+                    // starts at (0,0) in its own coordinate space, so the pointer's
+                    // dock-relative position is the pointer position itself, scaled.
+                    let ptr_x = interaction.pointer_position.x as f32;
+                    let ptr_y = interaction.pointer_position.y as f32;
+
+                    // Center the ghost icon on the cursor
+                    let ghost_x = ptr_x - half;
+                    let ghost_y = ptr_y - half;
+
+                    draw_commands.push(wgpu_api::DrawCommand::Image {
+                        dest_rect: wgpu_api::Rect {
+                            x: ghost_x,
+                            y: ghost_y,
+                            width: ghost_size,
+                            height: ghost_size,
+                        },
+                        texture: *texture_id,
+                        source_uv: wgpu_api::Rect {
+                            x: 0.0,
+                            y: 0.0,
+                            width: 1.0,
+                            height: 1.0,
+                        },
+                        tint: wgpu_api::Color {
+                            r: 1.0,
+                            g: 1.0,
+                            b: 1.0,
+                            a: 1.0,
+                        },
+                    });
+
+                    // Draw window count dashes below the ghost icon
+                    if let Some(pin) = dragged_pin {
+                        let wc = pin.running_count.min(5);
+                        if wc >= 1 {
+                            let dash_config = dash_configs.get(wc - 1);
+                            if let Some(&(count, dash_width, gap)) = dash_config {
+                                let (r, g, b) = if pin.is_activated {
+                                    (
+                                        focused_dash_color.0 as f32 / 255.0,
+                                        focused_dash_color.1 as f32 / 255.0,
+                                        focused_dash_color.2 as f32 / 255.0,
+                                    )
+                                } else {
+                                    (
+                                        inactive_dash_color.0 as f32 / 255.0,
+                                        inactive_dash_color.1 as f32 / 255.0,
+                                        inactive_dash_color.2 as f32 / 255.0,
+                                    )
+                                };
+                                // Dashes are centered below the ghost icon
+                                let dash_base_x = ghost_x + dash_base_x_offset;
+                                let ghost_dash_y = ghost_y + ghost_size + 2.0 * scale;
+                                for d in 0..count {
+                                    draw_commands.push(wgpu_api::DrawCommand::Rectangle {
+                                        rect: wgpu_api::Rect {
+                                            x: dash_base_x + d as f32 * (dash_width + gap),
+                                            y: ghost_dash_y,
+                                            width: dash_width,
+                                            height: dash_height,
+                                        },
+                                        color: wgpu_api::Color { r, g, b, a: 1.0 },
+                                        radius: 0.0,
+                                        stroke: None,
+                                        stroke_width: 0.0,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         tracing::info!(
             "GPU render_to_dmabuf: {}x{} {} commands",
             phys_width,

@@ -14,6 +14,10 @@ use library::init::{initialize_app, AppContext};
 /// 4. Background monitor task for dynamic window detection
 /// 5. Main event loop (~60 FPS)
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize tracing so that tracing::info!, tracing::warn!, etc. produce output.
+    // Can be overridden by RUST_LOG env var (e.g., RUST_LOG=info ./target/release/dock).
+    library::error::init_tracing("dock=info,wgpu_api=warn");
+
     // Catch panics and print the location so crashes can be diagnosed
     std::panic::set_hook(Box::new(|info| {
         if let Some(location) = info.location() {
