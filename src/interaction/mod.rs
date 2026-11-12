@@ -73,6 +73,16 @@ pub fn update(
     let pointer_x = state.interaction.pointer_position.x;
     let pointer_y = state.interaction.pointer_position.y;
 
+    // **FIX (v1.5.5)**: When the cursor is not on the dock, reset popup surface
+    // flags before checking geometry. The compositor may not send Leave events to
+    // popup surfaces if the cursor moves from a window to the desktop, leaving
+    // pointer_inside_popup stale (true). This causes on_window_list to remain true
+    // indefinitely, preventing the cursor idle timeout from closing the popup.
+    if !pointer_inside_dock {
+        state.menu_state.pointer_inside_popup = false;
+        state.window_list_state.pointer_inside_popup = false;
+    }
+
     let mut pointer_over_context_menu = state.menu_state.pointer_inside_popup;
     let mut pointer_over_window_list = state.window_list_state.pointer_inside_popup;
 
@@ -162,23 +172,30 @@ pub fn update(
     let context_menu_timed_out = elapsed.context_menu >= hard_timeout;
     let window_list_timed_out = elapsed.window_list >= hard_timeout;
 
-    // Cursor idle timeout: close all popups when the cursor hasn't moved
-    // for the configured duration, regardless of cursor position.
-    let cursor_idle_timeout = Duration::from_millis(state.config.cursor_idle_timeout);
-    let cursor_idle_timed_out = elapsed.no_motion >= cursor_idle_timeout;
+    // **FIX (v1.5.5)**: Border-based closing for window list popup.
+    // When the cursor leaves the popup area, close it — but only after the
+    // cursor has entered at least once. The first entry keeps it open;
+    // when the cursor leaves (entry_count >= 1), the popup closes immediately.
+    // This replaces the cursor idle timeout for the window list.
+    let window_list_border_close = state.window_list_state.is_open
+        && !pointer_over_window_list
+        && state.window_list_state.entry_count >= 1;
 
     // Context menu timers rules
     if state.menu_state.is_open
-        && (no_motion_timed_out || dock_timed_out || context_menu_timed_out || cursor_idle_timed_out)
+        && (no_motion_timed_out || dock_timed_out || context_menu_timed_out)
     {
         layer_changed |= state.request_context_menu_close();
     }
 
-    // Window list timers rules
+    // Window list close rules: border-based close OR hard timeouts
     if state.window_list_state.is_open
-        && (no_motion_timed_out || dock_timed_out || window_list_timed_out || cursor_idle_timed_out)
+        && (window_list_border_close || no_motion_timed_out || dock_timed_out || window_list_timed_out)
     {
         layer_changed |= state.request_window_list_close();
+        // **FIX (v1.5.5)**: Reset entry count when closing so the next
+        // open starts fresh.
+        state.window_list_state.entry_count = 0;
     }
 
     // Context Menu Fade Target Update
@@ -218,7 +235,8 @@ pub fn update(
 
     // Window List Fade Target Update
     if state.window_list_state.is_open {
-        let hard_close = no_motion_timed_out || dock_timed_out || window_list_timed_out;
+        // **FIX (v1.5.5)**: Border-based close is a hard close condition.
+        let hard_close = no_motion_timed_out || dock_timed_out || window_list_timed_out || window_list_border_close;
         let close_requested = state.docks.iter().any(|dock| {
             dock.window_list_fade.target_alpha <= dock.window_list_fade.min_alpha + f32::EPSILON
         });

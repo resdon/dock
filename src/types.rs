@@ -456,6 +456,11 @@ pub struct PopupState<T> {
 
     // Compatibility & Interaction fields
     pub pointer_inside_popup: bool,
+    /// **FIX (v1.5.5)**: Tracks how many times the cursor entered this popup.
+    /// Used for border-based closing: the popup closes when the cursor leaves,
+    /// but only after the first entry. The first entry keeps it open; subsequent
+    /// leaves trigger close.
+    pub entry_count: u32,
     pub x: i32,
     pub y: i32,
     pub opened_by_button: Option<u32>,
@@ -488,6 +493,7 @@ impl<T: Default> Default for PopupState<T> {
             dock_timer: None,
             popup_timer: None,
             pointer_inside_popup: false,
+            entry_count: 0,
             x: 0,
             y: 0,
             opened_by_button: None,

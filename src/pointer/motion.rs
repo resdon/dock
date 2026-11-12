@@ -152,6 +152,14 @@ pub fn handle_motion_events(
                     if state.interaction.hovered_icon.is_some() {
                         state.interaction.hovered_icon = None;
                     }
+                    // **FIX (v1.5.5)**: When the cursor leaves the dock entirely,
+                    // reset popup surface flags. The compositor may not send Leave
+                    // events to popup surfaces if the cursor moves from a window
+                    // to the desktop, leaving pointer_inside_popup stale (true).
+                    // This causes on_window_list to remain true, preventing the
+                    // border-based close from triggering.
+                    state.menu_state.pointer_inside_popup = false;
+                    state.window_list_state.pointer_inside_popup = false;
                     layer_changed = true;
                 }
             }
@@ -174,6 +182,11 @@ pub fn handle_motion_events(
                     state.menu_state.pointer_inside_popup = true;
                 }
                 if is_window_list_surface {
+                    if !state.window_list_state.pointer_inside_popup {
+                        // **FIX (v1.5.5)**: Cursor entered the window list popup.
+                        // Increment entry count for border-based closing logic.
+                        state.window_list_state.entry_count += 1;
+                    }
                     state.window_list_state.pointer_inside_popup = true;
                 }
 
@@ -253,6 +266,9 @@ pub fn handle_motion_events(
                                 // Avoid aggressive resets when switching targets within an active window list.
                                 if !was_open {
                                     crate::interaction::timers::reset_all(state);
+                                    // **FIX (v1.5.5)**: Reset entry count when opening the popup
+                                    // so the border-based close logic starts fresh.
+                                    state.window_list_state.entry_count = 0;
                                     // FIX (v1.5.5): Signal PipeWire streams that the popup is now open.
                                     if let Some(ref pw) = state.pipewire_capture {
                                         pw.set_window_list_open(true);
