@@ -129,6 +129,11 @@ pub struct InteractionState {
     /// changes (icon entered/left) vs pixel movement. Only hover state changes
     /// trigger immediate redraws; pixel movement is rate-limited to 75 FPS.
     pub last_hovered_icon: Option<usize>,
+    /// **FIX**: Last known pointer position, used to detect cursor movement
+    /// when the window list popup is open. Wayland motion events may be delayed
+    /// or batched by the compositor, so we track position changes independently
+    /// to ensure the highlight updates without a 1-second delay.
+    pub last_pointer_position: Point,
     /// Which popup menu is currently hovered (context menu or app menu)
     pub hovered_menu: Option<MenuId>,
     /// Index of the icon being dragged (for reordering)
@@ -148,6 +153,7 @@ impl InteractionState {
         Self {
             hovered_icon: None,
             last_hovered_icon: None,
+            last_pointer_position: Point { x: 0.0, y: 0.0 },
             hovered_menu: None,
             dragging_icon: None,
             pointer_position: Point { x: 0.0, y: 0.0 },

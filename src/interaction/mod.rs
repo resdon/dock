@@ -273,17 +273,22 @@ pub fn update(
         }
     }
 
-    // FIX (v1.5.5): If the cursor moved while the window list popup is open,
-    // trigger a redraw so the popup can update the hover highlight and capture frame.
-    //
-    // Before this fix, cursor_moved was only used for timer resets and never set
-    // layer_changed = true. So pointer motion over the popup did not trigger a redraw.
-    // The popup only updated when PipeWire happened to capture a new frame, causing
-    // the highlight to freeze when the captured window was static.
-    //
-    // The content hash caching in window_list.rs still prevents unnecessary GPU work:
-    // if the hover row hasn't changed and the pointer is in the same pixel, the hash
-    // will match and rendering is skipped. But at least the draw function is called.
+    // **FIX**: Detect pointer position changes independently of Wayland motion events.
+    // The compositor may batch or delay motion events, causing the highlight to lag
+    // by up to 1 second. By comparing the current pointer position with the last known
+    // position, we trigger a redraw immediately when the cursor moves over the window
+    // list popup, regardless of whether cursor_moved was set by a Wayland event.
+    let pointer_moved = state.interaction.pointer_position.x
+        != state.interaction.last_pointer_position.x
+        || state.interaction.pointer_position.y
+        != state.interaction.last_pointer_position.y;
+    if pointer_moved {
+        state.interaction.last_pointer_position = state.interaction.pointer_position;
+        if on_window_list {
+            layer_changed = true;
+        }
+    }
+    // Also respect the cursor_moved flag from Wayland events as a fallback.
     if cursor_moved && on_window_list {
         layer_changed = true;
     }
