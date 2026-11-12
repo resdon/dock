@@ -615,11 +615,12 @@ pub fn draw_window_list_popup(
                             }
                         }
 
-                        // Draw window title text
+                        // Draw window title text (size controlled by config)
+                        let window_list_font_size = config.popup_font_size as f32 * config.popup_window_list_text_scale * scale;
                         let text_y = item_top
                             + item_h / 2.0
                             - 1.0 * scale
-                            + (config.popup_font_size as f32 * 2.0 * scale) / 2.0;
+                            + window_list_font_size / 2.0;
                         let text_x = config.popup_text_padding as f32 * scale;
 
                         // Truncate title so it doesn't overflow the close button
@@ -639,7 +640,7 @@ pub fn draw_window_list_popup(
                         draw_commands.push(wgpu_api::DrawCommand::Text {
                             position: wgpu_api::Point::new(text_x, text_y),
                             content: title,
-                            font_size: config.popup_font_size as f32 * 2.0 * scale,
+                            font_size: window_list_font_size,
                             color: wgpu_api::Color {
                                 r: text_color.0 as f32 / 255.0,
                                 g: text_color.1 as f32 / 255.0,

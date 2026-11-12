@@ -231,11 +231,11 @@ pub fn draw_context_menu_popup(
                     item_top + item_h / 2.0 + config.context_menu_text_offset_y as f32 * scale;
                 let text_x = config.popup_text_padding as f32 * scale;
 
-                // Add text draw command
+                // Add text draw command (size controlled by config)
                 draw_commands.push(wgpu_api::DrawCommand::Text {
                     position: wgpu_api::Point::new(text_x, text_y),
                     content: item.label.clone(),
-                    font_size: config.popup_font_size as f32,
+                    font_size: config.popup_font_size as f32 * config.context_menu_text_scale * scale,
                     color: wgpu_api::Color {
                         r: color.0 as f32 / 255.0,
                         g: color.1 as f32 / 255.0,

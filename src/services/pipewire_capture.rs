@@ -271,7 +271,7 @@ impl PipewireCaptureService {
             window_ids: Arc::new(Mutex::new(HashMap::new())),
             bindings: Arc::new(Mutex::new(HashMap::new())),
             restore_token: Arc::new(Mutex::new(load_restore_token())),
-            scale_factor: Arc::new(Mutex::new(0.5)),
+            scale_factor: Arc::new(Mutex::new(1.0)),
             window_list_open: Arc::new(AtomicBool::new(false)),
         }
     }

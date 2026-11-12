@@ -189,6 +189,10 @@ pub struct DockConfig {
     /// Popup close button margin from right edge in pixels
     #[serde(default = "default_popup_close_button_margin")]
     pub popup_close_button_margin: u32,
+    /// Window list popup text size multiplier relative to `popup_font_size`.
+    /// A value of 1.2 means the window title text is 1.2× the base popup font size.
+    #[serde(default = "default_popup_window_list_text_scale")]
+    pub popup_window_list_text_scale: f32,
 
     // ── Window list colors ──
     /// Popup background color in hex format (e.g., "#1D1C22")
@@ -258,6 +262,10 @@ pub struct DockConfig {
     /// Keep the default at 6px to preserve the established label alignment.
     #[serde(default = "default_context_menu_text_offset_y")]
     pub context_menu_text_offset_y: i32,
+    /// Context menu text size multiplier relative to `popup_font_size`.
+    /// A value of 1.2 means the context menu text is 1.2× the base popup font size.
+    #[serde(default = "default_context_menu_text_scale")]
+    pub context_menu_text_scale: f32,
     /// Context menu background color in hex format
     #[serde(default = "default_context_menu_bg_color")]
     pub context_menu_bg_color: String,
@@ -633,6 +641,10 @@ fn default_popup_frame_border() -> u32 {
 fn default_popup_close_button_margin() -> u32 {
     8
 }
+/// Default: 1.2 — window list text is 1.2× the base popup font size (17px at 14px base).
+fn default_popup_window_list_text_scale() -> f32 {
+    1.2
+}
 fn default_popup_dash_gap() -> u32 {
     4
 }
@@ -650,6 +662,10 @@ fn default_context_menu_row_height() -> u32 {
 /// Default: +6 logical px — shifts context-menu labels down to the established visual baseline.
 fn default_context_menu_text_offset_y() -> i32 {
     6
+}
+/// Default: 1.2 — context menu text is 1.2× the base popup font size (17px at 14px base).
+fn default_context_menu_text_scale() -> f32 {
+    1.2
 }
 fn default_context_menu_bg_color() -> String {
     "#1D1C22".to_string()
@@ -691,7 +707,7 @@ fn default_badge_font_size() -> u32 {
     10
 }
 fn default_pipewire_scale_factor() -> f32 {
-    0.5
+    1.0
 }
 
 fn default_app_id_aliases() -> std::collections::HashMap<String, String> {
@@ -883,6 +899,7 @@ impl Default for DockConfig {
             popup_text_truncate: default_popup_text_truncate(),
             popup_frame_border: default_popup_frame_border(),
             popup_close_button_margin: default_popup_close_button_margin(),
+            popup_window_list_text_scale: default_popup_window_list_text_scale(),
             // Window list colors
             popup_bg_color: default_popup_bg_color(),
             popup_text_color: default_popup_text_color(),
@@ -903,6 +920,7 @@ impl Default for DockConfig {
             context_menu_width: default_context_menu_width(),
             context_menu_row_height: default_context_menu_row_height(),
             context_menu_text_offset_y: default_context_menu_text_offset_y(),
+            context_menu_text_scale: default_context_menu_text_scale(),
             context_menu_bg_color: default_context_menu_bg_color(),
             context_menu_text_color: default_context_menu_text_color(),
             popup_focus_color: default_popup_focus_color(),
@@ -1216,6 +1234,11 @@ impl DockConfig {
             ),
             popup_frame_border: self.popup_frame_border,
             popup_close_button_margin: self.popup_close_button_margin,
+            popup_window_list_text_scale: Self::validate_positive_float(
+                self.popup_window_list_text_scale,
+                "popup_window_list_text_scale",
+                default_cfg.popup_window_list_text_scale,
+            ),
 
             // Window list colors
             popup_bg_color: Self::validate_color(
@@ -1286,6 +1309,11 @@ impl DockConfig {
                 default_cfg.context_menu_row_height,
             ),
             context_menu_text_offset_y: self.context_menu_text_offset_y,
+            context_menu_text_scale: Self::validate_positive_float(
+                self.context_menu_text_scale,
+                "context_menu_text_scale",
+                default_cfg.context_menu_text_scale,
+            ),
             context_menu_bg_color: Self::validate_color(
                 &self.context_menu_bg_color,
                 "context_menu_bg_color",
