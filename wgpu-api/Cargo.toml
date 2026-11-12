@@ -18,6 +18,8 @@ raw-window-handle = "0.6"
 # GPU rendering backend — wgpu 30 with Vulkan support
 wgpu = { version = "30", features = ["vulkan"] }
 wgpu-dmabuf = "0.1"
+# GPU profiling — optional, requires TIMESTAMP_QUERY wgpu feature
+wgpu-profiler = { version = "0.16", optional = true }
 # GPU text rendering — glyphon uses cosmic-text for shaping, etagere for atlas packing
 glyphon = "0.12"
 # Keep cosmic-text for direct text layout (glyphon re-exports it)
@@ -34,6 +36,7 @@ slint = { version = "1.18", features = ["unstable-wgpu-30"], optional = true }
 
 [features]
 slint-wgpu-30 = ["slint"]
+profiler = ["dep:wgpu-profiler"]
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }

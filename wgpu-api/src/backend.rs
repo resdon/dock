@@ -267,7 +267,18 @@ impl GpuBackend {
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("wgpu-api Device"),
-                required_features: wgpu::Features::VULKAN_EXTERNAL_MEMORY_DMA_BUF,
+                // FIX (v1.5.5): Add TIMESTAMP_QUERY features when profiler feature is active
+                // for GPU timestamp query-based timing. Note: wgpu-profiler crate is
+                // available as a dependency but requires manual integration due to API
+                // complexity; the TIMESTAMP_QUERY feature enables the underlying support.
+                required_features: {
+                    let mut features = wgpu::Features::VULKAN_EXTERNAL_MEMORY_DMA_BUF;
+                    #[cfg(feature = "profiler")]
+                    {
+                        features |= wgpu::Features::TIMESTAMP_QUERY;
+                    }
+                    features
+                },
                 required_limits: wgpu::Limits::downlevel_defaults(),
                 // FIX (v1.5.5): Use MemoryUsage instead of default (Performance) to tell the
                 // Vulkan allocator to favor smaller memory blocks and more aggressive cleanup.

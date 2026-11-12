@@ -6,6 +6,11 @@
 use library::init::{initialize_app, AppContext};
 use std::sync::Arc;
 
+// Tracy profiling zones — only active when built with `--features tracy`.
+// **FIX (v1.5.5)**: Added Tracy zone instrumentation to the main event loop
+// for CPU timeline profiling. Each zone corresponds to a major loop phase.
+// Uses the `span!` macro which creates a scoped span that ends on drop.
+
 /// Application entry point.
 ///
 /// # Initialization order
@@ -18,6 +23,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize tracing so that tracing::info!, tracing::warn!, etc. produce output.
     // Can be overridden by RUST_LOG env var (e.g., RUST_LOG=info ./target/release/dock).
     library::error::init_tracing("dock=info,wgpu_api=warn");
+
+    // DHAT heap profiler — only active when built with `--features dhat-heap`.
+    // **FIX (v1.5.5)**: Added DHAT profiler for allocation pattern analysis.
+    // Writes dhat-heap.json on exit for viewing in the DHAT web viewer.
+    #[cfg(feature = "dhat-heap")]
+    let _profiler = dhat::Profiler::new_heap();
 
     // Catch panics and print the location so crashes can be diagnosed
     std::panic::set_hook(Box::new(|info| {
@@ -151,6 +162,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // --- MAIN EVENT LOOP ---
     loop {
         // 1. INPUT: Dispatch Wayland socket events from event queue
+        #[cfg(feature = "tracy")]
+        let _zone_wayland = tracy_client::span!("Wayland Events");
         if let Err(_e) = event_queue.dispatch_pending(&mut state) {
             break;
         }
@@ -164,6 +177,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // 2. DOMAIN EVENTS: consume the queued listener events through the
         // temporary compatibility projection. This will later become the
         // resolver -> registry pipeline.
+        #[cfg(feature = "tracy")]
+        let _zone_domain = tracy_client::span!("Domain Events");
         if state.process_pending_events() {
             state.needs_redraw = true;
             frame_scheduler.mark_content_changed();
@@ -303,6 +318,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // then each animation clock is advanced exactly once.  Advancing fades
         // before interaction used to leave a newly-started fade waiting for the
         // next polling cycle and could make popups appear frozen.
+        #[cfg(feature = "tracy")]
+        let _zone_animation = tracy_client::span!("Animation Update");
         state.update_focus_timer();
 
         let mut frame_advanced = false;
@@ -419,6 +436,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // 6. RENDER: Pass visual snapshot to render functions.
         // The first committed buffer is mandatory for every configured surface;
         // popup-only animation must never suppress initial dock presentation.
+        #[cfg(feature = "tracy")]
+        let _zone_render = tracy_client::span!("Render");
         let initial_dock_frame_due = state
             .docks
             .iter()
@@ -435,6 +454,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let should_draw = frame_scheduler.should_render(needs_any_redraw) || initial_dock_frame_due;
 
         if should_draw {
+            #[cfg(feature = "tracy")]
+            let _zone_draw = tracy_client::span!("Draw");
             // Popup fades are independent subsurfaces. Once a main-dock buffer
             // exists, menu/window-list fades can present independently. Before
             // that first buffer, always render the complete dock surface.
@@ -462,6 +483,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // animation frame.  When idle, sleep longer to reduce CPU usage.
         // FIX (v1.5.5): Use frame scheduler to compute the optimal poll timeout.
         // This replaces the fixed 8ms timeout that allowed ~125 FPS spinning.
+        #[cfg(feature = "tracy")]
+        let _zone_poll = tracy_client::span!("Poll");
         let waiting_for_layer_configure =
             state.docks.is_empty() || state.docks.iter().any(|dock| !dock.configured);
         let mut timeout_ms: i32 = if waiting_for_layer_configure {

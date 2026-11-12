@@ -95,6 +95,18 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Development error reporting with backtraces
 color-eyre = "0.6"
 
+# Profiling toolkit — all optional, zero overhead in release builds without feature flags
+tracy-client = { version = "0.16", optional = true, default-features = false, features = ["enable"] }
+dhat = { version = "0.3", optional = true }
+
+[features]
+tracy = ["dep:tracy-client"]
+dhat-heap = ["dep:dhat"]
+
+[profile.profiling]
+inherits = "release"
+debug = true
+
 [build-dependencies]
 slint-build = { version = "1.18.1" }
 
