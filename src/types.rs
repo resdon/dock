@@ -32,7 +32,6 @@ use crate::geometry::{Point, Rect};
 use crate::graphics::fade::FadeAnimation;
 use crate::models::system::OfferId;
 use crate::models::MediaWindowLink;
-use crate::render::font::FontManager;
 use crate::state::AppState;
 use crate::DesktopAction;
 
@@ -100,8 +99,6 @@ pub struct DockRenderState<'a> {
     pub icon_cache: &'a std::collections::HashMap<String, (std::sync::Arc<[u8]>, u32)>,
     /// Unity badge updates per app
     pub badges: &'a std::collections::HashMap<String, crate::models::BadgeUpdate>,
-    /// Font manager for text rendering
-    pub font_manager: &'a mut FontManager,
     /// Whether a drag operation is in progress
     pub is_dragging: bool,
     /// App ID being dragged (for reordering)

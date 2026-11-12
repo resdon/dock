@@ -24,15 +24,26 @@ use smithay_client_toolkit::dmabuf::DmabufState;
 use smithay_client_toolkit::{
     compositor::CompositorState, shell::WaylandSurface, shm::slot::SlotPool,
 };
-use wayland_client::protocol::wl_shm;
 use wayland_client::QueueHandle;
 
 use crate::config::DockConfig;
 use crate::models::system::WindowId;
-use crate::render::font::FontManager;
-use crate::render::popup::{render_window_list_surface, CaptureFrameData};
 use crate::services::pipewire_capture::PipewireCaptureService;
 use crate::state::AppState;
+
+/// PipeWire capture frame data for the window list popup.
+///
+/// **FIX (v1.5.5)**: Changed `rgba` from `Vec<u8>` to `Arc<[u8]>` so that
+/// cloning `CaptureFrameData` clones a reference count instead of copying
+/// the entire pixel array (~8MB for 1080p).
+#[derive(Clone)]
+pub struct CaptureFrameData {
+    pub width: u32,
+    pub height: u32,
+    pub rgba: std::sync::Arc<[u8]>,
+    pub original_width: u32,
+    pub original_height: u32,
+}
 use crate::state::WindowState;
 use crate::types::{DockInstance, PopupSurface, WindowListState};
 
@@ -59,10 +70,9 @@ pub fn draw_window_list_popup(
     dock: &mut DockInstance,
     qh: &QueueHandle<AppState>,
     frame: &DrawFrameData<'_>,
-    pool: &mut SlotPool,
+    _pool: &mut SlotPool,
     compositor_state: &CompositorState,
     subcompositor: Option<&wayland_client::protocol::wl_subcompositor::WlSubcompositor>,
-    font_manager: &mut FontManager,
     interaction: &crate::types::InteractionState,
     window_list_state: &WindowListState,
     pipewire_capture: Option<&std::sync::Arc<PipewireCaptureService>>,
@@ -500,7 +510,7 @@ pub fn draw_window_list_popup(
                     // buffer failure (allocation, copy, or attach) doesn't permanently
                     // freeze the popup on a stale hash. See the commit points below.
 
-                    let expected_len = geom.phys_width as usize * geom.phys_height as usize * 4;
+                    let _expected_len = geom.phys_width as usize * geom.phys_height as usize * 4;
 
                     // Build draw commands for the window list popup
                     let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::new();
@@ -892,73 +902,9 @@ pub fn draw_window_list_popup(
                         false
                     };
 
-                    // Fallback: if GPU rendering failed, use CPU rendering
+                    // GPU-only: no CPU fallback
                     if !gpu_success {
-                        popup.cached_content.resize(expected_len, 0);
-                        let windows_refs: Vec<&WindowState> = windows.iter().collect();
-                        let active_row_idx = pipewire_capture
-                            .as_ref()
-                            .map_or(0, |service| *service.active_row.lock());
-                        let active_window_row = if use_matched {
-                            matched_windows
-                                .iter()
-                                .position(|(_, si)| *si == Some(active_row_idx))
-                                .unwrap_or(0)
-                        } else {
-                            0
-                        };
-                        render_window_list_surface(
-                            &mut popup.cached_content,
-                            &geom,
-                            frame.dock_scale as f32,
-                            &windows_refs,
-                            font_manager,
-                            local_ptr_x,
-                            local_ptr_y,
-                            capture_frame_data.as_ref(),
-                            active_window_row,
-                            frame.config,
-                        );
-                        popup.cached_phys_width = geom.phys_width;
-                        popup.cached_phys_height = geom.phys_height;
-
-                        let (buffer, canvas) = match pool.create_buffer(
-                            geom.phys_width,
-                            geom.phys_height,
-                            geom.phys_width * 4,
-                            wl_shm::Format::Argb8888,
-                        ) {
-                            Ok(bc) => bc,
-                            Err(e) => {
-                                tracing::warn!(
-                                    "Failed to allocate window list popup buffer: {}",
-                                    e
-                                );
-                                return;
-                            }
-                        };
-                        if !super::copy_popup_content(canvas, &popup.cached_content) {
-                            return;
-                        }
-
-                        popup.surface.set_buffer_scale(scale_i32);
-                        if let Err(e) = buffer.attach_to(&popup.surface) {
-                            tracing::warn!("Failed to attach window list buffer: {}", e);
-                            return;
-                        }
-                        popup
-                            .surface
-                            .damage_buffer(0, 0, geom.phys_width, geom.phys_height);
-
-                        let region = compositor_state.wl_compositor().create_region(qh, ());
-                        region.add(0, 0, geom.logical_width, geom.logical_height);
-                        popup.surface.set_input_region(Some(&region));
-                        region.destroy();
-
-                        popup.surface.commit();
-                        popup.current_buffer = Some(buffer);
-                        // Commit hash only after successful CPU fallback surface commit
-                        popup.last_content_hash = content_hash;
+                        tracing::warn!("GPU rendering failed for window list popup; skipping frame");
                     }
                 } else if let Some(popup) = dock.window_list_popup.take() {
                     popup.surface.attach(None, 0, 0);

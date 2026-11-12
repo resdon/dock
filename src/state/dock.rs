@@ -245,8 +245,11 @@ impl AppState {
     /// sends its matching configure event.
     pub fn sync_dock_surface_width(&mut self, app_count: usize) -> bool {
         let tray_item_count = self.tray_items.len();
-        let desired_width =
-            crate::render::tray::preferred_surface_width_with_tray(app_count, tray_item_count);
+        let desired_width = {
+            let app_count = app_count.max(1) as i32;
+            let app_row_width = app_count * (48 + 8) - 8;
+            (app_row_width + 24).max(72) as u32
+        };
         let hidden = self.hide_state.is_fully_hidden();
         let qh = self.qh.clone();
         let compositor_state = &self.compositor_state;
@@ -267,20 +270,21 @@ impl AppState {
             dock.configured = false;
             dock.status_strip_rendered = false;
             if let Some(widget_bar) = dock.status_widget_bar.as_mut() {
-                let (bar_x, bar_y) = crate::render::widget_bar::widget_bar_position(
-                    desired_width as i32,
-                    tray_item_count,
-                    dock.height as i32,
-                );
-                widget_bar.position = (bar_x, bar_y);
-                widget_bar.subsurface.set_position(bar_x, bar_y);
+                let tray_box_width = 76;
+                let app_row_height = crate::state::dock::DOCK_HEIGHT as i32;
+                let y = (app_row_height - 72) / 2;
+                let tray_width = if tray_item_count == 0 { 0 } else { tray_box_width };
+                let bar_x = desired_width as i32 + 8 + tray_width + if tray_width > 0 { 8 } else { 0 };
+                widget_bar.position = (bar_x, y);
+                widget_bar.subsurface.set_position(bar_x, y);
             }
             if let Some(system_bar) = dock.system_status_bar.as_mut() {
-                let (bar_x, bar_y) = crate::render::tray::system_bar_position(desired_width as i32);
+                let strip_width = desired_width.max(360) as i32;
+                let bar_x = (desired_width as i32 - strip_width) / 2;
+                let bar_y = crate::state::dock::DOCK_HEIGHT as i32 + 6;
                 system_bar.position = (bar_x, bar_y);
                 system_bar.subsurface.set_position(bar_x, bar_y);
-                system_bar.width =
-                    crate::render::tray::system_bar_logical_width(desired_width as i32) as u32;
+                system_bar.width = strip_width as u32;
             }
             // Only change the width; use config dock height to keep the dock positioned correctly
             let dock_height = self.config.dock_height;

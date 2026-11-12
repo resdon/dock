@@ -269,7 +269,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if state.rclone_panel_open && !state.hide_state.is_fully_hidden() {
                     state_changed = true;
                 }
-                let page_count = state.rclone_snapshot.mounts.len().div_ceil(library::render::rclone::ROWS_PER_PAGE);
+                let page_count = state.rclone_snapshot.mounts.len().div_ceil(8);
                 state.rclone_page = state.rclone_page.min(page_count.saturating_sub(1));
             }
         }
@@ -284,7 +284,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if state.process_panel_open && !state.hide_state.is_fully_hidden() {
                     state_changed = true;
                 }
-                let page_count = state.process_snapshot.processes.len().div_ceil(library::render::processes::ROWS_PER_PAGE);
+                let page_count = state.process_snapshot.processes.len().div_ceil(8);
                 state.process_page = state.process_page.min(page_count.saturating_sub(1));
             }
         }

@@ -7,16 +7,72 @@ use wayland_client::Proxy;
 use smithay_client_toolkit::{
     compositor::CompositorState, dmabuf::DmabufState, shell::WaylandSurface, shm::slot::SlotPool,
 };
-use wayland_client::{protocol::wl_shm, QueueHandle};
+use wayland_client::QueueHandle;
 
 use crate::models::SystemBarSnapshot;
-use crate::render::tray::{
-    render_system_status_into_canvas, render_tray_icons_into_canvas, system_bar_logical_width,
-    system_bar_position, tray_bar_position, tray_icon_position, tray_logical_size,
-    SYSTEM_BAR_HEIGHT, TRAY_ICON_SIZE,
-};
 use crate::state::AppState;
 use crate::types::{DockInstance, PopupSurface};
+
+// Tray layout constants
+pub const TRAY_ICON_SIZE: i32 = 24;
+const TRAY_SPACING: i32 = 8;
+const TRAY_PADDING_Y: i32 = 8;
+const TRAY_BOX_WIDTH: i32 = 76;
+const TRAY_HEIGHT: i32 = 72;
+const TRAY_GAP: i32 = 6;
+pub const SYSTEM_BAR_HEIGHT: i32 = 34;
+const SYSTEM_BAR_MIN_WIDTH: i32 = 360;
+const SIDE_BOX_GAP: i32 = 8;
+
+fn tray_logical_size(item_count: usize) -> (i32, i32) {
+    if item_count == 0 {
+        return (0, TRAY_HEIGHT);
+    }
+    let rows = item_count.div_ceil(2);
+    let content_height =
+        rows as i32 * TRAY_ICON_SIZE + rows.saturating_sub(1) as i32 * TRAY_SPACING;
+    let height = (content_height + TRAY_PADDING_Y * 2).max(TRAY_HEIGHT);
+    (TRAY_BOX_WIDTH, height)
+}
+
+fn tray_icon_position(index: usize, item_count: usize) -> Option<(i32, i32)> {
+    if index >= item_count || item_count == 0 {
+        return None;
+    }
+    let (width, height) = tray_logical_size(item_count);
+    let rows = item_count.div_ceil(2);
+    let row = index / 2;
+    let first_index_in_row = row * 2;
+    let items_in_row = (item_count - first_index_in_row).min(2) as i32;
+    let row_width = items_in_row * TRAY_ICON_SIZE + items_in_row.saturating_sub(1) * TRAY_SPACING;
+    let column = (index % 2) as i32;
+    let x = (width - row_width) / 2 + column * (TRAY_ICON_SIZE + TRAY_SPACING);
+    let content_height =
+        rows as i32 * TRAY_ICON_SIZE + rows.saturating_sub(1) as i32 * TRAY_SPACING;
+    let top = (height - content_height) / 2;
+    let y = top + row as i32 * (TRAY_ICON_SIZE + TRAY_SPACING);
+    Some((x, y))
+}
+
+fn tray_bar_position(dock_width: i32, item_count: usize) -> (i32, i32) {
+    let (_, height) = tray_logical_size(item_count);
+    let app_row_height = crate::state::dock::DOCK_HEIGHT as i32;
+    let base_y = (app_row_height - TRAY_HEIGHT) / 2;
+    let bottom = base_y + TRAY_HEIGHT;
+    (dock_width.max(0) + SIDE_BOX_GAP, bottom - height)
+}
+
+fn system_bar_logical_width(dock_width: i32) -> i32 {
+    dock_width.max(SYSTEM_BAR_MIN_WIDTH)
+}
+
+fn system_bar_position(dock_width: i32) -> (i32, i32) {
+    let strip_width = system_bar_logical_width(dock_width);
+    (
+        (dock_width - strip_width) / 2,
+        crate::state::dock::DOCK_HEIGHT as i32 + TRAY_GAP,
+    )
+}
 
 fn ensure_surface(
     slot: &mut Option<PopupSurface>,
@@ -81,13 +137,12 @@ fn set_interactive_region(
 pub fn draw_left_tray_bar(
     dock: &mut DockInstance,
     qh: &QueueHandle<AppState>,
-    pool: &mut SlotPool,
+    _pool: &mut SlotPool,
     compositor: &CompositorState,
     subcompositor: Option<&wayland_client::protocol::wl_subcompositor::WlSubcompositor>,
     items: &[crate::models::TrayItem],
     visible: bool,
     alpha: f32,
-    font_manager: &mut crate::render::font::FontManager,
     mut gpu_context: Option<&mut wgpu_api::Renderer>,
     dmabuf_state: &DmabufState,
     dmabuf_pool: &crate::render::dmabuf_export::DmabufPool,
@@ -237,46 +292,9 @@ pub fn draw_left_tray_bar(
         false
     };
 
-    // Fallback: CPU rendering if GPU failed
+    // GPU-only: no CPU fallback
     if !gpu_success {
-        if !items.is_empty() {
-            render_tray_icons_into_canvas(
-                &mut bar.cached_content,
-                phys_width as u32,
-                phys_height as u32,
-                scale,
-                items,
-                1.0,
-                font_manager,
-                std::env::var_os("DOCK_RENDER_DEBUG").is_some(),
-            );
-            apply_surface_alpha(&mut bar.cached_content, alpha);
-        }
-
-        let (buffer, canvas) = match pool.create_buffer(
-            phys_width,
-            phys_height,
-            phys_width * 4,
-            wl_shm::Format::Argb8888,
-        ) {
-            Ok(bc) => bc,
-            Err(e) => {
-                tracing::warn!("Failed to allocate left tray buffer: {}", e);
-                return;
-            }
-        };
-        if !super::copy_popup_content(canvas, &bar.cached_content) {
-            return;
-        }
-        bar.surface.set_buffer_scale(scale.round().max(1.0) as i32);
-        if let Err(e) = buffer.attach_to(&bar.surface) {
-            tracing::warn!("Failed to attach left tray buffer: {}", e);
-            return;
-        }
-        bar.surface.damage_buffer(0, 0, phys_width, phys_height);
-        set_interactive_region(bar, visible && !items.is_empty(), compositor, qh);
-        bar.surface.commit();
-        bar.current_buffer = Some(buffer);
+        tracing::warn!("GPU rendering failed for left tray bar; skipping frame");
     }
 }
 
@@ -286,13 +304,12 @@ pub fn draw_left_tray_bar(
 pub fn draw_bottom_system_bar(
     dock: &mut DockInstance,
     qh: &QueueHandle<AppState>,
-    pool: &mut SlotPool,
+    _pool: &mut SlotPool,
     compositor: &CompositorState,
     subcompositor: Option<&wayland_client::protocol::wl_subcompositor::WlSubcompositor>,
     snapshot: &SystemBarSnapshot,
     visible: bool,
     alpha: f32,
-    font_manager: &mut crate::render::font::FontManager,
     mut gpu_context: Option<&mut wgpu_api::Renderer>,
     dmabuf_state: &DmabufState,
     dmabuf_pool: &crate::render::dmabuf_export::DmabufPool,
@@ -551,57 +568,9 @@ pub fn draw_bottom_system_bar(
         }
     };
 
-    // Fallback: CPU rendering if GPU failed
+    // GPU-only: no CPU fallback
     if !gpu_success {
-        if visible {
-            render_system_status_into_canvas(
-                &mut bar.cached_content,
-                phys_width as u32,
-                phys_height as u32,
-                scale,
-                snapshot,
-                1.0,
-                font_manager,
-                std::env::var_os("DOCK_RENDER_DEBUG").is_some(),
-            );
-            apply_surface_alpha(&mut bar.cached_content, alpha);
-        }
-
-        let (buffer, canvas) = match pool.create_buffer(
-            phys_width,
-            phys_height,
-            phys_width * 4,
-            wl_shm::Format::Argb8888,
-        ) {
-            Ok(bc) => bc,
-            Err(e) => {
-                tracing::warn!("Failed to allocate bottom system status buffer: {}", e);
-                return;
-            }
-        };
-        if !super::copy_popup_content(canvas, &bar.cached_content) {
-            return;
-        }
-        bar.surface.set_buffer_scale(scale.round().max(1.0) as i32);
-        if let Err(e) = buffer.attach_to(&bar.surface) {
-            tracing::warn!("Failed to attach bottom system status buffer: {}", e);
-            return;
-        }
-        bar.surface.damage_buffer(0, 0, phys_width, phys_height);
-        set_interactive_region(bar, false, compositor, qh);
-        bar.surface.commit();
-        bar.current_buffer = Some(buffer);
+        tracing::warn!("GPU rendering failed for bottom system bar; skipping frame");
     }
 }
 
-fn apply_surface_alpha(pixels: &mut [u8], alpha: f32) {
-    let alpha = alpha.clamp(0.0, 1.0);
-    if alpha >= 0.999 {
-        return;
-    }
-    for pixel in pixels.chunks_exact_mut(4) {
-        for channel in 0..4 {
-            pixel[channel] = (pixel[channel] as f32 * alpha).round() as u8;
-        }
-    }
-}

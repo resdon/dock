@@ -19,7 +19,6 @@ use crate::Rect;
 use super::draw::DrawFrameData;
 
 use crate::models::{BadgeUpdate, BluetoothSnapshot, SystemBarSnapshot, TrayItem};
-use crate::render::font::FontManager;
 
 static GPU_BOUNCE_ANIMATIONS: std::sync::OnceLock<parking_lot::Mutex<HashMap<String, u32>>> =
     std::sync::OnceLock::new();
@@ -69,7 +68,6 @@ pub fn draw_main_dock(
     frame: &DrawFrameData<'_>,
     _compositor_state: &CompositorState,
     _subcompositor: Option<&wayland_client::protocol::wl_subcompositor::WlSubcompositor>,
-    _font_manager: &mut FontManager,
     _hide_state: &mut AutoHideState,
     icon_cache: &HashMap<String, (Arc<[u8]>, u32)>,
     _loading_apps: &HashSet<String>,

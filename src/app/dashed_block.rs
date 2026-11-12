@@ -13,12 +13,9 @@
 use crate::state::AppState;
 use smithay_client_toolkit::{dmabuf::DmabufState, shell::WaylandSurface, shm::slot::SlotPool};
 use wayland_client::Proxy;
-use wayland_client::protocol::wl_shm;
 use wayland_client::QueueHandle;
 
 use crate::config::DockConfig;
-use crate::render::dashed_block::render_dashed_block;
-use crate::render::font::FontManager;
 use crate::types::DockInstance;
 use wgpu_api::Renderer as WgpuRenderer;
 
@@ -38,9 +35,8 @@ use wgpu_api::Renderer as WgpuRenderer;
 pub fn draw_dashed_block(
     dock: &mut DockInstance,
     qh: &QueueHandle<AppState>,
-    pool: &mut SlotPool,
+    _pool: &mut SlotPool,
     alpha: f32,
-    font_manager: &mut FontManager,
     config: &DockConfig,
     mut gpu_context: Option<&mut WgpuRenderer>,
     dmabuf_state: &DmabufState,
@@ -246,75 +242,28 @@ pub fn draw_dashed_block(
         }
     }
 
-    // CPU fallback rendering
-    fallback_dashed_block_cpu(
-        dock,
-        pool,
-        phys_width,
-        phys_height,
-        scale,
-        a,
-        font_manager,
-        config,
-    );
+    // GPU-only: no CPU fallback
+    tracing::warn!("GPU rendering failed for dashed block; skipping frame");
 }
 
-/// CPU fallback rendering for the dashed block
-fn fallback_dashed_block_cpu(
-    dock: &mut DockInstance,
-    pool: &mut SlotPool,
-    phys_width: i32,
-    phys_height: i32,
-    scale: f64,
-    alpha: f32,
-    font_manager: &mut FontManager,
-    config: &DockConfig,
-) {
-    let block = match &mut dock.dashed_block_surface {
-        Some(b) => b,
-        None => return,
-    };
-    let expected_len = phys_width as usize * phys_height as usize * 4;
-    block.cached_content.resize(expected_len, 0);
-    block.cached_content.fill(0);
+/// Hit-test for the Bluetooth icon on the dashed block.
+///
+/// The Bluetooth icon is in the top row, right column of the 2x2 grid.
+pub fn bluetooth_icon_at(x: f64, y: f64, config: &DockConfig) -> bool {
+    let icon_size = config.dashed_block_icon_size as i32;
+    let icon_gap = config.dashed_block_icon_gap as i32;
+    let block_width = config.dashed_block_width as i32;
+    let block_height = config.dashed_block_height as i32;
 
-    render_dashed_block(
-        &mut block.cached_content,
-        phys_width as u32,
-        phys_height as u32,
-        scale,
-        alpha,
-        font_manager,
-        config,
-    );
-    block.cached_phys_width = phys_width;
-    block.cached_phys_height = phys_height;
+    // Two rows, two columns layout
+    let row_start_x = (block_width - (2 * icon_size + icon_gap)) / 2;
+    let total_height = 2 * icon_size + icon_gap;
+    let top_row_y = (block_height - total_height) / 2;
 
-    let (buffer, canvas) = match pool.create_buffer(
-        phys_width,
-        phys_height,
-        phys_width * 4,
-        wl_shm::Format::Argb8888,
-    ) {
-        Ok(b) => b,
-        Err(_) => return,
-    };
+    // Bluetooth icon is at top row, right column (index 1)
+    let bt_x = row_start_x + icon_size + icon_gap;
+    let bt_y = top_row_y;
 
-    if !crate::app::copy_popup_content(canvas, &block.cached_content) {
-        return;
-    }
-
-    block
-        .surface
-        .wl_surface()
-        .set_buffer_scale(scale.round().max(1.0) as i32);
-    if buffer.attach_to(block.surface.wl_surface()).is_err() {
-        return;
-    }
-    block
-        .surface
-        .wl_surface()
-        .damage_buffer(0, 0, phys_width, phys_height);
-    block.surface.wl_surface().commit();
-    block.current_buffer = Some(buffer);
+    let (x, y) = (x.round() as i32, y.round() as i32);
+    (bt_x..bt_x + icon_size).contains(&x) && (bt_y..bt_y + icon_size).contains(&y)
 }

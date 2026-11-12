@@ -49,8 +49,8 @@ use wayland_protocols_wlr::foreign_toplevel::v1::client::zwlr_foreign_toplevel_m
 use crate::graphics::hide::AutoHideState;
 use crate::models::BadgeUpdate;
 use crate::registry::SystemRegistry;
-use crate::render::font::FontManager;
 
+use crate::app::dashed_block::bluetooth_icon_at;
 use crate::app::icon_load::IconLoader;
 use crate::events::DomainEvent;
 use crate::models::system::{AppId, OutputId, ProcessId, WindowId};
@@ -125,7 +125,6 @@ pub struct AppState {
     pub width: i32,
     pub height: i32,
     pub toplevel_manager: Option<ZwlrForeignToplevelManagerV1>,
-    pub font_manager: FontManager,
     pub wl_seat: Option<WlSeat>,
     pub wl_pointer: Option<WlPointer>,
 
@@ -343,7 +342,14 @@ impl AppState {
                 .as_ref()
                 .is_some_and(|bar| bar.surface.id() == surface.id())
         });
-        let tray_height = crate::render::tray::tray_logical_size(self.tray_items.len()).1;
+        let tray_height = {
+            let item_count = self.tray_items.len();
+            if item_count == 0 { 72 } else {
+                let rows = item_count.div_ceil(2);
+                let content_height = rows as i32 * 24 + rows.saturating_sub(1) as i32 * 8;
+                (content_height + 16).max(72)
+            }
+        };
         if !is_tray_surface
             || self.tray_items.is_empty()
             || local_x < 0.0
@@ -352,11 +358,28 @@ impl AppState {
         {
             return None;
         }
-        crate::render::tray::tray_item_at(
-            local_x.round() as i32,
-            local_y.round() as i32,
-            self.tray_items.len(),
-        )
+        let item_count = self.tray_items.len();
+        let (width, height) = if item_count == 0 { (0, 72) } else {
+            let rows = item_count.div_ceil(2);
+            let content_height = rows as i32 * 24 + rows.saturating_sub(1) as i32 * 8;
+            let h = (content_height + 16).max(72);
+            (76, h)
+        };
+        let x = local_x.round() as i32;
+        let y = local_y.round() as i32;
+        (0..item_count).find(|index| {
+            let rows = item_count.div_ceil(2);
+            let row = *index / 2;
+            let first_index_in_row = row * 2;
+            let items_in_row = (item_count - first_index_in_row).min(2) as i32;
+            let row_width = items_in_row * 24 + items_in_row.saturating_sub(1) * 8;
+            let column = (*index % 2) as i32;
+            let icon_x = (width - row_width) / 2 + column * (24 + 8);
+            let content_height = rows as i32 * 24 + rows.saturating_sub(1) as i32 * 8;
+            let top = (height - content_height) / 2;
+            let icon_y = top + row as i32 * (24 + 8);
+            (icon_x..icon_x + 24).contains(&x) && (icon_y..icon_y + 24).contains(&y)
+        })
     }
 
     /// Returns the parent-dock-local offset for a subsurface/popup surface, if known.
@@ -440,8 +463,18 @@ impl AppState {
 
     fn widget_button_at_surface(&self, surface: &WlSurface, x: f64, y: f64, index: usize) -> bool {
         let on_widget_bar = self.is_status_widget_bar_surface(surface);
-        on_widget_bar
-            && crate::render::widget_bar::button_at(index, x.round() as i32, y.round() as i32)
+        if !on_widget_bar {
+            return false;
+        }
+        // Two-column, two-row arrangement: storage/processes above, audio/Bluetooth below
+        let button_xs = [7, 41, 7, 41];
+        let button_ys = [5, 5, 39, 39];
+        let button_size = 28;
+        let (Some(left), Some(top)) = (button_xs.get(index).copied(), button_ys.get(index).copied()) else {
+            return false;
+        };
+        let (x, y) = (x.round() as i32, y.round() as i32);
+        (left..left + button_size).contains(&x) && (top..top + button_size).contains(&y)
     }
 
     pub fn is_status_widget_bar_surface(&self, surface: &WlSurface) -> bool {
@@ -488,13 +521,14 @@ impl AppState {
 
     pub fn audio_button_at_surface(&self, surface: &WlSurface, x: f64, y: f64) -> bool {
         if self.is_audio_player_surface(surface) {
-            return crate::render::audio_player::player_area_contains(
-                x.round() as i32,
-                y.round() as i32,
-                self.audio_player_expanded_on_surface(surface),
-            );
+            let (x, y) = (x.round() as i32, y.round() as i32);
+            let expanded = self.audio_player_expanded_on_surface(surface);
+            if expanded {
+                return (0..240).contains(&x) && (0..60).contains(&y);
+            }
+            return (0..120).contains(&x) && (0..60).contains(&y);
         }
-        self.widget_button_at_surface(surface, x, y, crate::render::widget_bar::AUDIO_INDEX)
+        self.widget_button_at_surface(surface, x, y, 2)
     }
 
     pub fn media_control_at_surface(
@@ -506,15 +540,25 @@ impl AppState {
         if !self.is_audio_player_surface(surface) || self.audio_snapshot.media_status.is_none() {
             return None;
         }
-        crate::render::audio_player::control_at(
-            x.round() as i32,
-            y.round() as i32,
-            self.audio_player_expanded_on_surface(surface),
-        )
+        let (x, y) = (x.round() as i32, y.round() as i32);
+        let expanded = self.audio_player_expanded_on_surface(surface);
+        // Play/pause button hit area
+        if (100..120).contains(&x) && (20..40).contains(&y) {
+            return Some(crate::models::MediaControl::PlayPause);
+        }
+        if expanded {
+            if (80..100).contains(&x) && (20..40).contains(&y) {
+                return Some(crate::models::MediaControl::Previous);
+            }
+            if (120..140).contains(&x) && (20..40).contains(&y) {
+                return Some(crate::models::MediaControl::Next);
+            }
+        }
+        None
     }
 
     pub fn bluetooth_button_at_surface(&self, surface: &WlSurface, x: f64, y: f64) -> bool {
-        self.widget_button_at_surface(surface, x, y, crate::render::widget_bar::BLUETOOTH_INDEX)
+        self.widget_button_at_surface(surface, x, y, 3)
     }
 
     /// Check if the click is on the Bluetooth icon inside the dashed block widget.
@@ -527,7 +571,7 @@ impl AppState {
                 .as_ref()
                 .is_some_and(|block| block.surface.wl_surface() == surface)
         });
-        on_dashed_block && crate::render::dashed_block::bluetooth_icon_at(x, y, &self.config)
+        on_dashed_block && bluetooth_icon_at(x, y, &self.config)
     }
 
     /// Calculate the screen position for the Bluetooth widget window.
@@ -611,11 +655,11 @@ impl AppState {
     }
 
     pub fn rclone_button_at_surface(&self, surface: &WlSurface, x: f64, y: f64) -> bool {
-        self.widget_button_at_surface(surface, x, y, crate::render::widget_bar::RCLONE_INDEX)
+        self.widget_button_at_surface(surface, x, y, 0)
     }
 
     pub fn process_button_at_surface(&self, surface: &WlSurface, x: f64, y: f64) -> bool {
-        self.widget_button_at_surface(surface, x, y, crate::render::widget_bar::PROCESS_INDEX)
+        self.widget_button_at_surface(surface, x, y, 1)
     }
 
     pub fn set_rclone_monitor_enabled(&self, enabled: bool) {

@@ -9,7 +9,6 @@ use smithay_client_toolkit::dmabuf::DmabufState;
 use smithay_client_toolkit::{
     compositor::CompositorState, shell::WaylandSurface, shm::slot::SlotPool,
 };
-use wayland_client::protocol::wl_shm;
 use wayland_client::QueueHandle;
 
 use crate::config::DockConfig;
@@ -23,10 +22,9 @@ pub fn draw_context_menu_popup(
     dock: &mut DockInstance,
     qh: &QueueHandle<AppState>,
     frame: &DrawFrameData<'_>,
-    pool: &mut SlotPool,
+    _pool: &mut SlotPool,
     compositor_state: &CompositorState,
     subcompositor: Option<&wayland_client::protocol::wl_subcompositor::WlSubcompositor>,
-    font_manager: &mut crate::render::font::FontManager,
     menu_state: &MenuState,
     interaction: &crate::types::InteractionState,
     mut gpu_context: Option<&mut wgpu_api::Renderer>,
@@ -290,56 +288,9 @@ pub fn draw_context_menu_popup(
                 false
             };
 
-            // Fallback: if GPU rendering failed, use CPU rendering
+            // GPU-only: no CPU fallback
             if !gpu_success {
-                use crate::render::popup::render_context_menu_surface;
-                let expected_len = geom.phys_width as usize * geom.phys_height as usize * 4;
-                popup.cached_content.resize(expected_len, 0);
-                render_context_menu_surface(
-                    &mut popup.cached_content,
-                    &geom,
-                    frame.dock_scale as f32,
-                    menu_state,
-                    font_manager,
-                    local_ptr_x,
-                    local_ptr_y,
-                    frame.config,
-                );
-                popup.cached_phys_width = geom.phys_width;
-                popup.cached_phys_height = geom.phys_height;
-
-                let (buffer, canvas) = match pool.create_buffer(
-                    geom.phys_width,
-                    geom.phys_height,
-                    geom.phys_width * 4,
-                    wl_shm::Format::Argb8888,
-                ) {
-                    Ok(bc) => bc,
-                    Err(e) => {
-                        tracing::warn!("Failed to allocate context menu popup buffer: {}", e);
-                        return;
-                    }
-                };
-                if !super::copy_popup_content(canvas, &popup.cached_content) {
-                    return;
-                }
-
-                popup.surface.set_buffer_scale(scale_i32);
-                if let Err(e) = buffer.attach_to(&popup.surface) {
-                    tracing::warn!("Failed to attach context menu buffer: {}", e);
-                    return;
-                }
-                popup
-                    .surface
-                    .damage_buffer(0, 0, geom.phys_width, geom.phys_height);
-
-                let region = compositor_state.wl_compositor().create_region(qh, ());
-                region.add(0, 0, geom.logical_width, geom.logical_height);
-                popup.surface.set_input_region(Some(&region));
-                region.destroy();
-
-                popup.surface.commit();
-                popup.current_buffer = Some(buffer);
+                tracing::warn!("GPU rendering failed for context menu popup; skipping frame");
             }
         } else if let Some(popup) = dock.context_menu_popup.take() {
             popup.surface.attach(None, 0, 0);

@@ -1,31 +1,41 @@
 //! Audio player bar widget.
 //!
 //! Always-visible media player card showing the current track and controls.
+//! Renders via wgpu GPU using DrawCommands and DMA-BUF.
 
 use smithay_client_toolkit::{
-    compositor::CompositorState, dmabuf::DmabufState, shell::WaylandSurface, shm::slot::SlotPool,
+    compositor::CompositorState, dmabuf::DmabufState, shell::WaylandSurface,
 };
-use wayland_client::{protocol::wl_shm, QueueHandle};
+use wayland_client::{Proxy, QueueHandle};
 
 use crate::{
     models::AudioSnapshot,
-    render::{audio_player, font::FontManager},
     state::AppState,
     types::{DockInstance, PopupSurface},
 };
 
+// Audio player bar layout constants
+const COMPACT_X: i32 = 0;
+const COMPACT_WIDTH: i32 = 120;
+const PLAYER_WIDTH: i32 = 240;
+const PLAYER_HEIGHT: i32 = 60;
+
+fn player_position() -> (i32, i32) {
+    (COMPACT_X, 0)
+}
+
 pub fn draw_audio_player_bar(
     dock: &mut DockInstance,
     qh: &QueueHandle<AppState>,
-    pool: &mut SlotPool,
+    _pool: &mut smithay_client_toolkit::shm::slot::SlotPool,
     compositor: &CompositorState,
     subcompositor: Option<&wayland_client::protocol::wl_subcompositor::WlSubcompositor>,
     snapshot: &AudioSnapshot,
     visible: bool,
     alpha: f32,
-    font: &mut FontManager,
-    _gpu_context: Option<&mut wgpu_api::Renderer>,
-    _dmabuf_state: &DmabufState,
+    mut gpu_context: Option<&mut wgpu_api::Renderer>,
+    dmabuf_state: &DmabufState,
+    dmabuf_pool: &crate::render::dmabuf_export::DmabufPool,
 ) {
     if dock.audio_player_bar.is_none() {
         let surface = compositor.create_surface(qh);
@@ -53,10 +63,10 @@ pub fn draw_audio_player_bar(
         });
     }
 
-    let (x, y) = audio_player::player_position();
+    let (x, y) = player_position();
     let scale = dock.scale_factor.max(0.25);
-    let pw = (audio_player::PLAYER_WIDTH as f64 * scale).round().max(1.0) as i32;
-    let ph = (audio_player::PLAYER_HEIGHT as f64 * scale)
+    let pw = (PLAYER_WIDTH as f64 * scale).round().max(1.0) as i32;
+    let ph = (PLAYER_HEIGHT as f64 * scale)
         .round()
         .max(1.0) as i32;
     let expanded = dock.audio_player_expanded;
@@ -66,42 +76,101 @@ pub fn draw_audio_player_bar(
     };
     bar.position = (x, y);
     bar.subsurface.set_position(x, y);
-    bar.width = audio_player::PLAYER_WIDTH as u32;
-    bar.height = audio_player::PLAYER_HEIGHT as u32;
-    bar.cached_content.resize(pw as usize * ph as usize * 4, 0);
-    bar.cached_content.fill(0);
+    bar.width = PLAYER_WIDTH as u32;
+    bar.height = PLAYER_HEIGHT as u32;
+    // GPU rendering via wgpu-api using DrawCommands
+    let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::new();
+    let scale_f32 = scale as f32;
 
-    // GPU rendering via wgpu-api not yet integrated — using CPU rendering
-    // CPU fallback path
-    audio_player::render(
-        &mut bar.cached_content,
-        pw as u32,
-        ph as u32,
-        scale,
-        alpha,
-        snapshot,
-        font,
-        expanded,
-    );
-    bar.cached_phys_width = pw;
-    bar.cached_phys_height = ph;
+    // Background panel
+    draw_commands.push(wgpu_api::DrawCommand::Rectangle {
+        rect: wgpu_api::Rect::new(0.0, 0.0, pw as f32, ph as f32),
+        color: wgpu_api::Color {
+            r: 45.0 / 255.0,
+            g: 45.0 / 255.0,
+            b: 56.0 / 255.0,
+            a: alpha,
+        },
+        radius: 14.0 * scale_f32,
+        stroke: None,
+        stroke_width: 0.0,
+    });
 
-    let (buffer, canvas) = match pool.create_buffer(pw, ph, pw * 4, wl_shm::Format::Argb8888) {
-        Ok(bc) => bc,
-        Err(e) => {
-            tracing::warn!("Failed to allocate audio player buffer: {}", e);
-            return;
+    // Track info
+    if let Some(ref title) = snapshot.media_title {
+        let short = title.chars().take(20).collect::<String>()
+            + if title.chars().count() > 20 { "..." } else { "" };
+        draw_commands.push(wgpu_api::DrawCommand::Text {
+            position: wgpu_api::Point::new(8.0 * scale_f32, 16.0 * scale_f32),
+            content: short,
+            font_size: 10.0 * scale_f32,
+            color: wgpu_api::Color {
+                r: 232.0 / 255.0,
+                g: 229.0 / 255.0,
+                b: 219.0 / 255.0,
+                a: alpha,
+            },
+            align: 0.0,
+        });
+    }
+    if let Some(ref artist) = snapshot.media_artist {
+        let short = artist.chars().take(20).collect::<String>()
+            + if artist.chars().count() > 20 { "..." } else { "" };
+        draw_commands.push(wgpu_api::DrawCommand::Text {
+            position: wgpu_api::Point::new(8.0 * scale_f32, 30.0 * scale_f32),
+            content: short,
+            font_size: 8.0 * scale_f32,
+            color: wgpu_api::Color {
+                r: 160.0 / 255.0,
+                g: 160.0 / 255.0,
+                b: 170.0 / 255.0,
+                a: alpha,
+            },
+            align: 0.0,
+        });
+    }
+
+    // Render to GPU texture via DMA-BUF pool
+    let gpu_success = if let Some(ref mut renderer) = gpu_context {
+        if let (Some(adapter), Some(device)) = (renderer.adapter(), renderer.device()) {
+            match dmabuf_pool.acquire_texture(
+                adapter, device, qh, dmabuf_state,
+                pw as u32, ph as u32,
+            ) {
+                Ok((texture, export_info)) => {
+                    if renderer.render_to_texture(
+                        &texture, pw as u32, ph as u32,
+                        1.0, &draw_commands,
+                    ).is_err() {
+                        false
+                    } else {
+                        match crate::render::dmabuf_export::create_buffer_from_export(
+                            dmabuf_state, qh, &export_info,
+                        ) {
+                            Ok(wl_buffer) => {
+                                dmabuf_pool.set_buffer_id(wl_buffer.id());
+                                bar.surface.set_buffer_scale(scale.round().max(1.0) as i32);
+                                bar.surface.attach(Some(&wl_buffer), 0, 0);
+                                bar.surface.damage_buffer(0, 0, pw, ph);
+                                true
+                            }
+                            Err(_) => false,
+                        }
+                    }
+                }
+                Err(_) => false,
+            }
+        } else {
+            false
         }
+    } else {
+        false
     };
-    if !super::copy_popup_content(canvas, &bar.cached_content) {
+
+    if !gpu_success {
+        tracing::warn!("GPU rendering failed for audio player bar; skipping frame");
         return;
     }
-    bar.surface.set_buffer_scale(scale.round().max(1.0) as i32);
-    if let Err(e) = buffer.attach_to(&bar.surface) {
-        tracing::warn!("Failed to attach audio player buffer: {}", e);
-        return;
-    }
-    bar.surface.damage_buffer(0, 0, pw, ph);
     let region_key = if !visible {
         0
     } else if expanded {
@@ -117,19 +186,9 @@ pub fn draw_audio_player_bar(
         } else {
             let region = compositor.wl_compositor().create_region(qh, ());
             if expanded {
-                region.add(
-                    0,
-                    0,
-                    audio_player::PLAYER_WIDTH,
-                    audio_player::PLAYER_HEIGHT,
-                );
+                region.add(0, 0, PLAYER_WIDTH, PLAYER_HEIGHT);
             } else {
-                region.add(
-                    audio_player::COMPACT_X,
-                    audio_player::COMPACT_Y - 45,
-                    audio_player::COMPACT_WIDTH,
-                    audio_player::PLAYER_HEIGHT - (audio_player::COMPACT_Y - 45),
-                );
+                region.add(COMPACT_X, 0, COMPACT_WIDTH, PLAYER_HEIGHT);
             }
             bar.surface.set_input_region(Some(&region));
             region.destroy();
@@ -137,5 +196,4 @@ pub fn draw_audio_player_bar(
         bar.input_region_key = region_key;
     }
     bar.surface.commit();
-    bar.current_buffer = Some(buffer);
 }

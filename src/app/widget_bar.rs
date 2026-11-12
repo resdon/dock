@@ -7,21 +7,37 @@ use wayland_client::Proxy;
 use smithay_client_toolkit::{
     compositor::CompositorState, dmabuf::DmabufState, shell::WaylandSurface, shm::slot::SlotPool,
 };
-use wayland_client::{protocol::wl_shm, QueueHandle};
+use wayland_client::QueueHandle;
 
 use crate::models::BluetoothSnapshot;
-use crate::render::widget_bar::{
-    render_status_widget_bar, widget_bar_position, WIDGET_BAR_HEIGHT, WIDGET_BAR_WIDTH,
-};
 use crate::state::AppState;
 use crate::types::{DockInstance, PopupSurface};
+
+// Widget bar layout constants
+const WIDGET_BAR_WIDTH: i32 = 76;
+const WIDGET_BAR_HEIGHT: i32 = 72;
+const WIDGET_BAR_GAP: i32 = 8;
+
+fn widget_bar_position(dock_width: i32, tray_item_count: usize, _surface_height: i32) -> (i32, i32) {
+    let tray_box_width = 76;
+    let app_row_height = crate::state::dock::DOCK_HEIGHT as i32;
+    let y = (app_row_height - WIDGET_BAR_HEIGHT) / 2;
+    let tray_width = if tray_item_count == 0 { 0 } else { tray_box_width };
+    (
+        dock_width.max(0)
+            + WIDGET_BAR_GAP
+            + tray_width
+            + if tray_width > 0 { WIDGET_BAR_GAP } else { 0 },
+        y,
+    )
+}
 
 /// Draws the four utility controls in a persistent subsurface to the right of
 /// the tray app box.
 pub fn draw_status_widget_bar(
     dock: &mut DockInstance,
     qh: &QueueHandle<AppState>,
-    pool: &mut SlotPool,
+    _pool: &mut SlotPool,
     compositor_state: &CompositorState,
     subcompositor: Option<&wayland_client::protocol::wl_subcompositor::WlSubcompositor>,
     bluetooth: &BluetoothSnapshot,
@@ -206,53 +222,8 @@ pub fn draw_status_widget_bar(
         }
     };
 
-    // Fallback: CPU rendering if GPU failed
+    // GPU-only: no CPU fallback
     if !gpu_success {
-        render_status_widget_bar(
-            &mut bar.cached_content,
-            phys_width as u32,
-            phys_height as u32,
-            scale,
-            alpha,
-            bluetooth,
-        );
-
-        let (buffer, canvas) = match pool.create_buffer(
-            phys_width,
-            phys_height,
-            phys_width * 4,
-            wl_shm::Format::Argb8888,
-        ) {
-            Ok(bc) => bc,
-            Err(e) => {
-                tracing::warn!("Failed to allocate status widget bar buffer: {}", e);
-                return;
-            }
-        };
-        if !super::copy_popup_content(canvas, &bar.cached_content) {
-            return;
-        }
-
-        bar.surface.set_buffer_scale(scale.round().max(1.0) as i32);
-        if let Err(e) = buffer.attach_to(&bar.surface) {
-            tracing::warn!("Failed to attach status widget bar buffer: {}", e);
-            return;
-        }
-        bar.surface.damage_buffer(0, 0, phys_width, phys_height);
-
-        let region_key = if visible { 1 } else { 0 };
-        if bar.input_region_key != region_key {
-            if visible {
-                bar.surface.set_input_region(None);
-            } else {
-                let region = compositor_state.wl_compositor().create_region(qh, ());
-                bar.surface.set_input_region(Some(&region));
-                region.destroy();
-            }
-            bar.input_region_key = region_key;
-        }
-
-        bar.surface.commit();
-        bar.current_buffer = Some(buffer);
+        tracing::warn!("GPU rendering failed for widget bar; skipping frame");
     }
 }

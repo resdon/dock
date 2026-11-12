@@ -18,7 +18,6 @@ use crate::graphics::fade::FadeAnimation;
 use crate::graphics::AutoHideState;
 use crate::models::BadgeUpdate;
 use crate::registry::SystemRegistry;
-use crate::render::font::FontManager;
 use crate::state::AppState;
 use crate::types::*;
 
@@ -185,18 +184,6 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
 
     let pool = SlotPool::new(1024 * 1024 * 16, &shm_state).expect("Failed to create memory pool");
 
-    let user_data_font = format!("{}/.local/share/dock/font.ttf", home);
-    let font_path = [
-        PathBuf::from("assets/font.ttf"),
-        PathBuf::from("font.ttf"),
-        PathBuf::from(user_data_font),
-        PathBuf::from("/usr/share/dock/font.ttf"),
-        PathBuf::from("/usr/share/fonts/TTF/DejaVuSans.ttf"),
-    ]
-    .into_iter()
-    .find(|p| p.exists())
-    .expect("No valid font file found!");
-
     let pinned_vector = persistence::load_pinned_apps();
     let mut permanent_icon_cache = HashMap::new();
     for app_id in &pinned_vector {
@@ -223,7 +210,6 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
         width: 100,
         height: 60,
         toplevel_manager: None,
-        font_manager: FontManager::from_file(&font_path).expect("Failed to memory-map font file"),
         wl_seat: None,
         wl_pointer: None,
         system_registry: SystemRegistry::new(),
@@ -404,7 +390,7 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
         // four utility widgets are independent sidecar subsurfaces, while the
         // network/keyboard/clock strip is attached below the app row.
         let app_count = state.get_apps_in_dock().len();
-        let dock_width = crate::render::tray::preferred_surface_width(app_count);
+        let dock_width = { let app_count = app_count.max(1) as i32; let app_row_width = app_count * (48 + 8) - 8; (app_row_width + 24).max(72) as u32 };
         let dock_height = state.config.dock_height;
         // Side bars are disabled; surface height equals dock height only.
         let surface_height = dock_height;

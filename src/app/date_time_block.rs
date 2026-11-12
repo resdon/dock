@@ -1,22 +1,89 @@
-//! Date/time block surface management.
+//! Date/time block widget.
 //!
-//! Allocates a shared memory buffer, renders the date/time block via the
-//! `render_date_time_block` function, and commits the buffer to the layer surface.
-//! The block is positioned to the right of the dock as a floating widget.
+//! Renders a configurable block displaying time, day+month, and year via wgpu GPU.
 
 use crate::state::AppState;
 use smithay_client_toolkit::{dmabuf::DmabufState, shell::WaylandSurface, shm::slot::SlotPool};
 use wayland_client::Proxy;
-use wayland_client::protocol::wl_shm;
 use wayland_client::QueueHandle;
 
 use crate::config::DockConfig;
-use crate::render::date_time_block::{
-    format_day_month, format_time, format_year, render_date_time_block,
-};
-use crate::render::font::FontManager;
 use crate::types::DockInstance;
+use std::sync::Mutex;
 use wgpu_api::Renderer as WgpuRenderer;
+
+#[derive(Clone, Default)]
+struct CachedDateTime {
+    minute_key: Option<(i32, i32, i32, i32, i32)>,
+    day_key: Option<(i32, i32, i32)>,
+    time: String,
+    day_month: String,
+    year: String,
+}
+
+static DATE_TIME_CACHE: Mutex<CachedDateTime> = Mutex::new(CachedDateTime {
+    minute_key: None,
+    day_key: None,
+    time: String::new(),
+    day_month: String::new(),
+    year: String::new(),
+});
+
+fn format_from_tm(local: &libc::tm, fmt: &[u8], buf_len: usize) -> String {
+    let mut buf = vec![0i8; buf_len];
+    let n = unsafe { libc::strftime(buf.as_mut_ptr(), buf.len(), fmt.as_ptr() as *const _, local) };
+    if n == 0 {
+        return String::new();
+    }
+    let bytes = &buf[..n as usize];
+    let bytes_u8: &[u8] =
+        unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const u8, bytes.len()) };
+    String::from_utf8_lossy(bytes_u8).trim().to_owned()
+}
+
+fn current_local_tm() -> Option<libc::tm> {
+    let now = unsafe { libc::time(std::ptr::null_mut()) };
+    if now == libc::time_t::MAX {
+        return None;
+    }
+    let mut local: libc::tm = unsafe { std::mem::zeroed() };
+    if unsafe { libc::localtime_r(&now, &mut local) }.is_null() {
+        None
+    } else {
+        Some(local)
+    }
+}
+
+fn cached_date_time_strings() -> (String, String, String) {
+    let Some(local) = current_local_tm() else {
+        return (String::new(), String::new(), String::new());
+    };
+    let minute_key = (local.tm_year, local.tm_mon, local.tm_mday, local.tm_hour, local.tm_min);
+    let day_key = (local.tm_year, local.tm_mon, local.tm_mday);
+    let mut cache = DATE_TIME_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    if cache.minute_key != Some(minute_key) {
+        cache.time = format_from_tm(&local, b"%H:%M\0", 16);
+        cache.minute_key = Some(minute_key);
+    }
+    if cache.day_key != Some(day_key) {
+        cache.day_month = format_from_tm(&local, b"%e %B\0", 32);
+        cache.year = format_from_tm(&local, b"'%y\0", 16);
+        cache.day_key = Some(day_key);
+    }
+    (cache.time.clone(), cache.day_month.clone(), cache.year.clone())
+}
+
+fn format_time() -> String {
+    cached_date_time_strings().0
+}
+
+fn format_day_month() -> String {
+    cached_date_time_strings().1
+}
+
+fn format_year() -> String {
+    cached_date_time_strings().2
+}
 
 /// Draws the date/time block widget and commits the buffer.
 ///
@@ -34,9 +101,8 @@ use wgpu_api::Renderer as WgpuRenderer;
 pub fn draw_date_time_block(
     dock: &mut DockInstance,
     qh: &QueueHandle<AppState>,
-    pool: &mut SlotPool,
+    _pool: &mut SlotPool,
     alpha: f32,
-    font_manager: &mut FontManager,
     config: &DockConfig,
     mut gpu_context: Option<&mut WgpuRenderer>,
     dmabuf_state: &DmabufState,
@@ -145,75 +211,6 @@ pub fn draw_date_time_block(
         }
     }
 
-    // CPU fallback rendering
-    fallback_date_time_block_cpu(
-        dock,
-        pool,
-        phys_width,
-        phys_height,
-        scale,
-        a,
-        font_manager,
-        config,
-    );
-}
-
-/// CPU fallback rendering for the date/time block
-fn fallback_date_time_block_cpu(
-    dock: &mut DockInstance,
-    pool: &mut SlotPool,
-    phys_width: i32,
-    phys_height: i32,
-    scale: f64,
-    alpha: f32,
-    font_manager: &mut FontManager,
-    config: &DockConfig,
-) {
-    let block = match &mut dock.date_time_block_surface {
-        Some(b) => b,
-        None => return,
-    };
-    let expected_len = phys_width as usize * phys_height as usize * 4;
-    block.cached_content.resize(expected_len, 0);
-    block.cached_content.fill(0);
-
-    render_date_time_block(
-        &mut block.cached_content,
-        phys_width as u32,
-        phys_height as u32,
-        scale,
-        alpha,
-        font_manager,
-        config,
-    );
-    block.cached_phys_width = phys_width;
-    block.cached_phys_height = phys_height;
-
-    let (buffer, canvas) = match pool.create_buffer(
-        phys_width,
-        phys_height,
-        phys_width * 4,
-        wl_shm::Format::Argb8888,
-    ) {
-        Ok(b) => b,
-        Err(_) => return,
-    };
-
-    if !crate::app::copy_popup_content(canvas, &block.cached_content) {
-        return;
-    }
-
-    block
-        .surface
-        .wl_surface()
-        .set_buffer_scale(scale.round().max(1.0) as i32);
-    if buffer.attach_to(block.surface.wl_surface()).is_err() {
-        return;
-    }
-    block
-        .surface
-        .wl_surface()
-        .damage_buffer(0, 0, phys_width, phys_height);
-    block.surface.wl_surface().commit();
-    block.current_buffer = Some(buffer);
+    // GPU-only: no CPU fallback
+    tracing::warn!("GPU rendering failed for date/time block; skipping frame");
 }
