@@ -15,6 +15,7 @@ pub mod diagnostics;
 pub mod error;
 pub mod errors;
 pub mod events;
+pub mod frame_scheduler;
 pub mod geometry;
 pub mod graphics;
 pub mod handlers;

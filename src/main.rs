@@ -140,6 +140,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Resource monitor: prints CPU, RAM, VRAM, FPS usage every 2 seconds
     library::services::resource_monitor::start_resource_monitor();
 
+    // FIX (v1.5.5): Frame scheduler enforces 75 FPS animation limit and eliminates
+    // unnecessary redraws by tracking whether visual content actually changed.
+    let mut frame_scheduler = library::frame_scheduler::FrameScheduler::new();
+
     let window_list_refresh_interval = std::time::Duration::from_millis(33);
     let mut last_window_list_refresh = std::time::Instant::now();
 
@@ -153,6 +157,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             && last_window_list_refresh.elapsed() >= window_list_refresh_interval
         {
             state.needs_redraw = true;
+            frame_scheduler.mark_content_changed();
         }
 
         // 2. DOMAIN EVENTS: consume the queued listener events through the
@@ -160,6 +165,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // resolver -> registry pipeline.
         if state.process_pending_events() {
             state.needs_redraw = true;
+            frame_scheduler.mark_content_changed();
         }
         // If a Wayland/configure/domain event already requested a complete
         // frame, a simultaneous status update must not downgrade it to a
@@ -284,6 +290,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if state_changed || status_sidebars_only {
             state.needs_redraw = true;
+            frame_scheduler.mark_content_changed();
         }
         if state_changed || full_redraw_was_already_pending {
             // A domain/UI event or earlier Wayland configure may have changed
@@ -316,6 +323,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if animated_apps_changed {
             frame_advanced = true;
             state.needs_redraw = true;
+            frame_scheduler.mark_content_changed();
             status_sidebars_only = false;
         }
 
@@ -330,6 +338,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         state.update_animations(&qh);
         if state.finalize_popup_closures() {
             state.needs_redraw = true;
+            frame_scheduler.mark_content_changed();
             status_sidebars_only = false;
         }
 
@@ -373,6 +382,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if proximity_changed {
             state.needs_redraw = true;
+            frame_scheduler.mark_content_changed();
             status_sidebars_only = false;
         }
 
@@ -384,8 +394,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .unwrap_or(false);
         if slint_animations_active {
             state.needs_redraw = true;
+            frame_scheduler.mark_content_changed();
             status_sidebars_only = false;
         }
+
+        // FIX (v1.5.5): Frame scheduler enforces 75 FPS animation limit and tracks
+        // whether visual content actually changed. This replaces the previous logic
+        // that ran at up to ~125 FPS (8ms poll timeout) whenever needs_redraw was true.
+        let animations_active = menu_fade_animating
+            || window_list_fade_animating
+            || slint_animations_active
+            || animated_apps_changed
+            || state.bounce_app_id.is_some()
+            || state.click_app_id.is_some()
+            || state.minimize_app_id.is_some();
+        frame_scheduler.set_animations_active(animations_active);
 
         // 6. RENDER: Pass visual snapshot to render functions.
         // The first committed buffer is mandatory for every configured surface;
@@ -394,12 +417,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .docks
             .iter()
             .any(|dock| dock.configured && dock.current_buffer.is_none());
-        if frame_advanced
+
+        // FIX (v1.5.5): Use frame scheduler to decide whether to render.
+        // Content changes trigger immediate render; animation-driven redraws
+        // are capped at 75 FPS. When nothing changed, the draw is skipped entirely.
+        let needs_any_redraw = frame_advanced
             || state.needs_redraw
             || initial_dock_frame_due
             || menu_fade_animating
-            || window_list_fade_animating
-        {
+            || window_list_fade_animating;
+        let should_draw = frame_scheduler.should_render(needs_any_redraw) || initial_dock_frame_due;
+
+        if should_draw {
             // Popup fades are independent subsurfaces. Once a main-dock buffer
             // exists, menu/window-list fades can present independently. Before
             // that first buffer, always render the complete dock surface.
@@ -411,6 +440,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 && !animated_apps_changed
                 && (menu_fade_animating || window_list_fade_animating);
             state.draw(&qh, !popup_only_animation && !status_sidebars_only);
+            frame_scheduler.on_frame_rendered();
             if state.window_list_state.is_open {
                 last_window_list_refresh = std::time::Instant::now();
             }
@@ -420,22 +450,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // 6. POLL: sleep until Wayland input, a timer, or the next actual
         // animation frame.  When idle, sleep longer to reduce CPU usage.
+        // FIX (v1.5.5): Use frame scheduler to compute the optimal poll timeout.
+        // This replaces the fixed 8ms timeout that allowed ~125 FPS spinning.
         let waiting_for_layer_configure =
             state.docks.is_empty() || state.docks.iter().any(|dock| !dock.configured);
-        let mut timeout_ms: i32 = if state.needs_redraw && !waiting_for_layer_configure {
-            // Cap redraw-driven wakeups to avoid 100% CPU spin when state remains dirty.
-            // 8ms targets ~120 FPS max while keeping responsiveness high.
-            8
-        } else if state.window_list_state.is_open && !waiting_for_layer_configure {
-            let mut ms = window_list_refresh_interval
+        let mut timeout_ms: i32 = if waiting_for_layer_configure {
+            // Wait for layer configure — don't render yet
+            16
+        } else if state.window_list_state.is_open {
+            // Window list open — refresh at ~30 FPS for PipeWire frames
+            let ms = window_list_refresh_interval
                 .saturating_sub(last_window_list_refresh.elapsed())
                 .as_millis()
                 .min(i32::MAX as u128) as i32;
-            ms = ms.clamp(1, 16);
-            ms
+            ms.clamp(1, 16)
         } else {
-            // When idle (no redraw needed), sleep longer to reduce CPU usage
-            1000 // 1 second sleep when idle
+            // FIX (v1.5.5): Frame scheduler determines the timeout based on:
+            // - Content changes: immediate wakeup
+            // - Active animations: time until next frame at 75 FPS
+            // - Idle: 1 second sleep
+            frame_scheduler.poll_timeout(needs_any_redraw, animations_active)
         };
 
         // Keep wakeups responsive while popup fades are in progress.

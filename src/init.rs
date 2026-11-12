@@ -345,6 +345,7 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
         gpu_available: false,
         dmabuf_state: smithay_client_toolkit::dmabuf::DmabufState::new(&globals, &qh),
         dmabuf_pool: crate::render::dmabuf_export::DmabufPool::new(),
+        frame_scheduler: crate::frame_scheduler::FrameScheduler::new(),
         config: crate::config::DockConfig::load(),
         slint_renderer: None,
         bluetooth_renderer: None,

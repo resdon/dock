@@ -235,6 +235,9 @@ pub struct AppState {
     /// FIX (v1.5.5): Bounded DMABUF texture pool with release tracking.
     /// Reuses GPU textures across frames to eliminate per-frame Vulkan allocations.
     pub dmabuf_pool: crate::render::dmabuf_export::DmabufPool,
+    /// FIX (v1.5.5): Frame scheduler that enforces 75 FPS animation limit and
+    /// eliminates unnecessary redraws by tracking content changes.
+    pub frame_scheduler: crate::frame_scheduler::FrameScheduler,
 
     // Dock configuration
     pub config: crate::config::DockConfig,
