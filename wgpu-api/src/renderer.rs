@@ -992,6 +992,81 @@ impl Renderer {
         Ok(export_info)
     }
 
+    /// FIX (v1.5.5): Render draw commands to an existing texture (for DMABUF pool integration).
+    ///
+    /// Instead of creating a new texture, this renders to a texture provided by the caller.
+    /// The caller is responsible for texture lifetime management. This enables the DMABUF
+    /// pool to reuse textures across frames, eliminating per-frame Vulkan allocations.
+    ///
+    /// # Arguments
+    /// * `texture` - Pre-allocated texture to render to.
+    /// * `width` - Texture width in physical pixels.
+    /// * `height` - Texture height in physical pixels.
+    /// * `scale_factor` - Coordinate scale factor (logical to physical pixels).
+    /// * `commands` - Draw commands to render.
+    pub fn render_to_texture(
+        &mut self,
+        texture: &wgpu::Texture,
+        width: u32,
+        height: u32,
+        scale_factor: f32,
+        commands: &[crate::render::DrawCommand],
+    ) -> Result<(), String> {
+        let backend = self
+            .gpu_backend
+            .as_mut()
+            .ok_or_else(|| "GPU backend not available for DMA-BUF rendering".to_string())?;
+
+        let width_f = width as f32;
+        let height_f = height as f32;
+        Self::prepare_texture_bind_groups(backend, commands);
+
+        // Create command encoder
+        let mut encoder =
+            backend
+                .device()
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("DMA-BUF Frame Encoder (pooled)"),
+                });
+
+        // Begin render pass on the provided texture
+        {
+            let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("DMA-BUF Render Pass (pooled)"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &texture_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+
+            // Render draw commands directly (bypasses scene graph)
+            Self::draw_commands_to_gpu_impl(
+                &mut render_pass,
+                backend,
+                commands,
+                width_f,
+                height_f,
+                scale_factor,
+                self.text_manager.as_mut(),
+            );
+        }
+
+        // Submit command buffer
+        backend.queue().submit(std::iter::once(encoder.finish()));
+
+        Ok(())
+    }
+
     fn prepare_texture_bind_groups(
         backend: &mut GpuBackend,
         commands: &[crate::render::DrawCommand],

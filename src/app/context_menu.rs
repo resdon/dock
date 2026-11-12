@@ -3,7 +3,7 @@
 //! Builds and renders the right-click context menu popup with items
 //! for Launch, Focus, Unpin, and Quit actions.
 
-use std::os::fd::AsFd;
+use wayland_client::Proxy;
 
 use smithay_client_toolkit::dmabuf::DmabufState;
 use smithay_client_toolkit::{
@@ -31,6 +31,7 @@ pub fn draw_context_menu_popup(
     interaction: &crate::types::InteractionState,
     mut gpu_context: Option<&mut wgpu_api::Renderer>,
     dmabuf_state: &DmabufState,
+    dmabuf_pool: &crate::render::dmabuf_export::DmabufPool,
 ) {
     let show_menu = !dock.menu_fade.is_fully_hidden() && !menu_state.items.is_empty();
 
@@ -245,63 +246,45 @@ pub fn draw_context_menu_popup(
                 });
             }
 
-            // GPU rendering via DMA-BUF with glyphon text rendering
+            // FIX (v1.5.5): Use pooled DMABUF texture
             let gpu_success = if let Some(ref mut renderer) = gpu_context {
-                match renderer.render_to_dmabuf(
-                    geom.phys_width as u32,
-                    geom.phys_height as u32,
-                    &draw_commands,
-                ) {
-                    Ok(export_info) => {
-                        // Create Wayland buffer from DMA-BUF planes
-                        match dmabuf_state.create_params(qh) {
-                            Ok(params) => {
-                                for (i, plane) in export_info.planes.iter().enumerate() {
-                                    params.add(
-                                        plane.fd.as_fd(),
-                                        i as u32,
-                                        plane.offset,
-                                        plane.stride,
-                                        export_info.modifier,
-                                    );
-                                }
-                                let (wl_buffer, _params) = params.create_immed(
-                                    geom.phys_width,
-                                    geom.phys_height,
-                                    export_info.fourcc as u32,
-                                    wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_buffer_params_v1::Flags::empty(),
-                                    qh,
-                                );
-                                popup.surface.set_buffer_scale(scale_i32);
-                                popup.surface.attach(Some(&wl_buffer), 0, 0);
-                                popup.surface.damage_buffer(
-                                    0,
-                                    0,
-                                    geom.phys_width,
-                                    geom.phys_height,
-                                );
-
-                                let region = compositor_state.wl_compositor().create_region(qh, ());
-                                region.add(0, 0, geom.logical_width, geom.logical_height);
-                                popup.surface.set_input_region(Some(&region));
-                                region.destroy();
-
-                                popup.surface.commit();
-                                // Note: current_buffer is Option<Buffer> (SHM type)
-                                // DMA-BUF uses WlBuffer which is incompatible
-                                // The buffer is managed by the Wayland compositor
-                                true
-                            }
-                            Err(e) => {
-                                let _ = e;
+                if let (Some(adapter), Some(device)) = (renderer.adapter(), renderer.device()) {
+                    match dmabuf_pool.acquire_texture(
+                        adapter, device, qh, dmabuf_state,
+                        geom.phys_width as u32, geom.phys_height as u32,
+                    ) {
+                        Ok((texture, export_info)) => {
+                            if renderer.render_to_texture(
+                                &texture, geom.phys_width as u32, geom.phys_height as u32,
+                                1.0, &draw_commands,
+                            ).is_err() {
                                 false
+                            } else {
+                                match crate::render::dmabuf_export::create_buffer_from_export(
+                                    dmabuf_state, qh, &export_info,
+                                ) {
+                                    Ok(wl_buffer) => {
+                                        dmabuf_pool.set_buffer_id(wl_buffer.id());
+                                        popup.surface.set_buffer_scale(scale_i32);
+                                        popup.surface.attach(Some(&wl_buffer), 0, 0);
+                                        popup.surface.damage_buffer(
+                                            0, 0, geom.phys_width, geom.phys_height,
+                                        );
+                                        let region = compositor_state.wl_compositor().create_region(qh, ());
+                                        region.add(0, 0, geom.logical_width, geom.logical_height);
+                                        popup.surface.set_input_region(Some(&region));
+                                        region.destroy();
+                                        popup.surface.commit();
+                                        true
+                                    }
+                                    Err(_) => false,
+                                }
                             }
                         }
+                        Err(_) => false,
                     }
-                    Err(e) => {
-                        let _ = e;
-                        false
-                    }
+                } else {
+                    false
                 }
             } else {
                 false

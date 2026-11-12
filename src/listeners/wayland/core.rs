@@ -242,12 +242,17 @@ impl DmabufHandler for AppState {
     ) {
     }
 
+    /// FIX (v1.5.5): On buffer release, mark the pool slot as available and destroy the buffer.
+    /// Without this, the DMABUF pool would never know when the compositor is done reading
+    /// a buffer, so slots would never be reused, defeating the purpose of pooling.
     fn released(
         &mut self,
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
         buffer: &wayland_client::protocol::wl_buffer::WlBuffer,
     ) {
+        // Mark the released buffer's slot as available in the pool
+        self.dmabuf_pool.on_buffer_release(buffer.id());
         buffer.destroy();
     }
 }

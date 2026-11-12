@@ -232,6 +232,9 @@ pub struct AppState {
     /// GPU is available (initialized successfully)
     pub gpu_available: bool,
     pub dmabuf_state: DmabufState,
+    /// FIX (v1.5.5): Bounded DMABUF texture pool with release tracking.
+    /// Reuses GPU textures across frames to eliminate per-frame Vulkan allocations.
+    pub dmabuf_pool: crate::render::dmabuf_export::DmabufPool,
 
     // Dock configuration
     pub config: crate::config::DockConfig,

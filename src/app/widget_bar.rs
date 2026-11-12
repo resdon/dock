@@ -2,7 +2,7 @@
 //!
 //! Right-side utility widget cluster: rclone, process monitor, audio, Bluetooth.
 
-use std::os::fd::AsFd;
+use wayland_client::Proxy;
 
 use smithay_client_toolkit::{
     compositor::CompositorState, dmabuf::DmabufState, shell::WaylandSurface, shm::slot::SlotPool,
@@ -30,6 +30,7 @@ pub fn draw_status_widget_bar(
     alpha: f32,
     mut gpu_context: Option<&mut wgpu_api::Renderer>,
     dmabuf_state: &DmabufState,
+    dmabuf_pool: &crate::render::dmabuf_export::DmabufPool,
 ) {
     if dock.status_widget_bar.is_none() {
         let surface = compositor_state.create_surface(qh);
@@ -155,51 +156,50 @@ pub fn draw_status_widget_bar(
             });
         }
 
-        // Render via DMA-BUF
+        // FIX (v1.5.5): Use pooled DMABUF texture
         if let Some(ref mut renderer) = gpu_context {
-            match renderer.render_to_dmabuf(phys_width as u32, phys_height as u32, &draw_commands) {
-                Ok(export_info) => match dmabuf_state.create_params(qh) {
-                    Ok(params) => {
-                        for (i, plane) in export_info.planes.iter().enumerate() {
-                            params.add(
-                                plane.fd.as_fd(),
-                                i as u32,
-                                plane.offset,
-                                plane.stride,
-                                export_info.modifier,
-                            );
-                        }
-                        let (wl_buffer, _params) = params.create_immed(
-                                phys_width,
-                                phys_height,
-                                export_info.fourcc as u32,
-                                wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_buffer_params_v1::Flags::empty(),
-                                qh,
-                            );
-                        let scale_i32 = scale.round().max(1.0) as i32;
-                        bar.surface.set_buffer_scale(scale_i32);
-                        bar.surface.attach(Some(&wl_buffer), 0, 0);
-                        bar.surface.damage_buffer(0, 0, phys_width, phys_height);
-
-                        let region_key = if visible { 1 } else { 0 };
-                        if bar.input_region_key != region_key {
-                            if visible {
-                                bar.surface.set_input_region(None);
-                            } else {
-                                let region = compositor_state.wl_compositor().create_region(qh, ());
-                                bar.surface.set_input_region(Some(&region));
-                                region.destroy();
+            if let (Some(adapter), Some(device)) = (renderer.adapter(), renderer.device()) {
+                match dmabuf_pool.acquire_texture(
+                    adapter, device, qh, dmabuf_state, phys_width as u32, phys_height as u32,
+                ) {
+                    Ok((texture, export_info)) => {
+                        if renderer.render_to_texture(
+                            &texture, phys_width as u32, phys_height as u32, 1.0, &draw_commands,
+                        ).is_err() {
+                            false
+                        } else {
+                            match crate::render::dmabuf_export::create_buffer_from_export(
+                                dmabuf_state, qh, &export_info,
+                            ) {
+                                Ok(wl_buffer) => {
+                                    dmabuf_pool.set_buffer_id(wl_buffer.id());
+                                    let scale_i32 = scale.round().max(1.0) as i32;
+                                    bar.surface.set_buffer_scale(scale_i32);
+                                    bar.surface.attach(Some(&wl_buffer), 0, 0);
+                                    bar.surface.damage_buffer(0, 0, phys_width, phys_height);
+                                    let region_key = if visible { 1 } else { 0 };
+                                    if bar.input_region_key != region_key {
+                                        if visible {
+                                            bar.surface.set_input_region(None);
+                                        } else {
+                                            let region = compositor_state.wl_compositor().create_region(qh, ());
+                                            bar.surface.set_input_region(Some(&region));
+                                            region.destroy();
+                                        }
+                                        bar.input_region_key = region_key;
+                                    }
+                                    bar.surface.commit();
+                                    bar.current_buffer = None;
+                                    true
+                                }
+                                Err(_) => false,
                             }
-                            bar.input_region_key = region_key;
                         }
-
-                        bar.surface.commit();
-                        bar.current_buffer = None;
-                        true
                     }
                     Err(_) => false,
-                },
-                Err(_) => false,
+                }
+            } else {
+                false
             }
         } else {
             false

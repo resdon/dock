@@ -18,14 +18,13 @@
 //! the same app don't both map to the same stream. This ensures each
 //! PipeWire stream is assigned to at most one Wayland window.
 
-use std::os::fd::AsFd;
+use wayland_client::Proxy;
 
 use smithay_client_toolkit::dmabuf::DmabufState;
 use smithay_client_toolkit::{
     compositor::CompositorState, shell::WaylandSurface, shm::slot::SlotPool,
 };
 use wayland_client::protocol::wl_shm;
-use wayland_client::Proxy;
 use wayland_client::QueueHandle;
 
 use crate::config::DockConfig;
@@ -69,6 +68,7 @@ pub fn draw_window_list_popup(
     pipewire_capture: Option<&std::sync::Arc<PipewireCaptureService>>,
     mut gpu_context: Option<&mut wgpu_api::Renderer>,
     dmabuf_state: &DmabufState,
+    dmabuf_pool: &crate::render::dmabuf_export::DmabufPool,
 ) {
     let show_window_list = window_list_state.is_open;
     if show_window_list {
@@ -815,58 +815,46 @@ pub fn draw_window_list_popup(
                         }
                     }
 
-                    // GPU rendering via DMA-BUF with glyphon text rendering
+                    // FIX (v1.5.5): Use pooled DMABUF texture instead of allocating a new one each frame.
                     let gpu_success = if let Some(ref mut renderer) = gpu_context {
-                        match renderer.render_to_dmabuf(
-                            geom.phys_width as u32,
-                            geom.phys_height as u32,
-                            &draw_commands,
-                        ) {
-                            Ok(export_info) => match dmabuf_state.create_params(qh) {
-                                Ok(params) => {
-                                    for (i, plane) in export_info.planes.iter().enumerate() {
-                                        params.add(
-                                            plane.fd.as_fd(),
-                                            i as u32,
-                                            plane.offset,
-                                            plane.stride,
-                                            export_info.modifier,
-                                        );
+                        if let (Some(adapter), Some(device)) = (renderer.adapter(), renderer.device()) {
+                            match dmabuf_pool.acquire_texture(
+                                adapter, device, qh, dmabuf_state,
+                                geom.phys_width as u32, geom.phys_height as u32,
+                            ) {
+                                Ok((texture, export_info)) => {
+                                    if renderer.render_to_texture(
+                                        &texture, geom.phys_width as u32, geom.phys_height as u32,
+                                        1.0, &draw_commands,
+                                    ).is_err() {
+                                        false
+                                    } else {
+                                        match crate::render::dmabuf_export::create_buffer_from_export(
+                                            dmabuf_state, qh, &export_info,
+                                        ) {
+                                            Ok(wl_buffer) => {
+                                                dmabuf_pool.set_buffer_id(wl_buffer.id());
+                                                popup.surface.set_buffer_scale(scale_i32);
+                                                popup.surface.attach(Some(&wl_buffer), 0, 0);
+                                                popup.surface.damage_buffer(
+                                                    0, 0, geom.phys_width, geom.phys_height,
+                                                );
+                                                let region =
+                                                    compositor_state.wl_compositor().create_region(qh, ());
+                                                region.add(0, 0, geom.logical_width, geom.logical_height);
+                                                popup.surface.set_input_region(Some(&region));
+                                                region.destroy();
+                                                popup.surface.commit();
+                                                true
+                                            }
+                                            Err(_) => false,
+                                        }
                                     }
-                                    let (wl_buffer, _params) = params.create_immed(
-                                            geom.phys_width,
-                                            geom.phys_height,
-                                            export_info.fourcc as u32,
-                                            wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_buffer_params_v1::Flags::empty(),
-                                            qh,
-                                        );
-                                    popup.surface.set_buffer_scale(scale_i32);
-                                    popup.surface.attach(Some(&wl_buffer), 0, 0);
-                                    popup.surface.damage_buffer(
-                                        0,
-                                        0,
-                                        geom.phys_width,
-                                        geom.phys_height,
-                                    );
-
-                                    let region =
-                                        compositor_state.wl_compositor().create_region(qh, ());
-                                    region.add(0, 0, geom.logical_width, geom.logical_height);
-                                    popup.surface.set_input_region(Some(&region));
-                                    region.destroy();
-
-                                    popup.surface.commit();
-                                    true
                                 }
-                                Err(e) => {
-                                    let _ = e;
-                                    false
-                                }
-                            },
-                            Err(e) => {
-                                let _ = e;
-                                false
+                                Err(_) => false,
                             }
+                        } else {
+                            false
                         }
                     } else {
                         false

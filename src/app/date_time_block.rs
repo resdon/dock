@@ -6,7 +6,7 @@
 
 use crate::state::AppState;
 use smithay_client_toolkit::{dmabuf::DmabufState, shell::WaylandSurface, shm::slot::SlotPool};
-use std::os::fd::AsFd;
+use wayland_client::Proxy;
 use wayland_client::protocol::wl_shm;
 use wayland_client::QueueHandle;
 
@@ -40,6 +40,7 @@ pub fn draw_date_time_block(
     config: &DockConfig,
     mut gpu_context: Option<&mut WgpuRenderer>,
     dmabuf_state: &DmabufState,
+    dmabuf_pool: &crate::render::dmabuf_export::DmabufPool,
 ) {
     // Skip rendering if the date/time block is disabled in config
     if !config.date_time_block_enabled {
@@ -113,45 +114,35 @@ pub fn draw_date_time_block(
             });
         }
 
-        match renderer.render_to_dmabuf_scaled(
-            phys_width as u32,
-            phys_height as u32,
-            scale as f32,
-            &draw_commands,
-        ) {
-            Ok(export_info) => match dmabuf_state.create_params(qh) {
-                Ok(params) => {
-                    for (i, plane) in export_info.planes.iter().enumerate() {
-                        params.add(
-                            plane.fd.as_fd(),
-                            i as u32,
-                            plane.offset,
-                            plane.stride,
-                            export_info.modifier,
-                        );
+        if let (Some(adapter), Some(device)) = (renderer.adapter(), renderer.device()) {
+            match dmabuf_pool.acquire_texture(
+                adapter, device, qh, dmabuf_state, phys_width as u32, phys_height as u32,
+            ) {
+                Ok((texture, export_info)) => {
+                    if renderer.render_to_texture(
+                        &texture, phys_width as u32, phys_height as u32,
+                        scale as f32, &draw_commands,
+                    ).is_ok() {
+                        if let Ok(wl_buffer) = crate::render::dmabuf_export::create_buffer_from_export(
+                            dmabuf_state, qh, &export_info,
+                        ) {
+                            dmabuf_pool.set_buffer_id(wl_buffer.id());
+                            block
+                                .surface
+                                .wl_surface()
+                                .set_buffer_scale(scale.round().max(1.0) as i32);
+                            block.surface.wl_surface().attach(Some(&wl_buffer), 0, 0);
+                            block
+                                .surface
+                                .wl_surface()
+                                .damage_buffer(0, 0, phys_width, phys_height);
+                            block.surface.wl_surface().commit();
+                            return;
+                        }
                     }
-                    let (wl_buffer, _params) = params.create_immed(
-                            phys_width as i32,
-                            phys_height as i32,
-                            export_info.fourcc as u32,
-                            wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_buffer_params_v1::Flags::empty(),
-                            qh,
-                        );
-                    block
-                        .surface
-                        .wl_surface()
-                        .set_buffer_scale(scale.round().max(1.0) as i32);
-                    block.surface.wl_surface().attach(Some(&wl_buffer), 0, 0);
-                    block
-                        .surface
-                        .wl_surface()
-                        .damage_buffer(0, 0, phys_width, phys_height);
-                    block.surface.wl_surface().commit();
-                    return;
                 }
                 Err(_) => {}
-            },
-            Err(_) => {}
+            }
         }
     }
 

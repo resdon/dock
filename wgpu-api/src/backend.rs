@@ -1013,6 +1013,9 @@ impl GpuBackend {
 }
 
 /// DMA-BUF plane information for Wayland buffer creation.
+///
+/// FIX (v1.5.5): Clone is implemented so the DMABUF pool can reuse
+/// the same file descriptors for multiple buffer creations.
 #[derive(Debug)]
 pub struct DmabufPlane {
     /// File descriptor for the DMA-BUF.
@@ -1023,8 +1026,21 @@ pub struct DmabufPlane {
     pub stride: u32,
 }
 
+impl Clone for DmabufPlane {
+    fn clone(&self) -> Self {
+        DmabufPlane {
+            fd: self.fd.try_clone().expect("Failed to clone dmabuf FD"),
+            offset: self.offset,
+            stride: self.stride,
+        }
+    }
+}
+
 /// DMA-BUF export information for creating Wayland buffers.
-#[derive(Debug)]
+///
+/// FIX (v1.5.5): Clone is implemented so the DMABUF pool can cache
+/// export info and reuse it across frames.
+#[derive(Debug, Clone)]
 pub struct DmabufExportInfo {
     /// Texture width.
     pub width: u32,

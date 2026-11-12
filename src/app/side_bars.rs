@@ -2,7 +2,7 @@
 //!
 //! Left tray (system tray icons) and bottom system bar (clock, keyboard, network).
 
-use std::os::fd::AsFd;
+use wayland_client::Proxy;
 
 use smithay_client_toolkit::{
     compositor::CompositorState, dmabuf::DmabufState, shell::WaylandSurface, shm::slot::SlotPool,
@@ -90,6 +90,7 @@ pub fn draw_left_tray_bar(
     font_manager: &mut crate::render::font::FontManager,
     mut gpu_context: Option<&mut wgpu_api::Renderer>,
     dmabuf_state: &DmabufState,
+    dmabuf_pool: &crate::render::dmabuf_export::DmabufPool,
 ) {
     let parent_surface = dock.surface.wl_surface().clone();
     if !ensure_surface(
@@ -194,39 +195,40 @@ pub fn draw_left_tray_bar(
             }
         }
 
-        // Render via DMA-BUF
+        // FIX (v1.5.5): Use pooled DMABUF texture
         if let Some(ref mut renderer) = gpu_context {
-            match renderer.render_to_dmabuf(phys_width as u32, phys_height as u32, &draw_commands) {
-                Ok(export_info) => match dmabuf_state.create_params(qh) {
-                    Ok(params) => {
-                        for (i, plane) in export_info.planes.iter().enumerate() {
-                            params.add(
-                                plane.fd.as_fd(),
-                                i as u32,
-                                plane.offset,
-                                plane.stride,
-                                export_info.modifier,
-                            );
+            if let (Some(adapter), Some(device)) = (renderer.adapter(), renderer.device()) {
+                match dmabuf_pool.acquire_texture(
+                    adapter, device, qh, dmabuf_state, phys_width as u32, phys_height as u32,
+                ) {
+                    Ok((texture, export_info)) => {
+                        if renderer.render_to_texture(
+                            &texture, phys_width as u32, phys_height as u32, 1.0, &draw_commands,
+                        ).is_err() {
+                            false
+                        } else {
+                            match crate::render::dmabuf_export::create_buffer_from_export(
+                                dmabuf_state, qh, &export_info,
+                            ) {
+                                Ok(wl_buffer) => {
+                                    dmabuf_pool.set_buffer_id(wl_buffer.id());
+                                    let scale_i32 = scale.round().max(1.0) as i32;
+                                    bar.surface.set_buffer_scale(scale_i32);
+                                    bar.surface.attach(Some(&wl_buffer), 0, 0);
+                                    bar.surface.damage_buffer(0, 0, phys_width, phys_height);
+                                    set_interactive_region(bar, visible && !items.is_empty(), compositor, qh);
+                                    bar.surface.commit();
+                                    bar.current_buffer = None;
+                                    true
+                                }
+                                Err(_) => false,
+                            }
                         }
-                        let (wl_buffer, _params) = params.create_immed(
-                                phys_width,
-                                phys_height,
-                                export_info.fourcc as u32,
-                                wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_buffer_params_v1::Flags::empty(),
-                                qh,
-                            );
-                        let scale_i32 = scale.round().max(1.0) as i32;
-                        bar.surface.set_buffer_scale(scale_i32);
-                        bar.surface.attach(Some(&wl_buffer), 0, 0);
-                        bar.surface.damage_buffer(0, 0, phys_width, phys_height);
-                        set_interactive_region(bar, visible && !items.is_empty(), compositor, qh);
-                        bar.surface.commit();
-                        bar.current_buffer = None;
-                        true
                     }
                     Err(_) => false,
-                },
-                Err(_) => false,
+                }
+            } else {
+                false
             }
         } else {
             false
@@ -293,6 +295,7 @@ pub fn draw_bottom_system_bar(
     font_manager: &mut crate::render::font::FontManager,
     mut gpu_context: Option<&mut wgpu_api::Renderer>,
     dmabuf_state: &DmabufState,
+    dmabuf_pool: &crate::render::dmabuf_export::DmabufPool,
 ) {
     let parent_surface = dock.surface.wl_surface().clone();
     if !ensure_surface(
@@ -508,39 +511,40 @@ pub fn draw_bottom_system_bar(
             align: 0.0,
         });
 
-        // GPU rendering via DMA-BUF with glyphon text rendering
+        // FIX (v1.5.5): Use pooled DMABUF texture
         if let Some(ref mut renderer) = gpu_context {
-            match renderer.render_to_dmabuf(phys_width as u32, phys_height as u32, &draw_commands) {
-                Ok(export_info) => match dmabuf_state.create_params(qh) {
-                    Ok(params) => {
-                        for (i, plane) in export_info.planes.iter().enumerate() {
-                            params.add(
-                                plane.fd.as_fd(),
-                                i as u32,
-                                plane.offset,
-                                plane.stride,
-                                export_info.modifier,
-                            );
+            if let (Some(adapter), Some(device)) = (renderer.adapter(), renderer.device()) {
+                match dmabuf_pool.acquire_texture(
+                    adapter, device, qh, dmabuf_state, phys_width as u32, phys_height as u32,
+                ) {
+                    Ok((texture, export_info)) => {
+                        if renderer.render_to_texture(
+                            &texture, phys_width as u32, phys_height as u32, 1.0, &draw_commands,
+                        ).is_err() {
+                            false
+                        } else {
+                            match crate::render::dmabuf_export::create_buffer_from_export(
+                                dmabuf_state, qh, &export_info,
+                            ) {
+                                Ok(wl_buffer) => {
+                                    dmabuf_pool.set_buffer_id(wl_buffer.id());
+                                    let scale_i32 = scale.round().max(1.0) as i32;
+                                    bar.surface.set_buffer_scale(scale_i32);
+                                    bar.surface.attach(Some(&wl_buffer), 0, 0);
+                                    bar.surface.damage_buffer(0, 0, phys_width, phys_height);
+                                    set_interactive_region(bar, false, compositor, qh);
+                                    bar.surface.commit();
+                                    bar.current_buffer = None;
+                                    true
+                                }
+                                Err(_) => false,
+                            }
                         }
-                        let (wl_buffer, _params) = params.create_immed(
-                                phys_width,
-                                phys_height,
-                                export_info.fourcc as u32,
-                                wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_buffer_params_v1::Flags::empty(),
-                                qh,
-                            );
-                        let scale_i32 = scale.round().max(1.0) as i32;
-                        bar.surface.set_buffer_scale(scale_i32);
-                        bar.surface.attach(Some(&wl_buffer), 0, 0);
-                        bar.surface.damage_buffer(0, 0, phys_width, phys_height);
-                        set_interactive_region(bar, false, compositor, qh);
-                        bar.surface.commit();
-                        bar.current_buffer = None;
-                        true
                     }
                     Err(_) => false,
-                },
-                Err(_) => false,
+                }
+            } else {
+                false
             }
         } else {
             false

@@ -159,6 +159,7 @@ impl AppState {
                 self.pipewire_capture.as_ref(),
                 self.gpu_context.as_mut(),
                 &self.dmabuf_state,
+                &self.dmabuf_pool,
             );
             context_menu::draw_context_menu_popup(
                 dock_instance,
@@ -172,6 +173,7 @@ impl AppState {
                 &self.interaction,
                 self.gpu_context.as_mut(),
                 &self.dmabuf_state,
+                &self.dmabuf_pool,
             );
             // audio_popup::draw_audio_popup(...);
             // Bluetooth popup — the BT icon on the dashed block opens a subsurface popup.
@@ -222,6 +224,7 @@ impl AppState {
                     false,
                     self.gpu_context.as_mut(),
                     &self.dmabuf_state,
+                    &self.dmabuf_pool,
                     is_animating,
                     scale_int,
                     self.slint_renderer.as_mut(),
@@ -256,6 +259,7 @@ impl AppState {
                 &mut self.font_manager,
                 self.gpu_context.as_mut(),
                 &self.dmabuf_state,
+                &self.dmabuf_pool,
             );
 
             // Side bars: remaining widgets are disabled.
@@ -272,6 +276,7 @@ impl AppState {
                 &self.config,
                 self.gpu_context.as_mut(),
                 &self.dmabuf_state,
+                &self.dmabuf_pool,
             );
 
             // Date/time block — separate layer surface to the right of the dock
@@ -284,6 +289,7 @@ impl AppState {
                 &self.config,
                 self.gpu_context.as_mut(),
                 &self.dmabuf_state,
+                &self.dmabuf_pool,
             );
 
             dock_instance.status_strip_rendered = true;

@@ -69,6 +69,8 @@ pub fn draw_main_dock(
     _render_status: bool,
     render_gpu: Option<&mut wgpu_api::Renderer>,
     dmabuf_state: &DmabufState,
+    // FIX (v1.5.5): DMABUF texture pool for reusing GPU textures across frames.
+    dmabuf_pool: &crate::render::dmabuf_export::DmabufPool,
     is_animating: bool,
     scale_int: i32,
     mut slint_renderer: Option<&mut SlintDockRenderer>,
@@ -151,7 +153,7 @@ pub fn draw_main_dock(
     // GPU rendering path via DMA-BUF: renders the dock through wgpu-api
     // and presents via DMA-BUF zero-copy sharing with the Wayland compositor.
     // Falls back to Slint CPU rendering if GPU is unavailable or fails.
-    use std::os::fd::AsFd;
+    use wayland_client::Proxy;
 
     // Build draw commands from dock state for GPU rendering.
     // Layout matches the Slint ui.slint definition exactly:
@@ -644,56 +646,56 @@ pub fn draw_main_dock(
             phys_height,
             draw_commands.len()
         );
-        match gpu_renderer.render_to_dmabuf(phys_width, phys_height, &draw_commands) {
-            Ok(export_info) => {
-                tracing::info!("GPU render_to_dmabuf succeeded");
-                // Create Wayland buffer from DMA-BUF planes
-                match dmabuf_state.create_params(qh) {
-                    Ok(params) => {
-                        for (i, plane) in export_info.planes.iter().enumerate() {
-                            params.add(
-                                plane.fd.as_fd(),
-                                i as u32,
-                                plane.offset,
-                                plane.stride,
-                                export_info.modifier,
-                            );
-                        }
-                        let (wl_buffer, _params) = params.create_immed(
-                            phys_width as i32,
-                            phys_height as i32,
-                            export_info.fourcc as u32,
-                            wayland_protocols::wp::linux_dmabuf::zv1::client::zwp_linux_buffer_params_v1::Flags::empty(),
-                            qh,
-                        );
-                        // Attach DMA-BUF buffer to Wayland surface
-                        dock.surface.wl_surface().set_buffer_scale(scale_int.max(1));
-                        dock.surface.wl_surface().attach(Some(&wl_buffer), 0, 0);
-                        dock.surface.wl_surface().damage_buffer(
-                            0,
-                            0,
-                            phys_width as i32,
-                            phys_height as i32,
-                        );
-                        dock.surface.wl_surface().commit();
-                        if is_animating {
-                            dock.surface
-                                .wl_surface()
-                                .frame(qh, dock.surface.wl_surface().clone());
-                        }
-                        true
-                    }
-                    Err(e) => {
-                        tracing::warn!("GPU dmabuf create_params failed: {:?}", e);
+        // FIX (v1.5.5): Use pooled DMABUF texture instead of allocating a new one each frame.
+        // The pool reuses textures across frames, eliminating per-frame Vulkan allocations (~1-2ms).
+        let gpu_success = if let (Some(adapter), Some(device)) =
+            (gpu_renderer.adapter(), gpu_renderer.device())
+        {
+            match dmabuf_pool.acquire_texture(adapter, device, qh, dmabuf_state, phys_width, phys_height) {
+                Ok((texture, export_info)) => {
+                    // Track the buffer ID for release tracking
+                    if gpu_renderer.render_to_texture(&texture, phys_width, phys_height, 1.0, &draw_commands).is_err() {
+                        tracing::warn!("GPU render_to_texture (pooled) failed");
                         false
+                    } else {
+                        match crate::render::dmabuf_export::create_buffer_from_export(dmabuf_state, qh, &export_info) {
+                            Ok(wl_buffer) => {
+                                // FIX (v1.5.5): Track buffer ID so the pool knows which slot to release
+                                dmabuf_pool.set_buffer_id(wl_buffer.id());
+                                // Attach DMA-BUF buffer to Wayland surface
+                                dock.surface.wl_surface().set_buffer_scale(scale_int.max(1));
+                                dock.surface.wl_surface().attach(Some(&wl_buffer), 0, 0);
+                                dock.surface.wl_surface().damage_buffer(
+                                    0,
+                                    0,
+                                    phys_width as i32,
+                                    phys_height as i32,
+                                );
+                                dock.surface.wl_surface().commit();
+                                if is_animating {
+                                    dock.surface
+                                        .wl_surface()
+                                        .frame(qh, dock.surface.wl_surface().clone());
+                                }
+                                true
+                            }
+                            Err(e) => {
+                                tracing::warn!("GPU dmabuf create_buffer_from_export failed: {:?}", e);
+                                false
+                            }
+                        }
                     }
                 }
+                Err(e) => {
+                    tracing::warn!("GPU dmabuf_pool acquire_texture failed: {}", e);
+                    false
+                }
             }
-            Err(e) => {
-                tracing::warn!("GPU render_to_dmabuf failed: {}", e);
-                false
-            }
-        }
+        } else {
+            tracing::warn!("GPU adapter or device not available");
+            false
+        };
+        gpu_success
     } else {
         false
     };
