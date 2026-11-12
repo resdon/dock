@@ -118,8 +118,12 @@ impl AutoHideState {
         let now = Instant::now();
         let elapsed = now.duration_since(self.last_update);
         if elapsed < HIDE_FRAME_INTERVAL {
-            // Keep animation progressing on subsequent ticks.
-            return true;
+            // **FIX (v1.5.5)**: Do NOT return true here. The animation hasn't
+            // progressed yet — alpha hasn't changed. Returning true caused
+            // layer_changed = true on every tick during hide/show transitions,
+            // keeping the render loop spinning. Return false so the frame
+            // scheduler can rate-limit the animation redraws.
+            return false;
         }
         let dt = elapsed.as_secs_f32();
         self.last_update = now;

@@ -122,6 +122,8 @@ impl FadeAnimation {
         let now = Instant::now();
         let elapsed = now.duration_since(self.last_update);
         if elapsed < FADE_FRAME_INTERVAL {
+            // **FIX (v1.5.5)**: Return false — alpha hasn't changed yet.
+            // The frame scheduler will wake us again when the next frame is due.
             return false;
         }
         let dt = elapsed.as_secs_f32();

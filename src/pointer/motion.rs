@@ -189,13 +189,15 @@ pub fn handle_motion_events(
                     map_coordinates(event, state, dock_surface_ptr, scale_factor);
                 let (new_x, new_y) = (mapped_x as f64, mapped_y as f64);
 
-                if state.interaction.pointer_position.x != new_x
-                    || state.interaction.pointer_position.y != new_y
-                {
-                    state.interaction.pointer_position.x = new_x;
-                    state.interaction.pointer_position.y = new_y;
-                    layer_changed = true;
-                }
+                // **FIX (v1.5.5)**: Always update pointer position for tracking purposes,
+                // but do NOT set layer_changed. Position changes alone don't require a
+                // redraw — only hover state changes (icon enter/leave) do. The compositor
+                // sends motion events continuously (sub-pixel jitter), and setting
+                // layer_changed for each one caused the render loop to spin at ~1000 FPS.
+                // The position is still tracked for the content hash in window_list.rs
+                // and for proximity detection.
+                state.interaction.pointer_position.x = new_x;
+                state.interaction.pointer_position.y = new_y;
 
                 if state.hide_state.is_fully_hidden() {
                     state.hover_state.is_visible = false;

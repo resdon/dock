@@ -261,6 +261,11 @@ pub struct DockInstance {
     pub hover_popup: Option<PopupSurface>,
     pub menu_popup: Option<PopupSurface>,
     pub configured: bool,
+    /// **FIX (v1.5.5)**: True after the first GPU (DMABUF) buffer is committed.
+    /// Used alongside current_buffer (SHM path) so initial_dock_frame_due becomes
+    /// false regardless of which rendering path is used. Without this, the GPU
+    /// path never sets current_buffer, causing ~800 FPS spinning.
+    pub first_gpu_buffer_committed: bool,
     /// True only after a frame containing the tray/system status strip has
     /// been attached. This forces the second startup frame even if popup-only
     /// animation would otherwise skip the main surface.

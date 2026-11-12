@@ -88,8 +88,18 @@ impl PointerHandler for AppState {
             layout,
         );
 
-        // Step 6: Render Sync
-        if layer_changed {
+        // **FIX (v1.5.5)**: Only set needs_redraw for meaningful state changes,
+        // not for every pointer motion event. The compositor sends motion events
+        // continuously (sub-pixel jitter), and setting needs_redraw for each one
+        // caused the render loop to spin at ~800 FPS. The frame scheduler handles
+        // rate-limited redraws for animation-driven updates.
+        // Check if the hover state actually changed (not just position).
+        let hover_meaningful = self.interaction.hovered_icon.is_some()
+            || self.menu_state.is_open
+            || self.window_list_state.is_open
+            || self.is_dragging
+            || self.dragged_app_id.is_some();
+        if layer_changed && hover_meaningful {
             self.needs_redraw = true;
         }
     }

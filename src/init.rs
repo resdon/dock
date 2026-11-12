@@ -622,6 +622,7 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
             date_time_block_surface: Some(date_time_block_surface),
             dashed_block_surface: Some(dashed_block_surface),
             configured: false,
+            first_gpu_buffer_committed: false,
             status_strip_rendered: false,
             context_menu_popup: None,
             dock_state: None,

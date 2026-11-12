@@ -179,7 +179,10 @@ impl FrameScheduler {
             }
         }
 
-        // No content change and not animation-driven — skip render
+        // **FIX (v1.5.5)**: No content change and not animation-driven — skip render.
+        // This is the critical path: when needs_redraw is true but nothing visual changed
+        // (e.g., pointer motion events from the compositor), we skip the render entirely.
+        // Without this return false, the render loop spins at ~800 FPS.
         self.content_changed = false;
         false
     }

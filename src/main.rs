@@ -401,15 +401,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         if proximity_changed {
-            state.needs_redraw = true;
-            // **FIX (v1.5.5)**: Only mark content changed for hover state changes
-            // (icon entered/left), not for every pixel movement. The frame scheduler
-            // will rate-limit pixel-movement redraws to 75 FPS via animations_active.
-            // Without this, pointer motion events from the compositor trigger
-            // immediate redraws at ~1000 FPS, bypassing the frame scheduler entirely.
+            // **FIX (v1.5.5)**: Only set needs_redraw for hover state changes
+            // (icon entered/left), not for every interaction::update() call.
+            // The compositor sends pointer events continuously, and interaction::update()
+            // may return true for timer/fade ticks even during idle. Without this guard,
+            // the render loop spins at ~800 FPS.
             let hover_changed = state.interaction.hovered_icon != state.interaction.last_hovered_icon;
             if hover_changed {
                 state.interaction.last_hovered_icon = state.interaction.hovered_icon;
+                state.needs_redraw = true;
                 frame_scheduler.mark_content_changed();
             }
             status_sidebars_only = false;
@@ -452,10 +452,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // popup-only animation must never suppress initial dock presentation.
         #[cfg(feature = "tracy")]
         let _zone_render = tracy_client::span!("Render");
+        // **FIX (v1.5.5)**: Check both current_buffer (SHM path) and
+        // first_gpu_buffer_committed (DMABUF path) to determine if the
+        // initial frame has been rendered. Without this, the GPU path never
+        // sets current_buffer, so initial_dock_frame_due stays true forever.
         let initial_dock_frame_due = state
             .docks
             .iter()
-            .any(|dock| dock.configured && dock.current_buffer.is_none());
+            .any(|dock| dock.configured && dock.current_buffer.is_none() && !dock.first_gpu_buffer_committed);
 
         // FIX (v1.5.5): Use frame scheduler to decide whether to render.
         // Content changes trigger immediate render; animation-driven redraws
@@ -465,8 +469,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             || initial_dock_frame_due
             || menu_fade_animating
             || window_list_fade_animating;
-        
-        let should_draw = frame_scheduler.should_render(needs_any_redraw) || initial_dock_frame_due;
+
+        // **FIX (v1.5.5)**: initial_dock_frame_due should NOT bypass the frame
+        // scheduler. If the scheduler skips a render, the initial buffer will be
+        // drawn on the next wakeup. Bypassing caused ~800 FPS spinning because
+        // current_buffer was never set (draw was skipped), so initial_dock_frame_due
+        // stayed true forever, creating an infinite render loop.
+        if initial_dock_frame_due {
+            frame_scheduler.mark_content_changed();
+        }
+        let should_draw = frame_scheduler.should_render(needs_any_redraw);
 
         if should_draw {
             #[cfg(feature = "tracy")]

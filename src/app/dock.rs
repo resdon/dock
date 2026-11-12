@@ -680,6 +680,11 @@ pub fn draw_main_dock(
                             Ok(wl_buffer) => {
                                 // FIX (v1.5.5): Track buffer ID so the pool knows which slot to release
                                 dmabuf_pool.set_buffer_id(wl_buffer.id());
+                                // **FIX (v1.5.5)**: Mark that the first GPU buffer was committed
+                                // so initial_dock_frame_due becomes false. Without this flag,
+                                // current_buffer stays None (GPU path uses WlBuffer, not SHM Buffer),
+                                // causing initial_dock_frame_due to be true every frame (~800 FPS).
+                                dock.first_gpu_buffer_committed = true;
                                 // Attach DMA-BUF buffer to Wayland surface
                                 dock.surface.wl_surface().set_buffer_scale(scale_int.max(1));
                                 dock.surface.wl_surface().attach(Some(&wl_buffer), 0, 0);
