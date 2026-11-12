@@ -157,6 +157,7 @@ fn radio_mark(canvas: &mut [u8], width: i32, height: i32, cx: i32, cy: i32, sele
 /// Holds the RGBA pixel data for a single captured window frame,
 /// downsampled by the configured `pipewire_scale_factor`. Used by
 /// `draw_capture_frame` to render the thumbnail at the top of the popup.
+#[derive(Clone)]
 pub struct CaptureFrameData {
     pub width: u32,
     pub height: u32,

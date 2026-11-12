@@ -50,6 +50,7 @@ fn ensure_surface(
         input_region_key: u64::MAX,
         // FIX (v1.5.5): Initialize last_content_hash to 0 for content-hash caching.
         last_content_hash: 0,
+        last_texture_generation: 0,
     });
     true
 }

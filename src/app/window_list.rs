@@ -309,6 +309,7 @@ pub fn draw_window_list_popup(
                         // FIX (v1.5.5): Initialize last_content_hash to 0 so the first frame
                         // always renders. The hash will be updated after the first render.
                         last_content_hash: 0,
+                        last_texture_generation: 0,
                     });
                 }
 
@@ -701,14 +702,14 @@ pub fn draw_window_list_popup(
                     }
 
                     // FIX (v1.5.5): Draw PipeWire capture frame as a textured quad if available.
-                    // The content hash check above already includes the generation counter,
-                    // so if we reach here, we know the content has changed and need a fresh frame.
+                    // Only fetch and upload a new GPU texture when the PipeWire generation counter
+                    // has actually changed. The content hash includes the pointer position, so any
+                    // mouse movement triggers a re-render — but the underlying frame hasn't changed,
+                    // so we reuse the cached GPU texture instead of re-uploading it.
                     //
-                    // We always fetch and upload the latest frame rather than checking the texture
-                    // cache, because the cache key is based only on the stream index and would
-                    // never evict a stale texture for the same stream. A previous attempt to use
-                    // a cached texture fast path caused frames to freeze: once a texture was cached
-                    // for a stream, it was never replaced with a new frame.
+                    // Before this fix, `replace_cached_texture_from_pixels()` was called on every
+                    // redraw, even when only the pointer position changed. This wasted GPU bandwidth
+                    // uploading the same frame data repeatedly.
                     if let Some(ref mut renderer) = gpu_context {
                         let active_stream_idx = pipewire_capture
                             .map(|service| *service.active_row.lock())
@@ -718,34 +719,75 @@ pub fn draw_window_list_popup(
                             dock.output.id(),
                             active_stream_idx
                         );
-                        // Fetch the latest frame data and upload it, replacing any cached texture.
-                        let frame_data = if has_valid_stream {
-                            pipewire_capture.and_then(|service| {
-                                let row = *service.active_row.lock();
-                                let (orig_w, orig_h) =
-                                    service.get_stream_dimensions(row).unwrap_or((0, 0));
-                                service
-                                    .get_active_frame(Some(target_frame_w), Some(target_frame_h))
-                                    .map(|(w, h, rgba)| CaptureFrameData {
-                                        width: w,
-                                        height: h,
-                                        rgba,
-                                        original_width: orig_w,
-                                        original_height: orig_h,
-                                    })
+
+                        // Check if the PipeWire frame has actually changed since the last texture
+                        // upload. If the generation is the same, skip the expensive frame fetch,
+                        // RGBA conversion, and GPU texture upload — just reuse the cached texture.
+                        let generation_changed = if has_valid_stream
+                            && use_matched
+                            && (hovered_item as usize) < matched_windows.len()
+                        {
+                            if let Some(stream_idx) = matched_windows[hovered_item as usize].1 {
+                                if let Some(gen) = pipewire_capture
+                                    .and_then(|service| service.get_stream_generation(stream_idx))
+                                {
+                                    gen != popup.last_texture_generation
+                                } else {
+                                    // Generation unavailable — assume changed to avoid stale texture
+                                    true
+                                }
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        };
+
+                        let texture_id = if generation_changed {
+                            // Fetch the latest frame data and upload it, replacing any cached texture.
+                            let frame_data = if has_valid_stream {
+                                pipewire_capture.and_then(|service| {
+                                    let row = *service.active_row.lock();
+                                    let (orig_w, orig_h) =
+                                        service.get_stream_dimensions(row).unwrap_or((0, 0));
+                                    service
+                                        .get_active_frame(Some(target_frame_w), Some(target_frame_h))
+                                        .map(|(w, h, rgba)| CaptureFrameData {
+                                            width: w,
+                                            height: h,
+                                            rgba,
+                                            original_width: orig_w,
+                                            original_height: orig_h,
+                                        })
+                                })
+                            } else {
+                                None
+                            };
+                            capture_frame_data = frame_data.clone();
+                            capture_frame_data.as_ref().and_then(|fd| {
+                                renderer.replace_cached_texture_from_pixels(
+                                    &cache_key,
+                                    &fd.rgba,
+                                    fd.width as u32,
+                                    fd.height as u32,
+                                )
                             })
                         } else {
-                            None
+                            // Reuse the existing cached texture — frame hasn't changed.
+                            renderer.cached_texture(&cache_key)
                         };
-                        capture_frame_data = frame_data;
-                        let texture_id = capture_frame_data.as_ref().and_then(|fd| {
-                            renderer.replace_cached_texture_from_pixels(
-                                &cache_key,
-                                &fd.rgba,
-                                fd.width as u32,
-                                fd.height as u32,
-                            )
-                        });
+                        // Update the last texture generation after a successful upload.
+                        if generation_changed {
+                            if let Some(stream_idx) = matched_windows.get(hovered_item as usize)
+                                .and_then(|w| w.1)
+                            {
+                                if let Some(gen) = pipewire_capture
+                                    .and_then(|service| service.get_stream_generation(stream_idx))
+                                {
+                                    popup.last_texture_generation = gen;
+                                }
+                            }
+                        }
                         if let Some(texture_id) = texture_id {
                             let frame_inner_w = width - frame_border * 2.0;
                             let frame_inner_h = frame_phys_h - frame_border * 2.0;
