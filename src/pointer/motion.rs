@@ -251,6 +251,10 @@ pub fn handle_motion_events(
                                 // Avoid aggressive resets when switching targets within an active window list.
                                 if !was_open {
                                     crate::interaction::timers::reset_all(state);
+                                    // FIX (v1.5.5): Signal PipeWire streams that the popup is now open.
+                                    if let Some(ref pw) = state.pipewire_capture {
+                                        pw.set_window_list_open(true);
+                                    }
                                 }
                                 if let Some(ref pw) = state.pipewire_capture {
                                     pw.set_active_row(0);

@@ -235,6 +235,15 @@ pub struct PipewireCaptureService {
     /// Configured via `pipewire_scale_factor` in the dock config (`config.json`).
     /// Lower values reduce memory usage and rendering cost at the expense of quality.
     pub scale_factor: Arc<Mutex<f32>>,
+    /// Set to `true` when the window list popup is open, `false` when closed.
+    /// Stream threads check this flag to decide whether to process frames.
+    /// When the popup is closed, all streams skip frame copying entirely,
+    /// reducing CPU usage to near-zero for PipeWire capture.
+    ///
+    /// **FIX (v1.5.5)**: Added to eliminate unnecessary frame processing when
+    /// the window list popup is closed. Previously, all streams captured at
+    /// full FPS (~30fps per stream) regardless of visibility, wasting CPU.
+    pub window_list_open: Arc<AtomicBool>,
 }
 
 impl PipewireCaptureService {
@@ -259,7 +268,20 @@ impl PipewireCaptureService {
             bindings: Arc::new(Mutex::new(HashMap::new())),
             restore_token: Arc::new(Mutex::new(load_restore_token())),
             scale_factor: Arc::new(Mutex::new(0.5)),
+            window_list_open: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// Set whether the window list popup is currently open.
+    ///
+    /// When `true`, the active (hovered) stream captures at full FPS and
+    /// inactive streams capture at a reduced rate (1 frame per 2 seconds).
+    /// When `false`, all streams skip frame processing entirely.
+    ///
+    /// **FIX (v1.5.5)**: Called when the window list popup opens or closes
+    /// so stream threads can stop processing frames when not visible.
+    pub fn set_window_list_open(&self, open: bool) {
+        self.window_list_open.store(open, Ordering::Release);
     }
 
     /// Timeout (in milliseconds) for acquiring Mutex locks on per-stream data.
@@ -1096,7 +1118,14 @@ pub async fn init_capture_service(
             service.bind_window_to_stream(wid, idx, &title);
         }
 
-        spawn_stream_thread(fd, node_id, idx, stream_data.clone());
+        // FIX (v1.5.5): Pass visibility info so the stream thread can skip
+        // frame processing when the popup is closed or the stream is inactive.
+        let vis = StreamVisibility {
+            window_list_open: Arc::clone(&service.window_list_open),
+            active_row: Arc::clone(&service.active_row),
+            stream_idx: idx,
+        };
+        spawn_stream_thread(fd, node_id, idx, stream_data.clone(), vis);
     }
 
     // Wait for streams to negotiate format (up to 5 seconds).
@@ -1668,7 +1697,30 @@ async fn capture_windows_range(
 ///
 /// The `process` callback copies each buffer into `stream_data.frame` for the
 /// render thread to read. Format conversion happens on demand in `get_active_frame()`.
-fn spawn_stream_thread(fd: OwnedFd, node_id: u32, idx: usize, stream_data: Arc<StreamFrameData>) {
+
+/// Shared state passed to stream threads for visibility-based capture control.
+///
+/// **FIX (v1.5.5)**: Each stream thread needs to know whether the window list
+/// popup is open and whether this stream is the active (hovered) row. Only the
+/// active stream should capture at full FPS; inactive streams capture at 1 frame
+/// per 2 seconds; all streams skip when the popup is closed.
+#[derive(Clone)]
+struct StreamVisibility {
+    /// Whether the window list popup is currently open.
+    window_list_open: Arc<AtomicBool>,
+    /// Index of the currently hovered row in the popup.
+    active_row: Arc<Mutex<usize>>,
+    /// This stream's index in the stream_frames vector.
+    stream_idx: usize,
+}
+
+fn spawn_stream_thread(
+    fd: OwnedFd,
+    node_id: u32,
+    idx: usize,
+    stream_data: Arc<StreamFrameData>,
+    visibility: StreamVisibility,
+) {
     std::thread::spawn(move || {
         let mainloop = match pw::main_loop::MainLoopRc::new(None) {
             Ok(ml) => ml,
@@ -1716,6 +1768,9 @@ fn spawn_stream_thread(fd: OwnedFd, node_id: u32, idx: usize, stream_data: Arc<S
         let title_for_log = stream_data.title.clone();
         let mut fps_window_start = Instant::now();
         let mut frames_in_fps_window = 0u64;
+        // FIX (v1.5.5): Track last frame capture time for inactive streams to
+        // limit their capture rate to 1 frame per 2 seconds instead of full FPS.
+        let mut last_inactive_frame_time = Instant::now();
 
         let _listener = stream
             .add_local_listener_with_user_data(())
@@ -1751,6 +1806,36 @@ fn spawn_stream_thread(fd: OwnedFd, node_id: u32, idx: usize, stream_data: Arc<S
                 }
             })
             .process(move |stream, _| {
+                // FIX (v1.5.5): Check visibility before processing frames.
+                // When the popup is closed, skip all frame processing (zero CPU).
+                // When open, only the active (hovered) stream processes at full FPS.
+                // Inactive streams process at 1 frame per 2 seconds to keep a
+                // recent thumbnail when the user switches to them.
+                let popup_open = visibility.window_list_open.load(Ordering::Acquire);
+                if !popup_open {
+                    // Popup closed — dequeue and discard buffer without copying
+                    let _ = stream.dequeue_buffer();
+                    return;
+                }
+
+                // Check if this stream is the active (hovered) row
+                let is_active = {
+                    if let Some(active) = visibility.active_row.try_lock() {
+                        *active == visibility.stream_idx
+                    } else {
+                        true // If we can't read active_row, assume active to be safe
+                    }
+                };
+
+                if !is_active {
+                    // Inactive stream — only process 1 frame per 2 seconds
+                    if last_inactive_frame_time.elapsed() < std::time::Duration::from_millis(2000) {
+                        let _ = stream.dequeue_buffer();
+                        return;
+                    }
+                    last_inactive_frame_time = Instant::now();
+                }
+
                 match stream.dequeue_buffer() {
                     None => {}
                     Some(mut buffer) => {
@@ -1943,6 +2028,9 @@ pub async fn start_monitor_inner(
     let service_state = service.capture_state.clone();
     let service_frames = service.stream_frames.clone();
     let probe_signal = service.probe_signal.clone();
+    // FIX (v1.5.5): Clone visibility Arcs for new streams spawned by the monitor.
+    let service_window_list_open = service.window_list_open.clone();
+    let service_active_row = service.active_row.clone();
     let initial_count = service.capture_state.lock().count;
 
     let mut _last_count = initial_count;
@@ -2424,7 +2512,13 @@ pub async fn start_monitor_inner(
                             service.bind_window_to_stream(wid, stream_idx, &captured_title);
                         }
 
-                        spawn_stream_thread(fd, node_id, stream_idx, stream_data.clone());
+                        // FIX (v1.5.5): Pass visibility info for streams spawned by the monitor.
+                        let vis = StreamVisibility {
+                            window_list_open: service_window_list_open.clone(),
+                            active_row: service_active_row.clone(),
+                            stream_idx,
+                        };
+                        spawn_stream_thread(fd, node_id, stream_idx, stream_data.clone(), vis);
                         added_count += 1;
                     }
                 }

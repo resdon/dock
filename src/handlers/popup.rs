@@ -231,8 +231,11 @@ pub fn open_window_list_menu(
     state.close_context_menu_now();
     crate::interaction::timers::reset_all(state);
     // Reset active_row so the popup defaults to the first stream
+    // FIX (v1.5.5): Signal PipeWire streams that the popup is now open
+    // so the active stream can start capturing at full FPS.
     if let Some(ref pw) = state.pipewire_capture {
         pw.set_active_row(0);
+        pw.set_window_list_open(true);
     }
     state.window_list_state.is_open = true;
     state.window_list_state.just_opened = false;

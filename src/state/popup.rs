@@ -270,6 +270,11 @@ impl AppState {
             return false;
         }
 
+        // FIX (v1.5.5): Signal PipeWire streams that the popup is now closed
+        // so all streams stop processing frames (zero CPU usage).
+        if let Some(ref pw) = self.pipewire_capture {
+            pw.set_window_list_open(false);
+        }
         self.window_list_state.is_open = false;
         self.window_list_state.target_app_id = None;
         self.window_list_state.target_window = None;
@@ -287,6 +292,10 @@ impl AppState {
     pub fn close_window_list_now(&mut self) -> bool {
         let had_state =
             self.window_list_state.is_open || self.window_list_state.target_app_id.is_some();
+        // FIX (v1.5.5): Signal PipeWire streams that the popup is now closed.
+        if let Some(ref pw) = self.pipewire_capture {
+            pw.set_window_list_open(false);
+        }
         self.window_list_state.is_open = false;
         self.window_list_state.target_app_id = None;
         self.window_list_state.target_window = None;
@@ -331,6 +340,10 @@ impl AppState {
                 .iter()
                 .all(|dock| dock.window_list_fade.is_fully_hidden());
         if self.window_list_state.is_open && list_hidden {
+            // FIX (v1.5.5): Signal PipeWire streams that the popup is now closed.
+            if let Some(ref pw) = self.pipewire_capture {
+                pw.set_window_list_open(false);
+            }
             self.window_list_state.is_open = false;
             self.window_list_state.target_app_id = None;
             self.window_list_state.target_window = None;
