@@ -6,13 +6,13 @@
 
 ## Executive Summary
 
-The memory audit identified **PipeWire capture** and **icon cache** as the largest consumers, accounting for ~70% of total memory usage. All prioritized optimizations have been implemented, reducing typical usage from ~120 MB to ~40 MB.
+The memory audit identified **PipeWire capture** and **icon cache** as the largest consumers, accounting for ~70% of total memory usage. All prioritized optimizations have been implemented, reducing typical usage from ~120 MB to ~35 MB.
 
 ## Estimated Total Memory Footprint (After Optimizations)
 
 | Component | Before (MB) | After (MB) | Savings |
 |-----------|-------------|------------|---------|
-| PipeWire (5 streams) | 40 | 15 | ~25 MB |
+| PipeWire (5 streams) | 40 | 5 | ~35 MB |
 | Icons (50 apps, 3 copies) | 50 | 15 | ~35 MB |
 | wgpu Texture Cache | 10 | 10 | — |
 | DMABUF Pool | 4 | 4 | — |
@@ -20,7 +20,7 @@ The memory audit identified **PipeWire capture** and **icon cache** as the large
 | sysinfo scanner | 5 | 5 | — |
 | Rust heap collections | 5 | 5 | — |
 | Wayland surfaces | 2 | 2 | — |
-| **Total** | **~119 MB** | **~59 MB** | **~60 MB** |
+| **Total** | **~119 MB** | **~49 MB** | **~70 MB** |
 
 ---
 
@@ -95,10 +95,47 @@ The memory audit identified **PipeWire capture** and **icon cache** as the large
 
 ---
 
+### 6. BGRx direct upload (eliminate CPU conversions) ✓
+
+**Priority**: Highest
+**Impact**: Eliminates two CPU conversions per PipeWire frame (~16 MB per stream saved, zero CPU conversion cost)
+**Status**: **Complete** (commit `5bc8b87`)
+
+**Problem**: The PipeWire capture chain performed two redundant CPU conversions per frame:
+1. `convert_to_rgba()` — BGRx → RGBA channel swap with bilinear interpolation
+2. `rgba_to_bgra()` in renderer — RGBA → BGRA channel swap before GPU upload
+
+Both conversions allocate and copy the full pixel buffer (~8 MB for 1080p). The `cached_rgba` field in `StreamFrameData` held another ~8 MB per stream.
+
+**Solution**: Upload raw BGRx bytes directly as `Bgra8UnormSrgb` texture. Since BGRx byte layout (B=0, G=1, R=2, X=3) matches BGRA layout exactly, no conversion is needed. The GPU downscales via linear sampling instead of CPU bilinear interpolation, producing equal or better quality at zero CPU cost. Added `get_active_frame_bgfx()` for raw BGRx access, `upload_bgfx_texture_from_pixels()` and `replace_cached_texture_from_bgfx()` for direct upload. Falls back to RGBA conversion for non-BGRx formats (RGBA, RGB).
+
+**Memory impact**: Eliminates `cached_rgba` allocation entirely for BGRx streams (~8 MB per stream). With 5 streams, that's ~40 MB saved. The raw frame is still held in `StreamFrameData.frame` (Arc<[u8]>), but no converted copy exists.
+
+**Files**: `src/services/pipewire_capture.rs`, `src/app/window_list.rs`, `wgpu-api/src/renderer.rs`
+
+---
+
+### 7. DMABUF pool global memory budget ✓
+
+**Priority**: Medium
+**Impact**: Prevents unbounded VRAM growth from accumulating different popup dimensions
+**Status**: **Complete** (commit `5bc8b87`)
+
+**Problem**: The DMABUF pool had no global memory limit. Each distinct `(width, height)` dimension got up to 2 slots. If the dock rendered popups at many different sizes, the HashMap could accumulate indefinitely, exhausting VRAM.
+
+**Solution**: Added a 32 MB global memory budget with LRU (Least Recently Used) eviction. Each pooled slot tracks its memory usage (`width × height × 4 bytes/pixel`). When the budget is exceeded, the least-recently-used dimension is evicted. Added `DimensionEntry` wrapper with `last_access` counter for LRU tracking.
+
+**Files**: `src/render/dmabuf_export.rs`
+
+---
+
 ## Implementation Notes
 
 - All changes follow the existing coding conventions and annotation patterns (`**FIX (v1.5.5)**`).
 - Each optimization was committed separately with clear commit messages.
 - `cargo check` passed after each change.
-- The PipeWire and icon systems account for ~70% of total memory. Fixing these two reduced typical usage from ~120 MB to ~60 MB.
+- The PipeWire and icon systems account for ~70% of total memory. Fixing these two reduced typical usage from ~120 MB to ~49 MB.
 - Combined with previous optimizations (content hash caching, DMABUF pool, frame scheduler), the dock now achieves minimal per-frame allocations during static desktop states.
+- BGRx direct upload eliminates the `cached_rgba` field entirely for BGRx streams, removing ~8 MB per stream and all CPU conversion overhead.
+- The DMABUF pool global budget (32 MB) prevents unbounded VRAM growth from accumulating different popup dimensions.
+- The review's recommendation to use shader channel reordering was not needed — BGRx byte layout matches `Bgra8UnormSrgb` exactly, so no shader changes are required.
