@@ -292,6 +292,9 @@ pub struct TextShaper {
     pub fallback_families: Vec<String>,
     /// Next font face ID.
     pub next_face_id: u32,
+    /// FIX (v1.5.5): Persistent font database — built once when fonts are loaded,
+    /// reused for every shaping call instead of recreating it each time.
+    font_db: fontdb::Database,
 }
 
 impl TextShaper {
@@ -310,6 +313,7 @@ impl TextShaper {
                 "Noto Color Emoji".to_string(),
             ],
             next_face_id: 1,
+            font_db: fontdb::Database::default(),
         }
     }
 
@@ -395,6 +399,9 @@ impl TextShaper {
                 ("Unknown".to_string(), FontWeight::Normal, FontStyle::Normal)
             })
             .unwrap_or(("Unknown".to_string(), FontWeight::Normal, FontStyle::Normal));
+
+        // FIX (v1.5.5): Load font into the persistent database for reuse.
+        self.font_db.load_font_data(data.clone());
 
         let face = FontFace::new(id, face_info.0, face_info.1, face_info.2, data);
         self.faces.push(face);
@@ -511,11 +518,8 @@ impl TextShaper {
         let ascent = font_size * 0.8;
         let descent = font_size * 0.2;
 
-        // Build a fontdb database from loaded faces
-        let mut db = fontdb::Database::default();
-        for face in &self.faces {
-            db.load_font_data(face.data.clone());
-        }
+        // FIX (v1.5.5): Use the persistent font database instead of recreating it.
+        let db = &self.font_db;
 
         let mut clusters = Vec::new();
         let mut pen_x = 0.0;

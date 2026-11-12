@@ -151,6 +151,8 @@ pub struct Renderer {
     #[allow(dead_code)]
     gpu_backend: Option<GpuBackend>,
     /// GPU text renderer sharing this renderer's device and queue.
+    /// Lazily initialized on first use to avoid loading all system fonts at startup.
+    /// The main dock uses Slint CPU rendering; only popups need GPU text.
     text_manager: Option<crate::text_render::TextManager>,
     /// Current frame state (set during begin_frame/end_frame).
     frame_state: Option<FrameState>,
@@ -159,6 +161,23 @@ pub struct Renderer {
 }
 
 impl Renderer {
+    /// Lazily initialize the GPU text manager on first use.
+    ///
+    /// Defers loading all system fonts (~6-10 MB PSS) until a popup actually
+    /// needs GPU text rendering. The main dock uses Slint CPU rendering, so
+    /// startup memory is saved when no popups are open.
+    fn get_or_init_text_manager(&mut self) {
+        if self.text_manager.is_none() {
+            if let Some(backend) = &self.gpu_backend {
+                self.text_manager = Some(crate::text_render::TextManager::new(
+                    backend.device(),
+                    backend.queue(),
+                ));
+                log::debug!("Lazy initialized TextManager for GPU text rendering");
+            }
+        }
+    }
+
     /// Create a new Renderer with default configuration.
     ///
     /// This is an async operation that initializes the GPU device.
@@ -186,10 +205,10 @@ impl Renderer {
             }
         }
 
-        let text_manager = gpu_backend
-            .as_ref()
-            .map(|backend| crate::text_render::TextManager::new(backend.device(), backend.queue()));
-
+        // FIX (v1.5.5): Defer TextManager creation until first use.
+        // Loading all system fonts (~6-10 MB PSS) at startup wastes memory when
+        // the main dock uses Slint CPU rendering. TextManager is only needed for
+        // popup text rendering via wgpu. See lazy getter `get_or_init_text_manager`.
         let (adapter_name, device_description) = if gpu_backend.is_some() {
             ("GPU Backend".to_string(), "wgpu Device".to_string())
         } else {
@@ -206,7 +225,7 @@ impl Renderer {
             device_description,
             config,
             gpu_backend,
-            text_manager,
+            text_manager: None,
             frame_state: None,
             cached_texture_ids: HashMap::new(),
         })
@@ -243,8 +262,15 @@ impl Renderer {
     }
 
     /// Remove and destroy a surface, freeing associated resources.
+    ///
+    /// FIX (v1.5.5): Calls `backend.remove_surface()` so the backend's wgpu Surface
+    /// and surface config are also released. Previously only the renderer's surface
+    /// map was cleared, leaking backend GPU resources.
     pub fn destroy_surface(&mut self, id: SurfaceId) {
         self.surfaces.remove(&id);
+        if let Some(backend) = &mut self.gpu_backend {
+            backend.remove_surface(id);
+        }
     }
 
     /// Remove a surface (alias for destroy_surface).
@@ -608,10 +634,28 @@ impl Renderer {
         self.frame_count
     }
 
-    /// Clear all surfaces and textures.
+    /// Clear all surfaces and textures, releasing backend GPU resources.
+    ///
+    /// FIX (v1.5.5): Clears backend GPU textures, texture views, bind groups,
+    /// and surfaces so that `clear()` actually releases GPU memory. Also clears
+    /// `cached_texture_ids` so stale cache entries are removed.
     pub fn clear(&mut self) {
+        // Collect IDs to clear before mutating the backend
+        let surface_ids: Vec<SurfaceId> = self.surfaces.keys().copied().collect();
+        let texture_ids: Vec<TextureId> = self.textures.keys().copied().collect();
+
+        if let Some(backend) = &mut self.gpu_backend {
+            for sid in surface_ids {
+                backend.remove_surface(sid);
+            }
+            for tid in texture_ids {
+                backend.remove_texture(tid);
+            }
+        }
+
         self.surfaces.clear();
         self.textures.clear();
+        self.cached_texture_ids.clear();
     }
 
     // -----------------------------------------------------------------------
@@ -880,6 +924,7 @@ impl Renderer {
         );
 
         // Submit GPU commands if we have a backend and draw commands
+        self.get_or_init_text_manager();
         if let Some(backend) = &mut self.gpu_backend {
             if let Err(e) =
                 Self::submit_frame_impl(backend, self.text_manager.as_mut(), &frame_state)
@@ -999,6 +1044,7 @@ impl Renderer {
         scale_factor: f32,
         commands: &[crate::render::DrawCommand],
     ) -> Result<crate::backend::DmabufExportInfo, String> {
+        self.get_or_init_text_manager();
         let backend = self
             .gpu_backend
             .as_mut()
@@ -1077,6 +1123,7 @@ impl Renderer {
         scale_factor: f32,
         commands: &[crate::render::DrawCommand],
     ) -> Result<(), String> {
+        self.get_or_init_text_manager();
         let backend = self
             .gpu_backend
             .as_mut()
@@ -1148,10 +1195,15 @@ impl Renderer {
         }
     }
 
-    /// Convert draw commands to GPU draw calls.
+    /// Convert draw commands to GPU draw calls using persistent vertex buffers.
+    ///
+    /// FIX (v1.5.5): Replaces per-command GPU buffer allocation with persistent
+    /// vertex buffers. All solid quads are batched into one upload, and all
+    /// textured quads are grouped by texture and batched per texture. This reduces
+    /// GPU buffer allocations from ~3,750/sec to ~2/sec at 75 FPS with 50 primitives.
     fn draw_commands_to_gpu_impl(
         render_pass: &mut wgpu::RenderPass<'_>,
-        backend: &GpuBackend,
+        backend: &mut GpuBackend,
         commands: &[crate::render::DrawCommand],
         width: f32,
         height: f32,
@@ -1165,6 +1217,17 @@ impl Renderer {
         let to_x = |x: f32| (x / width) * 2.0 - 1.0;
         let to_y = |y: f32| 1.0 - (y / height) * 2.0;
 
+        // FIX (v1.5.5): Collect all vertices into batched vectors instead of
+        // creating a GPU buffer per primitive.
+        let mut solid_vertices: Vec<crate::backend::SolidVertex> = Vec::with_capacity(
+            commands.len() * 6,
+        );
+        // Group textured quads by texture ID so each texture gets one draw call
+        let mut textured_batches: std::collections::HashMap<
+            crate::texture::TextureId,
+            Vec<crate::backend::TexturedVertex>,
+        > = std::collections::HashMap::new();
+
         for cmd in commands {
             match cmd {
                 crate::render::DrawCommand::Rectangle {
@@ -1174,39 +1237,13 @@ impl Renderer {
                     stroke: _stroke,
                     stroke_width: _stroke_width,
                 } => {
-                    // Draw solid rectangle
                     let x0 = to_x(rect.x * coordinate_scale);
                     let y0 = to_y(rect.y * coordinate_scale);
                     let x1 = to_x((rect.x + rect.width) * coordinate_scale);
                     let y1 = to_y((rect.y + rect.height) * coordinate_scale);
                     let c = [color.r, color.g, color.b, color.a];
-
-                    let vertices: [crate::backend::SolidVertex; 6] =
-                        crate::backend::SolidVertex::quad(x0, y0, x1 - x0, y1 - y0, c);
-
-                    let buffer = backend.device().create_buffer(&wgpu::BufferDescriptor {
-                        label: Some("Solid Quad Buffer"),
-                        size: (std::mem::size_of::<crate::backend::SolidVertex>() * 6) as u64,
-                        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                        mapped_at_creation: false,
-                    });
-                    backend
-                        .queue()
-                        .write_buffer(&buffer, 0, bytemuck::cast_slice(&vertices));
-
-                    render_pass.set_pipeline(
-                        backend
-                            .solid_pipeline()
-                            .ok_or_else(|| "No solid pipeline")
-                            .unwrap(),
-                    );
-                    // Bind the uniform bind group (uniform buffer + sampler + placeholder texture)
-                    // This is required by the solid pipeline's bind group layout at index 0.
-                    if let Some(bind_group) = backend.uniform_bind_group() {
-                        render_pass.set_bind_group(0, bind_group, &[]);
-                    }
-                    render_pass.set_vertex_buffer(0, buffer.slice(..));
-                    render_pass.draw(0..6, 0..1);
+                    let quad = crate::backend::SolidVertex::quad(x0, y0, x1 - x0, y1 - y0, c);
+                    solid_vertices.extend_from_slice(&quad);
                 }
                 crate::render::DrawCommand::Image {
                     dest_rect,
@@ -1214,7 +1251,6 @@ impl Renderer {
                     source_uv,
                     tint,
                 } => {
-                    // Draw textured quad
                     let x0 = to_x(dest_rect.x * coordinate_scale);
                     let y0 = to_y(dest_rect.y * coordinate_scale);
                     let x1 = to_x((dest_rect.x + dest_rect.width) * coordinate_scale);
@@ -1226,32 +1262,12 @@ impl Renderer {
                         source_uv.x + source_uv.width,
                         source_uv.y + source_uv.height,
                     ];
-
-                    let vertices: [crate::backend::TexturedVertex; 6] =
+                    let quad =
                         crate::backend::TexturedVertex::quad(x0, y0, x1 - x0, y1 - y0, uv, c);
-
-                    let buffer = backend.device().create_buffer(&wgpu::BufferDescriptor {
-                        label: Some("Textured Quad Buffer"),
-                        size: (std::mem::size_of::<crate::backend::TexturedVertex>() * 6) as u64,
-                        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                        mapped_at_creation: false,
-                    });
-                    backend
-                        .queue()
-                        .write_buffer(&buffer, 0, bytemuck::cast_slice(&vertices));
-
-                    render_pass.set_pipeline(
-                        backend
-                            .textured_pipeline()
-                            .ok_or_else(|| "No textured pipeline")
-                            .unwrap(),
-                    );
-                    render_pass.set_vertex_buffer(0, buffer.slice(..));
-
-                    if let Some(bind_group) = backend.get_texture_bind_group(*texture) {
-                        render_pass.set_bind_group(0, bind_group, &[]);
-                        render_pass.draw(0..6, 0..1);
-                    }
+                    textured_batches
+                        .entry(*texture)
+                        .or_insert_with(|| Vec::with_capacity(36))
+                        .extend_from_slice(&quad);
                 }
                 crate::render::DrawCommand::Text {
                     position,
@@ -1260,8 +1276,8 @@ impl Renderer {
                     color,
                     align,
                 } => {
-                    if let Some(text_manager) = text_manager.as_deref_mut() {
-                        text_manager.add_text(crate::text_render::TextItem {
+                    if let Some(tm) = text_manager.as_deref_mut() {
+                        tm.add_text(crate::text_render::TextItem {
                             text: content.clone(),
                             position: (
                                 position.x * coordinate_scale,
@@ -1280,7 +1296,6 @@ impl Renderer {
                     source_uv,
                     tint,
                 } => {
-                    // Video frames are rendered as textured quads
                     let x0 = to_x(dest_rect.x * coordinate_scale);
                     let y0 = to_y(dest_rect.y * coordinate_scale);
                     let x1 = to_x((dest_rect.x + dest_rect.width) * coordinate_scale);
@@ -1292,39 +1307,99 @@ impl Renderer {
                         source_uv.x + source_uv.width,
                         source_uv.y + source_uv.height,
                     ];
-
-                    let vertices: [crate::backend::TexturedVertex; 6] =
+                    let quad =
                         crate::backend::TexturedVertex::quad(x0, y0, x1 - x0, y1 - y0, uv, c);
-
-                    let buffer = backend.device().create_buffer(&wgpu::BufferDescriptor {
-                        label: Some("Video Quad Buffer"),
-                        size: (std::mem::size_of::<crate::backend::TexturedVertex>() * 6) as u64,
-                        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                        mapped_at_creation: false,
-                    });
-                    backend
-                        .queue()
-                        .write_buffer(&buffer, 0, bytemuck::cast_slice(&vertices));
-
-                    render_pass.set_pipeline(
-                        backend
-                            .textured_pipeline()
-                            .ok_or_else(|| "No textured pipeline")
-                            .unwrap(),
-                    );
-                    render_pass.set_vertex_buffer(0, buffer.slice(..));
-
-                    if let Some(bind_group) = backend.get_texture_bind_group(*texture) {
-                        render_pass.set_bind_group(0, bind_group, &[]);
-                        render_pass.draw(0..6, 0..1);
-                    }
+                    textured_batches
+                        .entry(*texture)
+                        .or_insert_with(|| Vec::with_capacity(36))
+                        .extend_from_slice(&quad);
                 }
                 // State-changing commands are handled implicitly
                 crate::render::DrawCommand::PushClip { .. }
                 | crate::render::DrawCommand::PopClip
                 | crate::render::DrawCommand::SetTransform { .. }
-                | crate::render::DrawCommand::SetOpacity { .. } => {
-                    // These are state commands handled during scene traversal
+                | crate::render::DrawCommand::SetOpacity { .. } => {}
+            }
+        }
+
+        // FIX (v1.5.5): Draw all solid quads in a single batch.
+        // Ensure buffers are ready before borrowing pipelines to avoid borrow conflicts.
+        let solid_vertex_count = solid_vertices.len() as u32;
+        if solid_vertex_count > 0 {
+            backend.ensure_solid_vertex_buffer(solid_vertex_count);
+        }
+        let solid_pipeline = backend.solid_pipeline();
+        if let Some(pipeline) = solid_pipeline {
+            if let Some(buf) = backend.solid_vertex_buffer() {
+                backend.queue().write_buffer(
+                    buf,
+                    0,
+                    bytemuck::cast_slice(&solid_vertices),
+                );
+                render_pass.set_pipeline(pipeline);
+                if let Some(bind_group) = backend.uniform_bind_group() {
+                    render_pass.set_bind_group(0, bind_group, &[]);
+                }
+                render_pass.set_vertex_buffer(0, buf.slice(..));
+                render_pass.draw(0..solid_vertex_count, 0..1);
+            }
+        }
+
+        // FIX (v1.5.5): Draw all textured quads, grouped by texture.
+        // Write all vertices at different offsets so the GPU doesn't race between
+        // write_buffer calls. Each texture draws from its own offset range.
+        let total_textured: usize = textured_batches.values().map(|v| v.len()).sum();
+        if total_textured > 0 {
+            backend.ensure_textured_vertex_buffer(total_textured as u32);
+        }
+        let textured_pipeline = backend.textured_pipeline();
+        if let Some(pipeline) = textured_pipeline {
+            if let Some(buf) = backend.textured_vertex_buffer() {
+                // Collect all vertices into one contiguous slice at distinct offsets
+                let mut offset: u64 = 0;
+                let draws: Vec<(TextureId, u64, u32)> = textured_batches
+                    .iter()
+                    .filter_map(|(tid, verts)| {
+                        if verts.is_empty() {
+                            return None;
+                        }
+                        let vertex_count = verts.len() as u32;
+                        let byte_offset = offset;
+                        offset += (vertex_count as u64) * (std::mem::size_of::<crate::backend::TexturedVertex>() as u64);
+                        Some((*tid, byte_offset, vertex_count))
+                    })
+                    .collect();
+
+                // Write all vertices at once
+                if !draws.is_empty() {
+                    let mut all_vertices = Vec::with_capacity(total_textured);
+                    for (tid, _, _) in &draws {
+                        if let Some(verts) = textured_batches.get(tid) {
+                            all_vertices.extend_from_slice(verts);
+                        }
+                    }
+                    backend.queue().write_buffer(
+                        buf,
+                        0,
+                        bytemuck::cast_slice(&all_vertices),
+                    );
+                }
+
+                // Draw each texture from its offset
+                let mut offset: u64 = 0;
+                for (texture_id, _byte_offset, vertex_count) in &draws {
+                    if *vertex_count == 0 {
+                        continue;
+                    }
+                    render_pass.set_pipeline(pipeline);
+                    let slice_start = offset * (std::mem::size_of::<crate::backend::TexturedVertex>() as u64);
+                    let slice_end = (offset + *vertex_count as u64) * (std::mem::size_of::<crate::backend::TexturedVertex>() as u64);
+                    render_pass.set_vertex_buffer(0, buf.slice(slice_start..slice_end));
+                    if let Some(bind_group) = backend.get_texture_bind_group(*texture_id) {
+                        render_pass.set_bind_group(0, bind_group, &[]);
+                        render_pass.draw(0..*vertex_count, 0..1);
+                    }
+                    offset += *vertex_count as u64;
                 }
             }
         }
@@ -1399,7 +1474,12 @@ impl Renderer {
 
     /// Upload a video frame to a GPU texture.
     ///
-    /// This converts the frame data to RGBA and uploads it to the GPU.
+    /// FIX (v1.5.5): Format-aware upload — avoids unnecessary intermediate
+    /// copies. For BGRx/BGRA input (most common PipeWire formats), uploads
+    /// directly without conversion. For RGBA input, converts once to BGRA.
+    /// Previously the code always did frame.to_rgba() then rgba_to_bgra(),
+    /// creating 2 temporary copies per frame (~16 MB for 1080p).
+    ///
     /// The returned `VideoTexture` handle can be used for rendering.
     ///
     /// # Errors
@@ -1410,10 +1490,38 @@ impl Renderer {
         stream_id: crate::video::StreamId,
         frame: &crate::video::VideoFrame,
     ) -> Result<crate::video::VideoTexture, RenderError> {
-        // Convert to RGBA (validates format support)
-        let rgba_data = frame.to_rgba().ok_or_else(|| {
-            RenderError::Other(format!("Unsupported video format: {:?}", frame.format))
-        })?;
+        // FIX (v1.5.5): Get BGRA data directly from the frame format.
+        // BGRx and BGRA can be uploaded directly; RGBA needs one conversion.
+        let bgra_data = match frame.format {
+            crate::video::VideoFormat::BGRx | crate::video::VideoFormat::Bgra => {
+                // BGRx/BGRA matches the BGRA texture format — no conversion needed.
+                // For BGRx, the padding byte is treated as alpha, which is fine.
+                frame.data.clone()
+            }
+            crate::video::VideoFormat::Rgba => {
+                // RGBA → BGRA: one conversion, no intermediate copy.
+                rgba_to_bgra(&frame.data)
+            }
+            crate::video::VideoFormat::Rgb => {
+                // RGB → BGRA: reorder channels and add alpha.
+                let size = (frame.width * frame.height * 4) as usize;
+                let mut out = Vec::with_capacity(size);
+                for chunk in frame.data.chunks_exact(3) {
+                    out.push(chunk[2]); // B
+                    out.push(chunk[1]); // G
+                    out.push(chunk[0]); // R
+                    out.push(255); // A
+                }
+                out
+            }
+            _ => {
+                // Fallback: try the generic to_rgba() path for other formats.
+                let rgba_data = frame.to_rgba().ok_or_else(|| {
+                    RenderError::Other(format!("Unsupported video format: {:?}", frame.format))
+                })?;
+                rgba_to_bgra(&rgba_data)
+            }
+        };
 
         // Allocate a renderer-managed ID once per stream so IDs cannot collide
         // with ordinary textures and successive frames replace the same texture.
@@ -1430,7 +1538,6 @@ impl Renderer {
             .with_format(crate::texture::TextureFormat::Bgra8UnormSrgb)
             .with_usage(crate::texture::TextureUsage::upload_and_sample());
 
-        let bgra_data = rgba_to_bgra(&rgba_data);
         let needs_registration = self.textures.get(&texture_id).map_or(true, |texture| {
             texture.width() != frame.width || texture.height() != frame.height
         });

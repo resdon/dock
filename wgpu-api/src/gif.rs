@@ -277,6 +277,18 @@ impl GifDecoder {
                 frame_info.top as usize,
             );
 
+            // FIX (v1.5.5): Bound frame cache to prevent memory explosion.
+            // A 1920×1080 GIF with 20 frames would store ~158 MB. For the dock's
+            // use case (small icons), 32 frames is a generous limit.
+            const MAX_FRAMES: usize = 32;
+            if frames.len() >= MAX_FRAMES {
+                log::warn!(
+                    "GIF decoder: frame limit reached ({}), skipping remaining frames",
+                    MAX_FRAMES
+                );
+                break;
+            }
+
             // Store the composite canvas as this frame's image
             let composite = ImageData::from_rgba(width as u32, height as u32, canvas.clone());
 

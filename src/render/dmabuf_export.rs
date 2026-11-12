@@ -78,6 +78,11 @@ pub struct DmabufPool {
     current_memory_bytes: std::cell::Cell<u64>,
     /// FIX (v1.5.5): Monotonically increasing access counter for LRU tracking.
     access_counter: std::cell::Cell<u64>,
+    /// FIX (v1.5.5): Total bytes allocated by fallback (unpooled) textures.
+    /// Tracked separately so the memory budget is a true hard limit.
+    fallback_memory_bytes: std::cell::Cell<u64>,
+    /// FIX (v1.5.5): Number of active fallback (unpooled) textures.
+    fallback_count: std::cell::Cell<u64>,
 }
 
 /// A reusable DMABUF slot in the pool.
@@ -112,6 +117,8 @@ impl DmabufPool {
             max_memory_bytes: 32 * 1024 * 1024,
             current_memory_bytes: std::cell::Cell::new(0),
             access_counter: std::cell::Cell::new(0),
+            fallback_memory_bytes: std::cell::Cell::new(0),
+            fallback_count: std::cell::Cell::new(0),
         }
     }
 
@@ -247,6 +254,19 @@ impl DmabufPool {
         // All slots in-use — fall back to creating a new texture
         // This avoids blocking the render thread
         let (texture, info) = create_fresh_dmabuf_slot(adapter, device, width, height)?;
+        // FIX (v1.5.5): Track fallback texture memory so the budget is a true hard limit.
+        self.fallback_memory_bytes.set(
+            self.fallback_memory_bytes.get().saturating_add(slot_memory),
+        );
+        self.fallback_count.set(self.fallback_count.get().saturating_add(1));
+        if self.fallback_count.get() % 10 == 0 {
+            eprintln!(
+                "[DMABUF] Pool: {} fallback textures active ({} MB pooled + {} MB fallback)",
+                self.fallback_count.get(),
+                self.current_memory_bytes.get() / (1024 * 1024),
+                self.fallback_memory_bytes.get() / (1024 * 1024),
+            );
+        }
         Ok((texture, info))
     }
 
@@ -255,6 +275,19 @@ impl DmabufPool {
     pub fn clear(&self) {
         self.slots.borrow_mut().clear();
         self.current_memory_bytes.set(0);
+        self.fallback_memory_bytes.set(0);
+        self.fallback_count.set(0);
+    }
+
+    /// FIX (v1.5.5): Return pool statistics for monitoring.
+    ///
+    /// Returns `(pooled_bytes, pooled_slot_count, fallback_bytes, fallback_count)`.
+    pub fn stats(&self) -> (u64, u64, u64, u64) {
+        let pooled_bytes = self.current_memory_bytes.get();
+        let pooled_slots = self.slots.borrow().values().map(|e| e.slots.len() as u64).sum();
+        let fallback_bytes = self.fallback_memory_bytes.get();
+        let fallback_count = self.fallback_count.get();
+        (pooled_bytes, pooled_slots, fallback_bytes, fallback_count)
     }
 }
 

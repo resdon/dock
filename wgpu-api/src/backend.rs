@@ -213,6 +213,16 @@ pub struct GpuBackend {
     texture_bind_groups: HashMap<TextureId, wgpu::BindGroup>,
     /// Whether the backend is fully initialized.
     initialized: bool,
+    /// FIX (v1.5.5): Persistent vertex buffer for solid-color quads.
+    /// Reused every frame to avoid per-primitive GPU buffer allocation.
+    solid_vertex_buffer: Option<wgpu::Buffer>,
+    /// FIX (v1.5.5): Current capacity of the solid vertex buffer in vertices.
+    solid_vertex_capacity: u32,
+    /// FIX (v1.5.5): Persistent vertex buffer for textured quads (images + video).
+    /// Reused every frame to avoid per-primitive GPU buffer allocation.
+    textured_vertex_buffer: Option<wgpu::Buffer>,
+    /// FIX (v1.5.5): Current capacity of the textured vertex buffer in vertices.
+    textured_vertex_capacity: u32,
 }
 
 impl GpuBackend {
@@ -316,6 +326,11 @@ impl GpuBackend {
             bind_group_layout: None,
             texture_bind_groups: HashMap::new(),
             initialized: true,
+            // FIX (v1.5.5): Persistent vertex buffers start empty; they grow on first use.
+            solid_vertex_buffer: None,
+            solid_vertex_capacity: 0,
+            textured_vertex_buffer: None,
+            textured_vertex_capacity: 0,
         };
 
         gpu_backend.bind_group_layout = Some(gpu_backend.create_bind_group_layout());
@@ -878,6 +893,56 @@ impl GpuBackend {
     /// Get the number of GPU surfaces.
     pub fn surface_count(&self) -> usize {
         self.gpu_surfaces.len()
+    }
+
+    /// FIX (v1.5.5): Ensure the solid vertex buffer exists with at least `count` vertices.
+    /// Grows the buffer if current capacity is insufficient.
+    pub fn ensure_solid_vertex_buffer(&mut self, count: u32) {
+        if count == 0 {
+            return;
+        }
+        if self.solid_vertex_capacity < count {
+            // Grow buffer: at least 256 vertices, up to 4× requested, capped at 65536
+            let capacity = (count.max(256).min(count * 4)).min(65536);
+            let size = (capacity as u64) * (std::mem::size_of::<SolidVertex>() as u64);
+            self.solid_vertex_buffer = Some(self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Persistent Solid Vertex Buffer"),
+                size,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+            self.solid_vertex_capacity = capacity;
+        }
+    }
+
+    /// FIX (v1.5.5): Ensure the textured vertex buffer exists with at least `count` vertices.
+    /// Grows the buffer if current capacity is insufficient.
+    pub fn ensure_textured_vertex_buffer(&mut self, count: u32) {
+        if count == 0 {
+            return;
+        }
+        if self.textured_vertex_capacity < count {
+            // Grow buffer: at least 256 vertices, up to 4× requested, capped at 65536
+            let capacity = (count.max(256).min(count * 4)).min(65536);
+            let size = (capacity as u64) * (std::mem::size_of::<TexturedVertex>() as u64);
+            self.textured_vertex_buffer = Some(self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Persistent Textured Vertex Buffer"),
+                size,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+            self.textured_vertex_capacity = capacity;
+        }
+    }
+
+    /// FIX (v1.5.5): Get the persistent solid vertex buffer.
+    pub fn solid_vertex_buffer(&self) -> Option<&wgpu::Buffer> {
+        self.solid_vertex_buffer.as_ref()
+    }
+
+    /// FIX (v1.5.5): Get the persistent textured vertex buffer.
+    pub fn textured_vertex_buffer(&self) -> Option<&wgpu::Buffer> {
+        self.textured_vertex_buffer.as_ref()
     }
 
     /// Convert SurfaceFormat to wgpu TextureFormat.

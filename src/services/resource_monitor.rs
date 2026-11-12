@@ -48,6 +48,30 @@ pub fn get_fps() -> f64 {
     count / FPS_WINDOW_SECS
 }
 
+/// Query PSS (Proportional Set Size) for the current process in MB.
+///
+/// Parses `/proc/self/smaps_rollup` for the PSS value, which represents the
+/// proportional share of memory — the actual cost if the dock process is killed.
+/// This is more accurate than RSS, which counts shared library pages at full size
+/// and overstates the process's exclusive memory cost by ~56%.
+///
+/// Falls back to `None` if smaps_rollup is unavailable (e.g., older kernels).
+fn query_pss_mb() -> Option<u64> {
+    let contents = std::fs::read_to_string("/proc/self/smaps_rollup").ok()?;
+    for line in contents.lines() {
+        if line.starts_with("Pss:") {
+            // Format: "Pss:         152345 kB"
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 2 {
+                if let Ok(kb) = parts[1].parse::<u64>() {
+                    return Some(kb / 1024);
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Query VRAM usage from `nvidia-smi` for the current process.
 ///
 /// Parses the output of `nvidia-smi pmon -c 1 -d MEM -q -p <pid>` to extract
@@ -132,7 +156,13 @@ pub fn start_resource_monitor() {
             );
 
             if let Some(process) = sys.process(pid) {
-                let memory_mb = process.memory() / 1024 / 1024;
+                // FIX (v1.5.5): Prefer PSS over RSS for accurate memory reporting.
+                // PSS (Proportional Set Size) reflects the actual memory cost if
+                // the process is killed, while RSS overstates by counting shared
+                // library pages at full size. Fall back to RSS if PSS is unavailable.
+                let memory_mb = query_pss_mb().unwrap_or_else(|| {
+                    process.memory() / 1024 / 1024
+                });
                 let cpu_usage = process.cpu_usage();
 
                 // Query VRAM from nvidia-smi

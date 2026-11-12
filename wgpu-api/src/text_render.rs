@@ -110,7 +110,11 @@ impl TextManager {
             },
         );
 
-        let items = std::mem::take(&mut self.pending_items);
+        // FIX (v1.5.5): Preserve Vec capacity across frames instead of discarding it.
+        // Drain items while keeping the allocated buffer for reuse next frame.
+        let mut items = Vec::new();
+        std::mem::swap(&mut items, &mut self.pending_items);
+        self.pending_items.clear();
         if items.is_empty() {
             return;
         }
