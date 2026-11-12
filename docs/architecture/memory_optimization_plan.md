@@ -6,7 +6,7 @@
 
 ## Executive Summary
 
-The memory audit identified **PipeWire capture** and **icon cache** as the largest consumers, accounting for ~70% of total memory usage. All prioritized optimizations have been implemented, reducing typical usage from ~120 MB to ~35 MB.
+The memory audit identified **PipeWire capture** and **icon cache** as the largest consumers, accounting for ~70% of total memory usage. All prioritized optimizations have been implemented, reducing typical usage from ~120 MB to ~47 MB.
 
 ## Estimated Total Memory Footprint (After Optimizations)
 
@@ -17,10 +17,10 @@ The memory audit identified **PipeWire capture** and **icon cache** as the large
 | wgpu Texture Cache | 10 | 10 | — |
 | DMABUF Pool | 4 | 4 | — |
 | Font rendering | 3 | 3 | — |
-| sysinfo scanner | 5 | 5 | — |
+| sysinfo scanner | 5 | 3 | ~2 MB |
 | Rust heap collections | 5 | 5 | — |
 | Wayland surfaces | 2 | 2 | — |
-| **Total** | **~119 MB** | **~49 MB** | **~70 MB** |
+| **Total** | **~119 MB** | **~47 MB** | **~72 MB** |
 
 ---
 
@@ -81,17 +81,17 @@ The memory audit identified **PipeWire capture** and **icon cache** as the large
 
 ---
 
-### 5. Filter sysinfo to dock-relevant processes
+### 5. Filter sysinfo to dock-relevant processes ✓
 
 **Priority**: Low
-**Impact**: Reduces scanner memory from tracking all system processes
-**Status**: **Deferred** — low priority
+**Impact**: Reduces scanner memory from tracking all system processes (~2-3 MB saved)
+**Status**: **Complete** (commit `9e7c9a7`)
 
-**Problem**: `sysinfo::System` in `AppState` tracks all system processes with CPU and memory data. On a system with 500+ processes, this can consume 5–20 MB.
+**Problem**: Two sysinfo initialization sites used `System::new_all()` and `System::new()`, which load all process metadata (command lines, environment, status strings from /proc) at startup. On a system with 500+ processes, this adds ~2-3 MB of unnecessary overhead.
 
-**Assessment**: The scanner is already configured with minimal refresh (CPU + memory only). Filtering would add complexity for ~5-20 MB savings, which is low impact compared to the PipeWire and icon optimizations. Deferred for now.
+**Solution**: Changed both sites to use `System::new_with_specifics()` with only CPU + memory refresh. The main `AppState` scanner was already optimized. The resource monitor and icon resolver now use minimal specifics matching the main scanner's configuration.
 
-**Files**: `src/state/mod.rs`, process monitoring modules
+**Files**: `src/services/resource_monitor.rs`, `src/resolvers/icon.rs`
 
 ---
 
@@ -134,7 +134,7 @@ Both conversions allocate and copy the full pixel buffer (~8 MB for 1080p). The 
 - All changes follow the existing coding conventions and annotation patterns (`**FIX (v1.5.5)**`).
 - Each optimization was committed separately with clear commit messages.
 - `cargo check` passed after each change.
-- The PipeWire and icon systems account for ~70% of total memory. Fixing these two reduced typical usage from ~120 MB to ~49 MB.
+- The PipeWire and icon systems account for ~70% of total memory. Fixing these two, plus sysinfo optimization, reduced typical usage from ~120 MB to ~47 MB.
 - Combined with previous optimizations (content hash caching, DMABUF pool, frame scheduler), the dock now achieves minimal per-frame allocations during static desktop states.
 - BGRx direct upload eliminates the `cached_rgba` field entirely for BGRx streams, removing ~8 MB per stream and all CPU conversion overhead.
 - The DMABUF pool global budget (32 MB) prevents unbounded VRAM growth from accumulating different popup dimensions.
