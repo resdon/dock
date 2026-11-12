@@ -315,7 +315,12 @@ pub fn draw_main_dock(
 
         // Draw icons and running indicators — layout matches ui.slint exactly
         for (i, pin) in dock_state.pins.iter().enumerate() {
-            // Skip the dragged icon — it will be drawn at the cursor position below
+            // FIX (v1.5.5): Skip the dragged icon — it will be drawn at the cursor
+            // position below. Before this fix, the icon was rendered at both its
+            // original dock slot and at the cursor position, creating a duplicate.
+            // The Slint (CPU fallback) path already handled this correctly: ui.slint
+            // sets opacity: 0 on the dragged TouchArea. The GPU path was missing
+            // the equivalent skip.
             if is_dragging && dragged_app_id.is_some_and(|id| *id == pin.app_id) {
                 continue;
             }
@@ -541,10 +546,14 @@ pub fn draw_main_dock(
             }
         }
 
-        // Draw the dragged icon ghost at the cursor position.
+        // FIX (v1.5.5): Draw the dragged icon ghost at the cursor position.
         // The ghost follows the pointer while dragging, centered on the cursor,
         // with window count dashes below it. The pointer position is in screen
         // coordinates relative to the dock surface, so scale it to physical pixels.
+        //
+        // Before this fix, the GPU path had no drag ghost at all — the icon simply
+        // disappeared from its original position with nothing following the cursor.
+        // The Slint path already drew the drag ghost via draw_dragged_icon().
         if is_dragging {
             if let Some(app_id) = dragged_app_id {
                 if let Some(texture_id) = icon_textures.get(app_id) {

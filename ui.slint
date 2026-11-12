@@ -357,6 +357,11 @@ export component DockWidget inherits Window {
                             hover when item.is_hovered && root.hover_highlight: {
                                 icon_outline.visible: true;
                             }
+                            // FIX (v1.5.5): When dragging, hide the original icon at its
+                            // dock slot. The icon is rendered at the cursor position as a
+                            // ghost, so the original should be invisible to avoid duplicates.
+                            // The is_dragging flag is set by Rust code (slint_dock.rs) when
+                            // the pointer has moved > 5px from the press position.
                             dragging when item.is_dragging: {
                                 item_touch.opacity: 0;
                             }

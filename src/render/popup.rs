@@ -431,6 +431,9 @@ pub fn render_window_list_surface(
 
         let text_offset_y =
             ((current_item_h_phys as f32 - 14.0 * scale_factor) / 2.0).max(0.0) as i32;
+        // FIX (v1.5.5): Text Y position adjusted for doubled font size and vertical centering.
+        // The font size is doubled (popup_font_size * 2.0), so the baseline offset accounts
+        // for the larger glyph height. The -6 nudge centers the text visually within the row.
         let text_y = item_top_phys
             + text_offset_y
             + POPUP_TEXT_BASELINE_NUDGE_PX

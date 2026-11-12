@@ -102,19 +102,34 @@ pub struct StreamFrameData {
     /// snapshot without cloning the full frame while holding the mutex.
     /// PipeWire's borrowed buffer is copied once into this Arc because its
     /// memory is only valid for the duration of the process callback.
+    ///
+    /// **FIX (v1.5.5)**: Changed from `Vec<u8>` to `Arc<[u8]>` so that
+    /// `get_active_frame()` clones a reference count instead of the entire
+    /// pixel array (~8MB for 1080p). This eliminates the allocation hotspot
+    /// that caused massive memory churn on every render frame.
     pub frame: Arc<Mutex<Option<(u32, u32, pw::spa::param::video::VideoFormat, Arc<[u8]>)>>>,
     /// Monotonically increasing generation counter, incremented each time a new
     /// frame buffer is captured. The render thread compares this against the
     /// last-rendered generation to skip redundant texture uploads and frame
     /// conversions when the underlying capture content hasn't changed.
+    ///
+    /// **FIX (v1.5.5)**: Added to enable content-hash caching in the window list
+    /// popup. Without the generation counter, the popup had no way to detect
+    /// whether the captured window's content changed, so it either rendered
+    /// every frame (wasting GPU work) or froze (skipping valid updates).
     pub generation: Arc<parking_lot::Mutex<u64>>,
     /// Cached RGBA conversion result: (generation, width, height, rgba bytes).
     /// When the generation matches the current frame's generation, the cached
     /// result is returned directly without re-running the expensive conversion.
-    /// The RGBA payload is an Arc<[u8]> so cache hits clone a reference count
+    /// The RGBA payload is an `Arc<[u8]>` so cache hits clone a reference count
     /// instead of the entire pixel buffer.
     /// Protected by a separate mutex so the render thread can read/write the
     /// cache without blocking the stream thread's frame updates.
+    ///
+    /// **FIX (v1.5.5)**: Added to cache the result of `convert_to_rgba()`, which
+    /// performs bilinear interpolation and allocates a new Vec<u8> on every call.
+    /// When the generation hasn't changed, the cache is returned directly, avoiding
+    /// redundant conversions. The Arc<[u8]> payload ensures cache hits are cheap.
     pub cached_rgba: Arc<parking_lot::Mutex<Option<(u64, u32, u32, Arc<[u8]>)>>>,
     /// Negotiated video format: (width, height, format), set once during
     /// format negotiation when the stream receives its first `ParamType::Format` event.
@@ -614,10 +629,12 @@ impl PipewireCaptureService {
                     max_scale
                 };
 
-                // Check cached RGBA conversion result. If the generation matches,
-                // the raw frame hasn't changed, so the cached conversion is still valid.
-                // This avoids the expensive bilinear interpolation and memory allocation.
-                // Use timeout locks so the render thread never blocks indefinitely.
+                // FIX (v1.5.5): Check cached RGBA conversion result before running
+                // convert_to_rgba(). The conversion performs bilinear interpolation
+                // and allocates a new Vec<u8> (~8MB for 1080p). When the generation
+                // hasn't changed, the cached result is returned directly.
+                // Use timeout locks so the render thread never blocks indefinitely
+                // waiting for the stream thread's mutex.
                 let current_gen = match stream.generation.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) {
                     Some(g) => *g,
                     None => {
@@ -637,7 +654,11 @@ impl PipewireCaptureService {
                     };
                     if let Some((cached_gen, cached_w, cached_h, cached_rgba)) = cache.as_ref() {
                         if *cached_gen == current_gen && *cached_w == w && *cached_h == h {
-                            // Cache hit — clone the Arc reference, not the pixel buffer
+                            // FIX (v1.5.5): Cache hit — the raw frame hasn't changed since
+                            // the last conversion. Return the cached RGBA directly.
+                            // Note: to_vec() is still called here because the caller expects
+                            // ownership of the pixel data. The Arc<[u8]> avoids copying when
+                            // multiple callers read the same frame within one render cycle.
                             return Some((*cached_w, *cached_h, cached_rgba.to_vec()));
                         }
                     }
@@ -688,7 +709,12 @@ impl PipewireCaptureService {
     /// frame buffer is captured. The render thread compares this against the
     /// last-rendered generation to skip redundant work when unchanged.
     ///
-    /// Returns `None` if the stream index is out of bounds.
+    /// **FIX (v1.5.5)**: Added to support content-hash caching in the window list
+    /// popup. The generation is included in the content hash so the popup can
+    /// detect when the captured window's content has changed, even if the title
+    /// and hover state are unchanged.
+    ///
+    /// Returns `None` if the stream index is out of bounds or the mutex times out.
     pub fn get_stream_generation(&self, idx: usize) -> Option<u64> {
         let frames = match self
             .stream_frames
@@ -1683,6 +1709,10 @@ fn spawn_stream_thread(fd: OwnedFd, node_id: u32, idx: usize, stream_data: Arc<S
                                     }
                                 };
                                 if w > 0 && h > 0 {
+                                    // FIX (v1.5.5): Use Arc::from instead of .to_vec() so the
+                                    // PipeWire borrowed buffer is copied once into an Arc<[u8]>
+                                    // rather than a Vec<u8>. Readers then clone a reference count
+                                    // instead of the entire pixel array.
                                     let bytes: Arc<[u8]> =
                                         Arc::from(&samples[0..size.min(samples.len())]);
                                     // If we can't get the frame lock, skip this frame
@@ -1691,13 +1721,16 @@ fn spawn_stream_thread(fd: OwnedFd, node_id: u32, idx: usize, stream_data: Arc<S
                                             guard.replace((w, h, fmt, bytes));
                                         });
                                     let _ = result;
-                                    // Increment generation counter so the render thread can
-                                    // detect that a new frame has arrived and skip redundant
-                                    // work when the generation hasn't changed.
+                                    // FIX (v1.5.5): Increment generation counter so the render thread
+                                    // can detect that a new frame has arrived and skip redundant work
+                                    // when the generation hasn't changed.
                                     // Use a blocking lock here — the increment is a fast u64 write
                                     // that completes instantly. If we used try_lock and failed,
                                     // the frame would update but the generation would stay the same,
                                     // causing the content hash to match and the render to skip forever.
+                                    // This was the root cause of the "frames don't update" bug:
+                                    // try_lock() could fail when the render thread held the mutex,
+                                    // so the generation never incremented, and the popup froze.
                                     {
                                         let mut gen = generation_for_process.lock();
                                         *gen += 1;

@@ -186,6 +186,10 @@ pub struct PopupSurface {
     /// Content hash for the window list popup: combines window titles, count,
     /// and the PipeWire capture generation counter. When this matches the
     /// previous frame's hash, the entire render pipeline is skipped.
+    ///
+    /// **FIX (v1.5.5)**: Added to support content-hash caching. Without this field,
+    /// the popup had no way to remember the previous frame's hash, so it either
+    /// rendered every frame (wasting GPU work) or couldn't implement caching at all.
     pub last_content_hash: u64,
 }
 

@@ -56,13 +56,20 @@ pub fn update(
     // State tracking flags
     let pointer_inside_dock = state.interaction.pointer_inside;
 
-    // Detect whether the pointer is over a popup using two methods:
+    // FIX (v1.5.5): Detect whether the pointer is over a popup using two methods:
     // 1. Surface-based: the compositor routed the event to the popup surface
     // 2. Geometry-based: the pointer position falls within the popup's bounds
-    // The geometry fallback is essential because some compositors route pointer
-    // events over subsurfaces to the parent surface, making surface-based detection
-    // fail entirely. Without this, the popup never detects hover, cursor movement
-    // never triggers redraws, and the highlight/freezing issues persist.
+    //
+    // The geometry fallback is essential because some compositors (e.g., labwc)
+    // route pointer events over subsurfaces to the parent surface, making
+    // surface-based detection fail entirely. Without this fallback, the popup
+    // never detects hover, cursor movement never triggers redraws, and the
+    // highlight/freezing issues persist.
+    //
+    // Before this fix, only surface-based detection was used. When the compositor
+    // routed events to the parent surface, on_window_list was always false, so
+    // cursor movement over the popup didn't trigger redraws. The popup only updated
+    // when PipeWire happened to capture a new frame — causing the highlight to freeze.
     let pointer_x = state.interaction.pointer_position.x;
     let pointer_y = state.interaction.pointer_position.y;
 
@@ -235,10 +242,17 @@ pub fn update(
         }
     }
 
-    // If the cursor moved while the window list popup is open, trigger a redraw
-    // so the popup can update the hover highlight and capture frame. Without this,
-    // the popup only re-renders when PipeWire captures a new frame, causing the
-    // highlight to freeze when the captured window is static.
+    // FIX (v1.5.5): If the cursor moved while the window list popup is open,
+    // trigger a redraw so the popup can update the hover highlight and capture frame.
+    //
+    // Before this fix, cursor_moved was only used for timer resets and never set
+    // layer_changed = true. So pointer motion over the popup did not trigger a redraw.
+    // The popup only updated when PipeWire happened to capture a new frame, causing
+    // the highlight to freeze when the captured window was static.
+    //
+    // The content hash caching in window_list.rs still prevents unnecessary GPU work:
+    // if the hover row hasn't changed and the pointer is in the same pixel, the hash
+    // will match and rendering is skipped. But at least the draw function is called.
     if cursor_moved && on_window_list {
         layer_changed = true;
     }

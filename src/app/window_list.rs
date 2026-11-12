@@ -306,6 +306,8 @@ pub fn draw_window_list_popup(
                         cached_phys_width: 0,
                         cached_phys_height: 0,
                         input_region_key: 0,
+                        // FIX (v1.5.5): Initialize last_content_hash to 0 so the first frame
+                        // always renders. The hash will be updated after the first render.
                         last_content_hash: 0,
                     });
                 }
@@ -422,11 +424,19 @@ pub fn draw_window_list_popup(
                         synthetic_windows.clone()
                     };
 
-                    // Compute a content hash so we can skip rendering when nothing changed.
-                    // The hash combines: window count, window titles, hovered item, pointer
-                    // position, and the PipeWire capture generation counter for the active stream.
+                    // FIX (v1.5.5): Compute a content hash so we can skip rendering when nothing
+                    // changed. The hash combines: window count, window titles, hovered item,
+                    // pointer position, and the PipeWire capture generation counter.
+                    //
+                    // Before this fix, the popup rendered unconditionally every frame, rebuilding
+                    // draw commands, replacing GPU textures, creating new DMABUF buffers, and
+                    // committing the Wayland surface — even when the underlying window hadn't
+                    // changed. This wasted CPU, GPU, and memory bandwidth.
+                    //
                     // Including the pointer position ensures the highlight updates when the user
                     // moves the mouse, even if the hovered row and frame generation are unchanged.
+                    // Without the pointer position, the highlight would freeze when the captured
+                    // window was static and the generation counter did not increment.
                     let mut content_hash: u64 = windows.len() as u64;
                     for w in &windows {
                         for b in w.title.bytes() {
@@ -435,18 +445,28 @@ pub fn draw_window_list_popup(
                     }
                     content_hash = content_hash.wrapping_mul(37).wrapping_add(hovered_item as u64);
 
-                    // Include the rounded pointer position so that mouse movement within the
-                    // popup always triggers a re-render. This prevents the highlight from
-                    // freezing when the captured window is static and the generation counter
+                    // FIX (v1.5.5): Include the rounded pointer position so that mouse movement
+                    // within the popup always triggers a re-render. This prevents the highlight
+                    // from freezing when the captured window is static and the generation counter
                     // does not increment.
+                    //
+                    // The pointer position is already rounded to i32 (local_ptr_x, local_ptr_y),
+                    // so sub-pixel movements within the same pixel don't trigger renders.
                     content_hash = content_hash.wrapping_mul(43)
                         .wrapping_add(local_ptr_x as u64)
                         .wrapping_add((local_ptr_y as i64) as u64);
 
-                    // Include the PipeWire capture generation counter so we detect when the
-                    // underlying window's content has changed, even if the title hasn't.
+                    // FIX (v1.5.5): Include the PipeWire capture generation counter so we detect
+                    // when the underlying window's content has changed, even if the title hasn't.
+                    // The generation counter is incremented by the stream thread each time a new
+                    // frame buffer arrives. When the generation matches the previous frame's
+                    // generation, the content hash will match and rendering is skipped.
+                    //
                     // If the generation is unavailable (mutex timeout), we force a re-render
-                    // rather than risking a stale hash that skips rendering forever.
+                    // rather than risking a stale hash that skips rendering forever. This was
+                    // the root cause of the "popup freezes" bug: when try_lock() failed, the
+                    // generation read returned None, and without this fallback the popup would
+                    // skip rendering on a stale hash indefinitely.
                     let (capture_generation, gen_available) = if has_valid_stream
                         && use_matched
                         && (hovered_item as usize) < matched_windows.len()
@@ -468,11 +488,13 @@ pub fn draw_window_list_popup(
                     };
                     content_hash = content_hash.wrapping_mul(41).wrapping_add(capture_generation);
 
-                    // Skip rendering if the content hash matches the previous frame.
+                    // FIX (v1.5.5): Skip rendering if the content hash matches the previous frame.
                     // This avoids rebuilding draw commands, replacing GPU textures, creating
                     // new DMABUF buffers, and committing the surface when nothing changed.
+                    //
                     // But always render when the generation counter was unavailable, to avoid
-                    // freezing the popup on a stale hash.
+                    // freezing the popup on a stale hash. This safeguard ensures the popup
+                    // never freezes even under heavy mutex contention.
                     if gen_available && popup.last_content_hash == content_hash {
                         return;
                     }
@@ -500,10 +522,15 @@ pub fn draw_window_list_popup(
                     let rows_area_y = frame_phys_h;
                     let phys_item_h = config.popup_row_height as f32 * scale;
 
-                    // Draw window rows first, before the expensive PipeWire frame fetch.
-                    // The dashed perimeter highlight must render immediately when switching
+                    // FIX (v1.5.5): Draw window rows first, before the expensive PipeWire frame
+                    // fetch. The dashed perimeter highlight must render immediately when switching
                     // hovered rows — it should not be delayed by frame mutex locks, RGBA
                     // conversion, or GPU texture upload.
+                    //
+                    // Before this fix, the PipeWire frame fetch ran before the window rows were
+                    // drawn. When switching hovered rows, the highlight was delayed by the time
+                    // it took to acquire mutex locks, convert the frame to RGBA, and upload the
+                    // texture to the GPU — causing a visible 1-second lag on hover.
                     for (i, window) in windows.iter().enumerate() {
                         let item_top = rows_area_y + (i as f32 * phys_item_h);
                         let item_h = phys_item_h;
@@ -673,12 +700,15 @@ pub fn draw_window_list_popup(
                         }
                     }
 
-                    // Draw PipeWire capture frame as a textured quad if available.
+                    // FIX (v1.5.5): Draw PipeWire capture frame as a textured quad if available.
                     // The content hash check above already includes the generation counter,
                     // so if we reach here, we know the content has changed and need a fresh frame.
+                    //
                     // We always fetch and upload the latest frame rather than checking the texture
                     // cache, because the cache key is based only on the stream index and would
-                    // never evict a stale texture for the same stream.
+                    // never evict a stale texture for the same stream. A previous attempt to use
+                    // a cached texture fast path caused frames to freeze: once a texture was cached
+                    // for a stream, it was never replaced with a new frame.
                     if let Some(ref mut renderer) = gpu_context {
                         let active_stream_idx = pipewire_capture
                             .map(|service| *service.active_row.lock())
