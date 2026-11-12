@@ -156,9 +156,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // unnecessary redraws by tracking whether visual content actually changed.
     let mut frame_scheduler = library::frame_scheduler::FrameScheduler::new();
 
-    let window_list_refresh_interval = std::time::Duration::from_millis(33);
-    let mut last_window_list_refresh = std::time::Instant::now();
-
     // --- MAIN EVENT LOOP ---
     loop {
         // 1. INPUT: Dispatch Wayland socket events from event queue
@@ -166,12 +163,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let _zone_wayland = tracy_client::span!("Wayland Events");
         if let Err(_e) = event_queue.dispatch_pending(&mut state) {
             break;
-        }
-        if state.window_list_state.is_open
-            && last_window_list_refresh.elapsed() >= window_list_refresh_interval
-        {
-            state.needs_redraw = true;
-            frame_scheduler.mark_content_changed();
         }
 
         // 2. DOMAIN EVENTS: consume the queued listener events through the
@@ -531,9 +522,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // the render loop from spinning at ~9,440 FPS. The flag was only
             // ever set to true, never cleared, so once set it stayed true forever.
             state.needs_redraw = false;
-            if state.window_list_state.is_open {
-                last_window_list_refresh = std::time::Instant::now();
-            }
             library::services::resource_monitor::increment_frame_counter();
             let _ = state.connection.flush();
         }
@@ -549,18 +537,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut timeout_ms: i32 = if waiting_for_layer_configure {
             // Wait for layer configure — don't render yet
             16
-        } else if state.window_list_state.is_open {
-            // Window list open — use frame scheduler for rate limiting, but cap
-            // at ~30 FPS minimum so PipeWire frames update smoothly.
-            // **FIX (v1.5.5)**: Previously hardcoded to 1-16ms, bypassing the
-            // frame scheduler entirely and causing ~780 FPS spinning.
-            let scheduler_timeout = frame_scheduler.poll_timeout(needs_any_redraw, animations_active);
-            let ms = window_list_refresh_interval
-                .saturating_sub(last_window_list_refresh.elapsed())
-                .as_millis()
-                .min(i32::MAX as u128) as i32;
-            // Use the frame scheduler timeout when idle, but refresh for PipeWire frames when due
-            scheduler_timeout.min(ms.clamp(1, 33))
         } else {
             // FIX (v1.5.5): Frame scheduler determines the timeout based on:
             // - Content changes: immediate wakeup
