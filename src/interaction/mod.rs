@@ -73,11 +73,11 @@ pub fn update(
     let pointer_x = state.interaction.pointer_position.x;
     let pointer_y = state.interaction.pointer_position.y;
 
-    // **FIX (v1.5.5)**: When the cursor is not on the dock, reset popup surface
-    // flags before checking geometry. The compositor may not send Leave events to
-    // popup surfaces if the cursor moves from a window to the desktop, leaving
-    // pointer_inside_popup stale (true). This causes on_window_list to remain true
-    // indefinitely, preventing the cursor idle timeout from closing the popup.
+    // **FIX (v1.5.5)**: When the cursor is not on the dock, popup surface flags
+    // are false and the geometry fallback is skipped. The pointer position is stale
+    // when off-dock (no motion events), so checking geometry would incorrectly
+    // report the cursor as still over the popup. The geometry fallback only runs
+    // when the cursor is on the dock, where motion events keep the position current.
     if !pointer_inside_dock {
         state.menu_state.pointer_inside_popup = false;
         state.window_list_state.pointer_inside_popup = false;
@@ -87,8 +87,9 @@ pub fn update(
     let mut pointer_over_window_list = state.window_list_state.pointer_inside_popup;
 
     // Geometry-based fallback: check if pointer is within any popup's bounds.
-    // Popup positions and sizes are in dock-surface logical coordinates.
-    if !pointer_over_context_menu || !pointer_over_window_list {
+    // Only valid when the cursor is on the dock, because pointer position is stale
+    // when off-dock (no motion events from the compositor).
+    if pointer_inside_dock && (!pointer_over_context_menu || !pointer_over_window_list) {
         for dock in &state.docks {
             if !pointer_over_context_menu && state.menu_state.is_open {
                 if let Some(ref popup) = dock.context_menu_popup {
