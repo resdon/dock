@@ -615,8 +615,8 @@ pub fn draw_window_list_popup(
                         let window_list_font_size = config.popup_font_size as f32 * config.popup_window_list_text_scale * scale;
                         let text_y = item_top
                             + item_h / 2.0
-                            - 1.0 * scale
-                            + window_list_font_size / 2.0;
+                            + config.context_menu_text_offset_y as f32 * scale
+                            + config.popup_window_list_text_offset_y as f32 * scale;
                         let text_x = config.popup_text_padding as f32 * scale;
 
                         // Truncate title so it doesn't overflow the close button

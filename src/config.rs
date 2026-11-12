@@ -190,6 +190,11 @@ pub struct DockConfig {
     /// A value of 1.2 means the window title text is 1.2× the base popup font size.
     #[serde(default = "default_popup_window_list_text_scale")]
     pub popup_window_list_text_scale: f32,
+    /// Additional vertical shift for window-list labels, in logical pixels.
+    /// Positive values move labels down; both render paths scale this value for the output scale.
+    /// Keep the default at 2px to preserve the established label alignment.
+    #[serde(default = "default_popup_window_list_text_offset_y")]
+    pub popup_window_list_text_offset_y: i32,
 
     // ── Window list colors ──
     /// Popup background color in hex format (e.g., "#1D1C22")
@@ -638,9 +643,13 @@ fn default_popup_frame_border() -> u32 {
 fn default_popup_close_button_margin() -> u32 {
     8
 }
-/// Default: 1.2 — window list text is 1.2× the base popup font size (17px at 14px base).
+/// Default: 1.4 — window list text is 1.4× the base popup font size (20px at 14px base).
 fn default_popup_window_list_text_scale() -> f32 {
-    1.2
+    1.4
+}
+/// Default: +2 logical px — shifts window-list labels down to the established visual baseline.
+fn default_popup_window_list_text_offset_y() -> i32 {
+    2
 }
 fn default_popup_dash_gap() -> u32 {
     4
@@ -897,6 +906,7 @@ impl Default for DockConfig {
             popup_frame_border: default_popup_frame_border(),
             popup_close_button_margin: default_popup_close_button_margin(),
             popup_window_list_text_scale: default_popup_window_list_text_scale(),
+            popup_window_list_text_offset_y: default_popup_window_list_text_offset_y(),
             // Window list colors
             popup_bg_color: default_popup_bg_color(),
             popup_text_color: default_popup_text_color(),
@@ -1236,6 +1246,7 @@ impl DockConfig {
                 "popup_window_list_text_scale",
                 default_cfg.popup_window_list_text_scale,
             ),
+            popup_window_list_text_offset_y: self.popup_window_list_text_offset_y,
 
             // Window list colors
             popup_bg_color: Self::validate_color(
