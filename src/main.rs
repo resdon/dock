@@ -412,13 +412,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if state.needs_redraw {
                 frame_scheduler.mark_content_changed();
             }
-            // **FIX**: When the cursor moves over the window list popup, interaction::update()
-            // returns layer_changed=true but the hover icon doesn't change, so needs_redraw
-            // was never set. This caused set_active_row() in the draw function to never be
-            // called, so the PipeWire active stream stayed at row 0 and all streams were
-            // treated as inactive (1 frame/500ms). Now we trigger a redraw when the window
-            // list popup is open and the cursor moved over it.
-            if state.window_list_state.is_open && state.window_list_state.cursor_moved {
+            // **FIX**: When the cursor moves over the window list popup, trigger a redraw
+            // so set_active_row() is called and the PipeWire active stream updates. Check
+            // both cursor_moved (from Wayland events) and pointer position changes (detected
+            // in interaction::update) since the compositor may not send motion events.
+            let pointer_moved = state.interaction.pointer_position.x
+                != state.interaction.last_pointer_position.x
+                || state.interaction.pointer_position.y
+                != state.interaction.last_pointer_position.y;
+            if state.window_list_state.is_open
+                && (state.window_list_state.cursor_moved || pointer_moved)
+            {
                 state.needs_redraw = true;
                 frame_scheduler.mark_content_changed();
             }
