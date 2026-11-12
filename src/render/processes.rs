@@ -324,7 +324,7 @@ pub fn render_process_surface(
                 .then_with(|| b.cpu_percent.total_cmp(&a.cpu_percent))
         }),
     }
-    let page_count = processes.len().div_ceil(ROWS_PER_PAGE).max(1);
+    let page_count = ((processes.len() + ROWS_PER_PAGE - 1) / ROWS_PER_PAGE).max(1);
     let page = page.min(page_count - 1);
     let start = page * ROWS_PER_PAGE;
     for (index, process) in processes.iter().skip(start).take(ROWS_PER_PAGE).enumerate() {

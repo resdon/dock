@@ -79,7 +79,7 @@ fn query_pss_mb() -> Option<u64> {
 /// not available, fails, or the process is not found in the output.
 fn query_vram_mb(pid: u32) -> Option<u64> {
     let output = Command::new("nvidia-smi")
-        .args(["pmon", "-c", "1", "-d", "MEM", "-q", "-p", &pid.to_string()])
+        .args(&["pmon", "-c", "1", "-d", "MEM", "-q", "-p", &pid.to_string()])
         .output()
         .ok()?;
 

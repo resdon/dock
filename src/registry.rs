@@ -631,7 +631,7 @@ impl SystemRegistry {
             if !self
                 .windows_by_app
                 .get(&window.app_id)
-                .is_some_and(|v| v.contains(id))
+                .map_or(false, |v| v.contains(id))
             {
                 return Err(format!("window {:?} missing windows_by_app index", id));
             }
@@ -639,7 +639,7 @@ impl SystemRegistry {
                 if !self
                     .windows_by_process
                     .get(&pid)
-                    .is_some_and(|v| v.contains(id))
+                    .map_or(false, |v| v.contains(id))
                 {
                     return Err(format!("window {:?} missing windows_by_process index", id));
                 }
@@ -647,14 +647,14 @@ impl SystemRegistry {
             if !self
                 .windows_by_status
                 .get(&window.status)
-                .is_some_and(|v| v.contains(id))
+                .map_or(false, |v| v.contains(id))
             {
                 return Err(format!("window {:?} missing windows_by_status index", id));
             }
             if !self
                 .windows_by_priority
                 .get(&window.priority)
-                .is_some_and(|v| v.contains(id))
+                .map_or(false, |v| v.contains(id))
             {
                 return Err(format!("window {:?} missing windows_by_priority index", id));
             }
@@ -662,7 +662,7 @@ impl SystemRegistry {
                 if !self
                     .windows_by_output
                     .get(output)
-                    .is_some_and(|v| v.contains(id))
+                    .map_or(false, |v| v.contains(id))
                 {
                     return Err(format!("window {:?} missing output index", id));
                 }
@@ -678,7 +678,7 @@ impl SystemRegistry {
                     if !self
                         .processes_by_app
                         .get(app_id)
-                        .is_some_and(|v| v.contains(pid))
+                        .map_or(false, |v| v.contains(pid))
                     {
                         return Err(format!("process {:?} missing processes_by_app index", pid));
                     }

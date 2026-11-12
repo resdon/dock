@@ -367,7 +367,10 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
     };
 
     // Initialize Slint renderers (software renderer - direct buffer rendering)
-    state.slint_renderer = crate::render::slint_dock::SlintDockRenderer::new().ok();
+    state.slint_renderer = match crate::render::slint_dock::SlintDockRenderer::new() {
+        Ok(renderer) => Some(renderer),
+        Err(_e) => None,
+    };
     state.bluetooth_renderer = match crate::render::bluetooth::SlintBluetoothRenderer::new() {
         Ok(_renderer) => {
             tracing::info!("Bluetooth renderer initialized successfully");

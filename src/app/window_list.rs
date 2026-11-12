@@ -142,7 +142,11 @@ pub fn draw_window_list_popup(
                             .iter()
                             .filter_map(|e| {
                                 if e.1.is_some() && !e.0.title.is_empty() {
-                                    e.1.map(|idx| (e.0.title.clone(), idx))
+                                    if let Some(idx) = e.1 {
+                                        Some((e.0.title.clone(), idx))
+                                    } else {
+                                        None
+                                    }
                                 } else {
                                     None
                                 }
@@ -266,9 +270,9 @@ pub fn draw_window_list_popup(
                 let total_phys_w = (popup_width as f32 * scale).round() as i32;
 
                 // Position the popup above the dock
-                let menu_y = anchor_y - total_phys_h;
+                let menu_y = anchor_y as i32 - total_phys_h;
                 let max_x = (frame.phys_width as i32 - total_phys_w).max(0);
-                let menu_x = (anchor_x - total_phys_w / 2).clamp(0, max_x);
+                let menu_x = (anchor_x as i32 - total_phys_w / 2).clamp(0, max_x);
 
                 let geom = crate::geometry::popup::SurfaceGeometry {
                     x: menu_x,
@@ -768,8 +772,8 @@ pub fn draw_window_list_popup(
                                         if renderer.replace_cached_texture_from_bgfx(
                                             &cache_key,
                                             &bgrx,
-                                            w,
-                                            h,
+                                            w as u32,
+                                            h as u32,
                                         ).is_some() {
                                             bgfx_uploaded = true;
                                         }
@@ -794,8 +798,8 @@ pub fn draw_window_list_popup(
                                     renderer.replace_cached_texture_from_pixels(
                                         &cache_key,
                                         &fd.rgba,
-                                        fd.width,
-                                        fd.height,
+                                        fd.width as u32,
+                                        fd.height as u32,
                                     )
                                 })
                             } else {

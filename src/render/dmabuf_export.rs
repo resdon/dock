@@ -259,7 +259,7 @@ impl DmabufPool {
             self.fallback_memory_bytes.get().saturating_add(slot_memory),
         );
         self.fallback_count.set(self.fallback_count.get().saturating_add(1));
-        if self.fallback_count.get().is_multiple_of(10) {
+        if self.fallback_count.get() % 10 == 0 {
             eprintln!(
                 "[DMABUF] Pool: {} fallback textures active ({} MB pooled + {} MB fallback)",
                 self.fallback_count.get(),

@@ -325,7 +325,6 @@ impl ResolutionTrace {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(Default)]
 pub struct ApplicationIdentity {
     pub identifier: String,
     pub name: String,
@@ -338,9 +337,23 @@ pub struct ApplicationIdentity {
     pub category: Option<String>,
 }
 
+impl Default for ApplicationIdentity {
+    fn default() -> Self {
+        Self {
+            identifier: String::new(),
+            name: String::new(),
+            version: None,
+            developer: None,
+            publisher: None,
+            homepage: None,
+            description: None,
+            icon: None,
+            category: None,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(Default)]
 pub struct LaunchContext {
     pub launch_interface: Option<String>,
     pub command: Option<String>,
@@ -350,15 +363,35 @@ pub struct LaunchContext {
     pub working_directory: Option<PathBuf>,
 }
 
+impl Default for LaunchContext {
+    fn default() -> Self {
+        Self {
+            launch_interface: None,
+            command: None,
+            uri: None,
+            dbus_name: None,
+            arguments: Vec::new(),
+            working_directory: None,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(Default)]
 pub struct InstallationContext {
     pub install_root: Option<PathBuf>,
     pub desktop_file: Option<PathBuf>,
     pub desktop_actions: Vec<String>,
 }
 
+impl Default for InstallationContext {
+    fn default() -> Self {
+        Self {
+            install_root: None,
+            desktop_file: None,
+            desktop_actions: Vec::new(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplicationCapabilities {
@@ -392,16 +425,19 @@ impl Default for ApplicationCapabilities {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[derive(Default)]
 pub enum ApplicationPriority {
     Background,
-    #[default]
     Normal,
     Important,
     Foreground,
     System,
 }
 
+impl Default for ApplicationPriority {
+    fn default() -> Self {
+        Self::Normal
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ApplicationStatus {
@@ -417,16 +453,19 @@ pub struct ApplicationStatus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[derive(Default)]
 pub enum ProcessPriority {
     Background,
-    #[default]
     Normal,
     Important,
     Foreground,
     System,
 }
 
+impl Default for ProcessPriority {
+    fn default() -> Self {
+        Self::Normal
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ProcessStatus {
@@ -443,10 +482,8 @@ pub struct ProcessStatus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[derive(Default)]
 pub enum WindowPriority {
     Background,
-    #[default]
     Normal,
     Important,
     Foreground,
@@ -454,18 +491,26 @@ pub enum WindowPriority {
     SystemTray,
 }
 
+impl Default for WindowPriority {
+    fn default() -> Self {
+        Self::Normal
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[derive(Default)]
 pub enum WindowLayer {
     Background,
-    #[default]
     Normal,
     AlwaysOnTop,
     Overlay,
     SystemTray,
 }
 
+impl Default for WindowLayer {
+    fn default() -> Self {
+        Self::Normal
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum WindowStatus {

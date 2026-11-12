@@ -559,8 +559,8 @@ impl AppState {
             .info(&dock.output)
             .and_then(|info| info.logical_size)
             .unwrap_or((1920, 1080));
-        let output_width = output_size.0;
-        let output_height = output_size.1;
+        let output_width = output_size.0 as i32;
+        let output_height = output_size.1 as i32;
         let dock_width = dock.width as i32;
         let surface_height = dock.height as i32;
 

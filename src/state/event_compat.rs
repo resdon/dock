@@ -81,7 +81,7 @@ impl AppState {
         if redraw || registry_changed {
             self.needs_redraw = true;
         }
-        let _ = std::env::var_os("DOCK_WINDOW_DEBUG").is_some();
+        if std::env::var_os("DOCK_WINDOW_DEBUG").is_some() {}
         registry_changed || redraw
     }
 
@@ -282,9 +282,11 @@ impl AppState {
                 // Close the window list popup if the target app now has no windows
                 if self.window_list_state.is_open
                     && self.window_list_state.target_app_id.as_deref() == Some(app_id.as_str())
-                    && self.window_count_for_app(app_id.as_str()) == 0 {
+                {
+                    if self.window_count_for_app(app_id.as_str()) == 0 {
                         self.request_window_list_close();
                     }
+                }
             }
             // The live window projection was already updated by
             // update_window_state_from_event(). Avoid a full O(apps+windows+

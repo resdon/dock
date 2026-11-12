@@ -25,7 +25,10 @@ impl IconLoader {
             while let Ok(req) = rx.recv() {
                 let icon_path = match crate::resolvers::get_icon_path(&req.app_id) {
                     Some(path) => Some(path),
-                    None => crate::resolvers::search_icon_list_file(&req.app_id),
+                    None => match crate::resolvers::search_icon_list_file(&req.app_id) {
+                        Some(path) => Some(path),
+                        None => None,
+                    },
                 };
 
                 if let Some(ref path) = icon_path {

@@ -324,7 +324,7 @@ impl AppState {
                 .info(&dock.output)
                 .and_then(|info| info.logical_size)
                 .unwrap_or((1920, 1080));
-            let output_width = output_size.0;
+            let output_width = output_size.0 as i32;
             let dock_width = dock.width as i32;
             let surface_height = dock.height as i32;
             let db_width = config.dashed_block_width as i32;
@@ -341,13 +341,13 @@ impl AppState {
                     db.surface.set_margin(margin, 0, 0, left_margin.max(0));
                 }
                 crate::config::DockAnchor::Left => {
-                    let dock_bottom_edge = (output_size.1 / 2) + (surface_height / 2);
-                    let bottom_margin = output_size.1 - dock_bottom_edge - gap;
+                    let dock_bottom_edge = (output_size.1 as i32 / 2) + (surface_height / 2);
+                    let bottom_margin = output_size.1 as i32 - dock_bottom_edge - gap;
                     db.surface.set_margin(0, 0, bottom_margin.max(0), margin);
                 }
                 crate::config::DockAnchor::Right => {
-                    let dock_bottom_edge = (output_size.1 / 2) + (surface_height / 2);
-                    let bottom_margin = output_size.1 - dock_bottom_edge - gap;
+                    let dock_bottom_edge = (output_size.1 as i32 / 2) + (surface_height / 2);
+                    let bottom_margin = output_size.1 as i32 - dock_bottom_edge - gap;
                     db.surface.set_margin(0, margin, bottom_margin.max(0), 0);
                 }
             }
@@ -374,7 +374,7 @@ impl AppState {
                 .info(&dock.output)
                 .and_then(|info| info.logical_size)
                 .unwrap_or((1920, 1080));
-            let output_width = output_size.0;
+            let output_width = output_size.0 as i32;
             let dock_width = dock.width as i32;
             let surface_height = dock.height as i32;
             let dt_width = config.date_time_block_width as i32;
@@ -391,13 +391,13 @@ impl AppState {
                     dt.surface.set_margin(margin, right_margin.max(0), 0, 0);
                 }
                 crate::config::DockAnchor::Left => {
-                    let dock_bottom_edge = (output_size.1 / 2) + (surface_height / 2);
-                    let bottom_margin = output_size.1 - dock_bottom_edge - gap;
+                    let dock_bottom_edge = (output_size.1 as i32 / 2) + (surface_height / 2);
+                    let bottom_margin = output_size.1 as i32 - dock_bottom_edge - gap;
                     dt.surface.set_margin(0, 0, bottom_margin.max(0), margin);
                 }
                 crate::config::DockAnchor::Right => {
-                    let dock_bottom_edge = (output_size.1 / 2) + (surface_height / 2);
-                    let bottom_margin = output_size.1 - dock_bottom_edge - gap;
+                    let dock_bottom_edge = (output_size.1 as i32 / 2) + (surface_height / 2);
+                    let bottom_margin = output_size.1 as i32 - dock_bottom_edge - gap;
                     dt.surface.set_margin(0, margin, bottom_margin.max(0), 0);
                 }
             }

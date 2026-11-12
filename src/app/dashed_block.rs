@@ -107,12 +107,12 @@ pub fn draw_dashed_block(
                 );
                 resvg::render(&tree, transform, &mut pixmap.as_mut());
 
-                renderer.upload_texture_from_pixels_cached(
+                Some(renderer.upload_texture_from_pixels_cached(
                     &cache_key,
                     pixmap.data(),
                     icon_size,
                     icon_size,
-                )
+                )?)
             };
 
         // Top row: rclonetray | bluetooth
@@ -218,30 +218,33 @@ pub fn draw_dashed_block(
         });
 
         if let (Some(adapter), Some(device)) = (renderer.adapter(), renderer.device()) {
-            if let Ok((texture, export_info)) = dmabuf_pool.acquire_texture(
+            match dmabuf_pool.acquire_texture(
                 adapter, device, qh, dmabuf_state, phys_width as u32, phys_height as u32,
             ) {
-                if renderer.render_to_texture(
-                    &texture, phys_width as u32, phys_height as u32,
-                    scale as f32, &draw_commands,
-                ).is_ok() {
-                    if let Ok(wl_buffer) = crate::render::dmabuf_export::create_buffer_from_export(
-                        dmabuf_state, qh, &export_info,
-                    ) {
-                        dmabuf_pool.set_buffer_id(wl_buffer.id());
-                        block
-                            .surface
-                            .wl_surface()
-                            .set_buffer_scale(scale.round().max(1.0) as i32);
-                        block.surface.wl_surface().attach(Some(&wl_buffer), 0, 0);
-                        block
-                            .surface
-                            .wl_surface()
-                            .damage_buffer(0, 0, phys_width, phys_height);
-                        block.surface.wl_surface().commit();
-                        return;
+                Ok((texture, export_info)) => {
+                    if renderer.render_to_texture(
+                        &texture, phys_width as u32, phys_height as u32,
+                        scale as f32, &draw_commands,
+                    ).is_ok() {
+                        if let Ok(wl_buffer) = crate::render::dmabuf_export::create_buffer_from_export(
+                            dmabuf_state, qh, &export_info,
+                        ) {
+                            dmabuf_pool.set_buffer_id(wl_buffer.id());
+                            block
+                                .surface
+                                .wl_surface()
+                                .set_buffer_scale(scale.round().max(1.0) as i32);
+                            block.surface.wl_surface().attach(Some(&wl_buffer), 0, 0);
+                            block
+                                .surface
+                                .wl_surface()
+                                .damage_buffer(0, 0, phys_width, phys_height);
+                            block.surface.wl_surface().commit();
+                            return;
+                        }
                     }
                 }
+                Err(_) => {}
             }
         }
     }

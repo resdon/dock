@@ -236,7 +236,7 @@ pub fn handle_motion_events(
                     // Use the same dock-local hitbox as click, drag, scroll, and
                     // DnD handling. Keeping one geometry authority prevents hover
                     // from disagreeing with the actual clickable icon.
-                    let hovered_app = state.get_app_id_at_location(new_x, new_y);
+                    let hovered_app = state.get_app_id_at_location(new_x as f64, new_y as f64);
 
                     // Update hovered_icon index for rendering (Slint hover outlines)
                     let apps_in_dock = state.get_apps_in_dock();

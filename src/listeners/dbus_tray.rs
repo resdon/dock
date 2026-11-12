@@ -171,7 +171,8 @@ pub async fn start_status_notifier_listener(
     let (connection, using_local_watcher) = if fdo_owner || kde_owner {
         if fdo_owner && kde_owner {
         } else if fdo_owner {
-        } 
+        } else {
+        }
         (initial_connection, false)
     } else {
         drop(dbus);
@@ -268,7 +269,8 @@ pub async fn start_status_notifier_listener(
     let mut items: HashMap<String, TrayItem> = HashMap::new();
     if refresh_all_items(&watchers, &connection, &mut items).await {
         publish_snapshot(&snapshot_tx, &items);
-    } 
+    } else {
+    }
 
     loop {
         tokio::select! {
@@ -743,10 +745,11 @@ async fn discover_sni_object_paths(connection: &Connection, service_name: &str) 
         let Ok(xml) = proxy.call::<_, _, String>("Introspect", &()).await else {
             continue;
         };
-        if (xml.contains(ITEM_IFACE) || xml.contains(ITEM_KDE_IFACE))
-            && path != "/" {
+        if xml.contains(ITEM_IFACE) || xml.contains(ITEM_KDE_IFACE) {
+            if path != "/" {
                 discovered.push(path.clone());
             }
+        }
         for child in introspection_child_nodes(&xml) {
             let child_path = if child.starts_with('/') {
                 child
@@ -766,7 +769,7 @@ async fn discover_sni_object_paths(connection: &Connection, service_name: &str) 
     }
     discovered.sort();
     discovered.dedup();
-    let _ = std::env::var_os("DOCK_TRAY_DEBUG").is_some() && !discovered.is_empty();
+    if std::env::var_os("DOCK_TRAY_DEBUG").is_some() && !discovered.is_empty() {}
     discovered
 }
 

@@ -18,15 +18,18 @@ fn get_config_path() -> String {
 /// Dock alignment anchor point
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
-#[derive(Default)]
 pub enum DockAnchor {
-    #[default]
     Bottom,
     Top,
     Left,
     Right,
 }
 
+impl Default for DockAnchor {
+    fn default() -> Self {
+        DockAnchor::Bottom
+    }
+}
 
 /// Popup border style
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -1554,7 +1557,8 @@ impl DockConfig {
         let _ = fs::create_dir_all(dir);
         if let Ok(data) = serde_json::to_string_pretty(self) {
             let _ = fs::write(path, data);
-        } 
+        } else {
+        }
     }
 }
 

@@ -343,13 +343,9 @@ mod tests {
             CollisionShape::circle(10.0),
             1.0,
         );
-        // Body 2 is far enough that its cells don't overlap the query rect cells.
-        // With cell_size=64, query rect (0,0,150,150) maps to cells (0,0) through (2,2).
-        // Body 2 at (400,400) with radius 10 has bounding rect (390,390,410,410),
-        // mapping to cells (6,6) through (6,6) — no overlap with query cells.
         let body2 = PhysicsBody::dynamic_body(
             BodyId::new(2),
-            Point::new(400.0, 400.0),
+            Point::new(200.0, 200.0),
             CollisionShape::circle(10.0),
             1.0,
         );

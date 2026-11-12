@@ -469,7 +469,10 @@ pub fn handle_click_events(
                             event.position.0,
                             event.position.1,
                         ) {
-                            let pages = state.rclone_snapshot.mounts.len().div_ceil(crate::render::rclone::ROWS_PER_PAGE);
+                            let pages = (state.rclone_snapshot.mounts.len()
+                                + crate::render::rclone::ROWS_PER_PAGE
+                                - 1)
+                                / crate::render::rclone::ROWS_PER_PAGE;
                             let max_page = pages.saturating_sub(1);
                             state.rclone_page = if delta < 0 {
                                 state.rclone_page.saturating_sub(1)
@@ -511,7 +514,10 @@ pub fn handle_click_events(
                             event.position.0,
                             event.position.1,
                         ) {
-                            let pages = state.process_snapshot.processes.len().div_ceil(crate::render::processes::ROWS_PER_PAGE);
+                            let pages = (state.process_snapshot.processes.len()
+                                + crate::render::processes::ROWS_PER_PAGE
+                                - 1)
+                                / crate::render::processes::ROWS_PER_PAGE;
                             let max_page = pages.saturating_sub(1);
                             state.process_page = if delta < 0 {
                                 state.process_page.saturating_sub(1)

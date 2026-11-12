@@ -131,7 +131,7 @@ impl AppState {
 
             let frame = DrawFrameData {
                 apps_in_dock: &apps_in_dock,
-                running_by_app,
+                running_by_app: &running_by_app,
                 windows: &self.windows,
                 phys_width,
                 phys_height,
@@ -139,8 +139,8 @@ impl AppState {
                 dock_width,
                 dock_height,
                 dock_scale,
-                box_size,
-                spacing,
+                box_size: box_size as i32,
+                spacing: spacing as i32,
                 dock_output: &dock_output_id,
                 config: &self.config,
             };

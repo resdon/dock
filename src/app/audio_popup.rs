@@ -161,7 +161,7 @@ pub fn slider_target_at(snapshot: &AudioSnapshot, x: f64, y: f64) -> Option<Audi
     if (INPUT_SLIDER_Y - 7..=INPUT_SLIDER_Y + 7).contains(&y) {
         return snapshot.default_input.map(|_| AudioSliderTarget::Input);
     }
-    if (STREAM_ROW_START_Y..STREAM_ROW_START_Y + 2 * STREAM_ROW_HEIGHT).contains(&y) {
+    if y >= STREAM_ROW_START_Y && y < STREAM_ROW_START_Y + 2 * STREAM_ROW_HEIGHT {
         let index = ((y - STREAM_ROW_START_Y) / STREAM_ROW_HEIGHT) as usize;
         let stream = snapshot.streams.get(index)?;
         let slider_y = STREAM_ROW_START_Y + index as i32 * STREAM_ROW_HEIGHT + 19;
@@ -279,7 +279,7 @@ pub fn action_for_audio_popup_click(
         }
     }
 
-    if (STREAM_ROW_START_Y..STREAM_ROW_START_Y + 2 * STREAM_ROW_HEIGHT).contains(&y) {
+    if y >= STREAM_ROW_START_Y && y < STREAM_ROW_START_Y + 2 * STREAM_ROW_HEIGHT {
         let index = ((y - STREAM_ROW_START_Y) / STREAM_ROW_HEIGHT) as usize;
         let stream = snapshot.streams.get(index)?;
         let row_y = STREAM_ROW_START_Y + index as i32 * STREAM_ROW_HEIGHT;

@@ -134,7 +134,7 @@ pub fn render_dock_items(canvas: &mut [u8], state: &DockState, res: &mut DockRen
                                 if canvas_x >= phys_width || canvas_y >= phys_height {
                                     continue;
                                 }
-                                let src_idx = (y * dst_w as usize + x) * 4;
+                                let src_idx = (y as usize * dst_w as usize + x as usize) * 4;
                                 if src_idx + 3 >= dst_pixels.len() {
                                     continue;
                                 }

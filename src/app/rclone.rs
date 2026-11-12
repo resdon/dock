@@ -76,7 +76,7 @@ fn enrich_rclone_capacities(
             .get(&mount.source)
             .filter(|(updated, _)| updated.elapsed() < ABOUT_CACHE_TTL);
         let about = if let Some((_, result)) = cached {
-            *result
+            result.clone()
         } else {
             let result = query_rclone_about(&mount.source);
             cache.insert(mount.source.clone(), (Instant::now(), result));
@@ -247,13 +247,13 @@ fn filesystem_capacity(path: &Path) -> (u64, u64, u64) {
     }
     let stats = unsafe { stats.assume_init() };
     let block_size = if stats.f_frsize > 0 {
-        stats.f_frsize
+        stats.f_frsize as u64
     } else {
-        stats.f_bsize
+        stats.f_bsize as u64
     };
-    let total = stats.f_blocks.saturating_mul(block_size);
-    let free = stats.f_bfree.saturating_mul(block_size);
-    let available = stats.f_bavail.saturating_mul(block_size);
+    let total = (stats.f_blocks as u64).saturating_mul(block_size);
+    let free = (stats.f_bfree as u64).saturating_mul(block_size);
+    let available = (stats.f_bavail as u64).saturating_mul(block_size);
     let used = total.saturating_sub(free);
     if total == RCLONE_UNLIMITED_FALLBACK && used == 0 {
         // Rclone reports this sentinel when a backend has no quota API; it is
