@@ -74,6 +74,7 @@ pub fn draw_process_popup(
             cached_phys_width: 0,
             cached_phys_height: 0,
             input_region_key: 0,
+            last_content_hash: 0,
         });
     }
     let Some(popup) = dock.process_popup.as_mut() else {

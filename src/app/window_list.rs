@@ -306,6 +306,7 @@ pub fn draw_window_list_popup(
                         cached_phys_width: 0,
                         cached_phys_height: 0,
                         input_region_key: 0,
+                        last_content_hash: 0,
                     });
                 }
 
@@ -384,9 +385,6 @@ pub fn draw_window_list_popup(
                         false
                     };
 
-                    // Always render every frame — no content hash caching.
-                    let expected_len = geom.phys_width as usize * geom.phys_height as usize * 4;
-
                     // Set the active row based on hovered item for PipeWire capture switching.
                     // Only set active row if we have a valid PipeWire stream match.
                     // Validate hovered_item is within bounds before accessing matched_windows.
@@ -443,6 +441,45 @@ pub fn draw_window_list_popup(
                     } else {
                         synthetic_windows.clone()
                     };
+
+                    // Compute a content hash so we can skip rendering when nothing changed.
+                    // The hash combines: window count, window titles, hovered item, and the
+                    // PipeWire capture generation counter for the active stream.
+                    let mut content_hash: u64 = windows.len() as u64;
+                    for w in &windows {
+                        for b in w.title.bytes() {
+                            content_hash = content_hash.wrapping_mul(31).wrapping_add(b as u64);
+                        }
+                    }
+                    content_hash = content_hash.wrapping_mul(37).wrapping_add(hovered_item as u64);
+
+                    // Include the PipeWire capture generation counter so we detect when the
+                    // underlying window's content has changed, even if the title hasn't.
+                    let capture_generation = if has_valid_stream
+                        && use_matched
+                        && (hovered_item as usize) < matched_windows.len()
+                    {
+                        if let Some(stream_idx) = matched_windows[hovered_item as usize].1 {
+                            pipewire_capture
+                                .and_then(|service| service.get_stream_generation(stream_idx))
+                                .unwrap_or(0)
+                        } else {
+                            0
+                        }
+                    } else {
+                        0
+                    };
+                    content_hash = content_hash.wrapping_mul(41).wrapping_add(capture_generation);
+
+                    // Skip rendering if the content hash matches the previous frame.
+                    // This avoids rebuilding draw commands, replacing GPU textures, creating
+                    // new DMABUF buffers, and committing the surface when nothing changed.
+                    if popup.last_content_hash == content_hash {
+                        return;
+                    }
+                    popup.last_content_hash = content_hash;
+
+                    let expected_len = geom.phys_width as usize * geom.phys_height as usize * 4;
 
                     // Build draw commands for the window list popup
                     let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::new();

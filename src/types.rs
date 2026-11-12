@@ -183,6 +183,10 @@ pub struct PopupSurface {
     /// Tracks when the input region geometry changes so we avoid redundant
     /// WlRegion recreation on every frame.
     pub input_region_key: u64,
+    /// Content hash for the window list popup: combines window titles, count,
+    /// and the PipeWire capture generation counter. When this matches the
+    /// previous frame's hash, the entire render pipeline is skipped.
+    pub last_content_hash: u64,
 }
 
 impl PopupSurface {

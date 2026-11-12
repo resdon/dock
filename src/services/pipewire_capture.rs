@@ -103,6 +103,11 @@ pub struct StreamFrameData {
     /// PipeWire's borrowed buffer is copied once into this Arc because its
     /// memory is only valid for the duration of the process callback.
     pub frame: Arc<Mutex<Option<(u32, u32, pw::spa::param::video::VideoFormat, Arc<[u8]>)>>>,
+    /// Monotonically increasing generation counter, incremented each time a new
+    /// frame buffer is captured. The render thread compares this against the
+    /// last-rendered generation to skip redundant texture uploads and frame
+    /// conversions when the underlying capture content hasn't changed.
+    pub generation: Arc<parking_lot::Mutex<u64>>,
     /// Negotiated video format: (width, height, format), set once during
     /// format negotiation when the stream receives its first `ParamType::Format` event.
     pub format_info: Arc<Mutex<Option<(u32, u32, pw::spa::param::video::VideoFormat)>>>,
@@ -632,6 +637,28 @@ impl PipewireCaptureService {
             .and_then(|fmt| fmt.map(|(w, h, _)| (w, h)))
     }
 
+    /// Get the generation counter for a stream index.
+    ///
+    /// Returns the current generation value, which increments each time a new
+    /// frame buffer is captured. The render thread compares this against the
+    /// last-rendered generation to skip redundant work when unchanged.
+    ///
+    /// Returns `None` if the stream index is out of bounds.
+    pub fn get_stream_generation(&self, idx: usize) -> Option<u64> {
+        let frames = match self
+            .stream_frames
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+        {
+            Some(g) => g,
+            None => return None,
+        };
+        if idx >= frames.len() {
+            return None;
+        }
+        let gen = *frames[idx].generation.lock();
+        Some(gen)
+    }
+
     /// Strip the XDG Desktop Portal hash suffix from a PipeWire stream title.
     ///
     /// The portal appends a unique 32-character hex ID in parentheses to distinguish
@@ -905,6 +932,7 @@ pub async fn init_capture_service(
         };
         let stream_data = Arc::new(StreamFrameData {
             frame: Arc::new(Mutex::new(None)),
+            generation: Arc::new(parking_lot::Mutex::new(0)),
             format_info: Arc::new(Mutex::new(None)),
             ready: Arc::new(AtomicBool::new(false)),
             title: title.clone(),
@@ -1536,6 +1564,7 @@ fn spawn_stream_thread(fd: OwnedFd, node_id: u32, idx: usize, stream_data: Arc<S
         };
 
         let frame_data_for_process = Arc::clone(&stream_data.frame);
+        let generation_for_process = Arc::clone(&stream_data.generation);
         let format_info_for_process = Arc::clone(&stream_data.format_info);
         let format_info_for_param = Arc::clone(&stream_data.format_info);
         let ready_flag_for_param = Arc::clone(&stream_data.ready);
@@ -1613,6 +1642,13 @@ fn spawn_stream_thread(fd: OwnedFd, node_id: u32, idx: usize, stream_data: Arc<S
                                             guard.replace((w, h, fmt, bytes));
                                         });
                                     let _ = result;
+                                    // Increment generation counter so the render thread can
+                                    // detect that a new frame has arrived and skip redundant
+                                    // work when the generation hasn't changed.
+                                    {
+                                        let mut gen = generation_for_process.lock();
+                                        *gen += 1;
+                                    }
                                     frames_in_fps_window += 1;
                                     let elapsed = fps_window_start.elapsed();
                                     if elapsed >= std::time::Duration::from_secs(2) {
@@ -2206,6 +2242,7 @@ pub async fn start_monitor_inner(
                         };
                         let stream_data = Arc::new(StreamFrameData {
                             frame: Arc::new(Mutex::new(None)),
+                            generation: Arc::new(parking_lot::Mutex::new(0)),
                             format_info: Arc::new(Mutex::new(None)),
                             ready: Arc::new(AtomicBool::new(false)),
                             title: captured_title.clone(),

@@ -48,6 +48,7 @@ fn ensure_surface(
         cached_phys_width: 0,
         cached_phys_height: 0,
         input_region_key: u64::MAX,
+        last_content_hash: 0,
     });
     true
 }

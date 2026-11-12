@@ -1,0 +1,24 @@
+diff --git a/src/services/pipewire_capture.rs b/src/services/pipewire_capture.rs
+index 0000000..0000000 100644
+--- a/src/services/pipewire_capture.rs
++++ b/src/services/pipewire_capture.rs
+@@ -97,10 +97,12 @@ pub struct StreamFrameData {
+-    /// Latest captured frame: (width, height, video format, raw pixel bytes).
++    /// Latest captured frame: (width, height, video format, shared raw pixel bytes).
+     /// Updated by the stream thread's `process` callback on every buffer.
+-    /// Protected by a Mutex so the render thread can read it safely.
+-    pub frame: Arc<Mutex<Option<(u32, u32, pw::spa::param::video::VideoFormat, Vec<u8>)>>>,
++    /// The byte payload is reference-counted so readers can take a stable
++    /// snapshot without cloning the full frame while holding the mutex.
++    /// PipeWire's borrowed buffer is copied once into this Arc because its
++    /// memory is only valid for the duration of the process callback.
++    pub frame: Arc<Mutex<Option<(u32, u32, pw::spa::param::video::VideoFormat, Arc<[u8]>)>>>,
+@@ -1602,7 +1604,7 @@ fn spawn_stream_thread(
+-                                    let bytes = samples[0..size.min(samples.len())].to_vec();
++                                    let bytes: Arc<[u8]> =
++                                        Arc::from(&samples[0..size.min(samples.len())]);
+                                     // If we can't get the frame lock, skip this frame
+                                     let result =
+                                         frame_data_for_process.try_lock().map(|mut guard| {
+                                             guard.replace((w, h, fmt, bytes));
+                                         });
