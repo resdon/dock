@@ -1771,6 +1771,11 @@ fn spawn_stream_thread(
         // FIX (v1.5.5): Track last frame capture time for inactive streams to
         // limit their capture rate to 1 frame per 2 seconds instead of full FPS.
         let mut last_inactive_frame_time = Instant::now();
+        // FIX (v1.5.5): Each stream captures one initial "prime" frame on startup
+        // even when the popup is closed, so thumbnails are ready when the user
+        // first opens the window list. After the prime frame, closed-popup streams
+        // stop processing entirely.
+        let mut primed = false;
 
         let _listener = stream
             .add_local_listener_with_user_data(())
@@ -1807,16 +1812,32 @@ fn spawn_stream_thread(
             })
             .process(move |stream, _| {
                 // FIX (v1.5.5): Check visibility before processing frames.
-                // When the popup is closed, skip all frame processing (zero CPU).
+                // When the popup is closed, capture at a low rate (1 frame per 2 seconds)
+                // so thumbnails remain available even for unfocused windows (e.g., Wezterm
+                // terminals that don't receive compositor frames when not focused).
                 // When open, only the active (hovered) stream processes at full FPS.
                 // Inactive streams process at 1 frame per 2 seconds to keep a
                 // recent thumbnail when the user switches to them.
+                //
+                // CRITICAL: Unprimed streams (no valid frame yet) always capture regardless
+                // of popup state. Wayland compositors don't send frames for unfocused windows
+                // while the popup is closed, so the process callback rarely fires. When it does
+                // fire, we must capture the frame — skipping it would leave the stream with no
+                // thumbnail until the user clicks to focus the window.
                 let popup_open = visibility.window_list_open.load(Ordering::Acquire);
-                if !popup_open {
-                    // Popup closed — dequeue and discard buffer without copying
-                    let _ = stream.dequeue_buffer();
-                    return;
+                if !popup_open && primed {
+                    // Popup closed and stream already has a frame — capture at a low rate
+                    // so the thumbnail stays fresh when the user switches to this row.
+                    if last_inactive_frame_time.elapsed()
+                        < std::time::Duration::from_millis(2000)
+                    {
+                        let _ = stream.dequeue_buffer();
+                        return;
+                    }
+                    last_inactive_frame_time = Instant::now();
                 }
+                // If popup is closed and not yet primed, fall through to capture the frame.
+                // The primed flag is set only after a valid frame is stored below.
 
                 // Check if this stream is the active (hovered) row
                 let is_active = {
@@ -1875,6 +1896,13 @@ fn spawn_stream_thread(
                                             guard.replace((w, h, fmt, bytes));
                                         });
                                     let _ = result;
+                                    // FIX (v1.5.5): Mark the stream as primed after successfully
+                                    // capturing the first valid frame. This ensures early callbacks
+                                    // before format negotiation don't falsely prime the stream, which
+                                    // would cause the first displayed frame to be invalid.
+                                    // The primed flag is set regardless of popup state — unprimed
+                                    // streams always capture, so this only fires once per stream.
+                                    primed = true;
                                     // FIX (v1.5.5): Invalidate the cached RGBA when a new raw
                                     // frame arrives. The raw frame and cached RGBA both exist
                                     // simultaneously (~16MB for 1080p). By clearing the cache,
