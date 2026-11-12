@@ -5,7 +5,6 @@
 pub mod audio;
 pub mod audio_player;
 pub mod badges;
-pub mod bluetooth;
 pub mod debug_overlay;
 pub mod dmabuf_export;
 pub mod dock;
@@ -31,4 +30,3 @@ pub mod dashed_block;
 pub mod date_time_block;
 pub mod processes;
 pub mod rclone;
-pub mod slint_dock;

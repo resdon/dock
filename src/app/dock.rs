@@ -7,13 +7,11 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use smithay_client_toolkit::{
-    compositor::CompositorState, dmabuf::DmabufState, shell::WaylandSurface, shm::slot::SlotPool,
+    compositor::CompositorState, dmabuf::DmabufState, shell::WaylandSurface,
 };
-use wayland_client::protocol::wl_shm;
 use wayland_client::QueueHandle;
 
 use crate::graphics::hide::AutoHideState;
-use crate::render::slint_dock::SlintDockRenderer;
 use crate::state::AppState;
 use crate::types::{DockInstance, DockState, PinItem};
 use crate::Rect;
@@ -69,14 +67,13 @@ pub fn draw_main_dock(
     dock: &mut DockInstance,
     qh: &QueueHandle<AppState>,
     frame: &DrawFrameData<'_>,
-    pool: &mut SlotPool,
-    compositor_state: &CompositorState,
+    _compositor_state: &CompositorState,
     _subcompositor: Option<&wayland_client::protocol::wl_subcompositor::WlSubcompositor>,
     _font_manager: &mut FontManager,
-    hide_state: &mut AutoHideState,
+    _hide_state: &mut AutoHideState,
     icon_cache: &HashMap<String, (Arc<[u8]>, u32)>,
     _loading_apps: &HashSet<String>,
-    _badges: &HashMap<String, BadgeUpdate>,
+    badges: &HashMap<String, BadgeUpdate>,
     is_dragging: bool,
     dragged_app_id: Option<&String>,
     interaction: &crate::types::InteractionState,
@@ -91,8 +88,7 @@ pub fn draw_main_dock(
     dmabuf_pool: &crate::render::dmabuf_export::DmabufPool,
     is_animating: bool,
     scale_int: i32,
-    mut slint_renderer: Option<&mut SlintDockRenderer>,
-    bounce_app_id: Option<&String>,
+    _bounce_app_id: Option<&String>,
     click_app_id: Option<&String>,
     minimize_app_id: Option<&String>,
     config: &crate::config::DockConfig,
@@ -184,7 +180,7 @@ pub fn draw_main_dock(
     // GPU rendering: upload icon textures, build draw commands, and render
     let gpu_rendered = if let Some(gpu_renderer) = render_gpu {
         // Trigger GPU animations
-        if let Some(app_id) = bounce_app_id {
+        if let Some(app_id) = _bounce_app_id {
             if config.bounce_animation {
                 let total_frames = (config.bounce_animation_duration * 60.0) as u32;
                 let mut anims = GPU_BOUNCE_ANIMATIONS
@@ -526,6 +522,55 @@ pub fn draw_main_dock(
                 });
             }
 
+            // FIX (v1.5.5): Draw badge count on the icon if present.
+            // Badges are Unity launcher notifications received via D-Bus.
+            // Renders a small red circle with white text at the top-right corner.
+            if let Some(badge) = badges.get(&pin.app_id) {
+                if badge.count > 0 && badge.count_visible {
+                    let badge_size = (scaled_ps * 0.35).max(12.0 * scale);
+                    let badge_radius = badge_size / 2.0;
+                    let badge_x = icon_x + scaled_ps - badge_radius;
+                    let badge_y = icon_y - badge_radius * 0.5;
+                    let badge_text_size = (badge_size * 0.7).max(8.0 * scale);
+
+                    // Badge background: red circle
+                    draw_commands.push(wgpu_api::DrawCommand::Rectangle {
+                        rect: wgpu_api::Rect {
+                            x: badge_x - badge_radius,
+                            y: badge_y - badge_radius,
+                            width: badge_size,
+                            height: badge_size,
+                        },
+                        color: wgpu_api::Color {
+                            r: 1.0,
+                            g: 0.2,
+                            b: 0.2,
+                            a: 1.0,
+                        },
+                        radius: badge_radius,
+                        stroke: None,
+                        stroke_width: 0.0,
+                    });
+
+                    // Badge text: white count, centered
+                    draw_commands.push(wgpu_api::DrawCommand::Text {
+                        position: wgpu_api::Point {
+                            x: badge_x,
+                            y: badge_y + badge_text_size * 0.3,
+                        },
+                        content: badge.count.to_string(),
+                        font_size: badge_text_size,
+                        color: wgpu_api::Color {
+                            r: 1.0,
+                            g: 1.0,
+                            b: 1.0,
+                            a: 1.0,
+                        },
+                        align: 0.5,
+                    });
+                }
+            }
+
             // Running indicator dashes — match ui.slint 32px-span design exactly
             if pin.is_running {
                 let window_count = pin.running_count.min(5);
@@ -723,87 +768,8 @@ pub fn draw_main_dock(
         false
     };
 
-    // If GPU rendering succeeded, skip the CPU SHM path entirely.
-    if gpu_rendered {
-        return;
-    }
-
-    // CPU fallback: GPU rendering failed or GPU unavailable.
-    // Fall back to Slint software renderer via SHM buffer.
-    let stride = phys_width * 4;
-    let (buffer, canvas) = match pool.create_buffer(
-        phys_width as i32,
-        phys_height as i32,
-        stride as i32,
-        wl_shm::Format::Argb8888,
-    ) {
-        Ok(bc) => bc,
-        Err(e) => {
-            tracing::warn!("Failed to allocate SHM buffer for CPU fallback: {}", e);
-            return;
-        }
-    };
-
-    // Use Slint renderer for CPU fallback
-    if let Some(ref mut renderer) = slint_renderer {
-        if let Some(app_id) = bounce_app_id {
-            renderer.start_bounce(app_id, config);
-        }
-        if let Some(app_id) = click_app_id {
-            renderer.start_click_animation(app_id, config);
-        }
-        if let Some(app_id) = minimize_app_id {
-            renderer.start_minimize_animation(app_id, config);
-        }
-        renderer.render(
-            canvas,
-            &dock_state,
-            phys_width,
-            phys_height,
-            icon_cache,
-            interaction.hovered_icon,
-            is_dragging,
-            dragged_app_id,
-            interaction.pointer_position.x as i32,
-            interaction.pointer_position.y as i32,
-            config,
-        );
-    } else {
-        canvas.fill(0);
-    }
-
-    hide_state.apply_alpha_to_canvas(canvas);
-
-    let container_start = 0;
-    let container_w = dock.width as i32;
-
-    let is_hidden = hide_state.is_fully_hidden();
-    dock.update_input_region(
-        compositor_state,
-        is_hidden,
-        container_start,
-        container_w,
-        qh,
-    );
-
-    if is_animating {
-        dock.surface
-            .wl_surface()
-            .frame(qh, dock.surface.wl_surface().clone());
-    }
-
-    let first_buffer = dock.current_buffer.is_none();
-    dock.surface.wl_surface().set_buffer_scale(scale_int.max(1));
-    if let Err(e) = buffer.attach_to(dock.surface.wl_surface()) {
-        tracing::warn!("Buffer attach failed: {}", e);
-        return;
-    }
-    dock.surface
-        .wl_surface()
-        .damage_buffer(0, 0, phys_width as i32, phys_height as i32);
-    dock.surface.wl_surface().commit();
-    dock.current_buffer = Some(buffer);
-    if first_buffer {
-        // First framebuffer committed
+    // GPU rendering is the only path — no CPU fallback.
+    if !gpu_rendered {
+        tracing::warn!("GPU rendering failed for main dock");
     }
 }

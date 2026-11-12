@@ -354,8 +354,6 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
         // eliminates unnecessary redraws by tracking content changes.
         frame_scheduler: crate::frame_scheduler::FrameScheduler::new(),
         config: crate::config::DockConfig::load(),
-        slint_renderer: None,
-        bluetooth_renderer: None,
         bounce_app_id: None,
         click_app_id: None,
         pending_focus_app_id: None,
@@ -366,18 +364,7 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
         cached_pipewire_window_ids: None,
     };
 
-    // Initialize Slint renderers (software renderer - direct buffer rendering)
-    state.slint_renderer = crate::render::slint_dock::SlintDockRenderer::new().ok();
-    state.bluetooth_renderer = match crate::render::bluetooth::SlintBluetoothRenderer::new() {
-        Ok(_renderer) => {
-            tracing::info!("Bluetooth renderer initialized successfully");
-            Some(_renderer)
-        }
-        Err(e) => {
-            tracing::error!("Failed to initialize Bluetooth renderer: {}", e);
-            None
-        }
-    };
+    // FIX (v1.5.5): Slint has been removed. All rendering is via wgpu GPU.
 
     state.data_device_manager = state
         .registry_state

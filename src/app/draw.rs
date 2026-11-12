@@ -101,10 +101,6 @@ impl AppState {
             let is_animating = self.bounce_app_id.is_some()
                 || self.click_app_id.is_some()
                 || self.minimize_app_id.is_some()
-                || self
-                    .slint_renderer
-                    .as_ref()
-                    .is_some_and(|renderer| renderer.has_active_animation())
                 || dock::has_active_gpu_animation();
 
             let dock_output_id = dock_instance.output.id();
@@ -179,28 +175,24 @@ impl AppState {
             );
             // audio_popup::draw_audio_popup(...);
             // Bluetooth popup — the BT icon on the dashed block opens a subsurface popup.
-            if let Some(ref mut bt_renderer) = self.bluetooth_renderer {
-                bluetooth_popup::draw_bluetooth_popup(
-                    dock_instance,
-                    qh,
-                    &frame,
-                    &mut self.pool,
-                    &self.compositor_state,
-                    self.subcompositor.as_ref(),
-                    &self.output_state,
-                    // **FIX (v1.5.5)**: Pass output_state for screen-center positioning
-                    // of the Bluetooth popup. The popup is a subsurface of the dock,
-                    // so its position must be computed relative to the dock's screen
-                    // position, not absolute screen coordinates.
-                    bt_renderer,
-                    self.bluetooth_panel_open,
-                    &self.bluetooth_snapshot,
-                    self.tray_items.len(),
-                    self.gpu_context.as_mut(),
-                    &self.dmabuf_state,
-                    &self.config,
-                );
-            }
+            // FIX (v1.5.5): Ported from Slint to wgpu GPU rendering.
+            bluetooth_popup::draw_bluetooth_popup(
+                dock_instance,
+                qh,
+                &frame,
+                &mut self.pool,
+                &self.compositor_state,
+                self.subcompositor.as_ref(),
+                &self.output_state,
+                &(),
+                self.bluetooth_panel_open,
+                &self.bluetooth_snapshot,
+                self.tray_items.len(),
+                self.gpu_context.as_mut(),
+                &self.dmabuf_state,
+                &self.dmabuf_pool,
+                &self.config,
+            );
             // rclone_popup::draw_rclone_popup(...);
             // process_popup::draw_process_popup(...);
 
@@ -213,7 +205,6 @@ impl AppState {
                     dock_instance,
                     qh,
                     &frame,
-                    &mut self.pool,
                     &self.compositor_state,
                     self.subcompositor.as_ref(),
                     &mut self.font_manager,
@@ -234,7 +225,6 @@ impl AppState {
                     &self.dmabuf_pool,
                     is_animating,
                     scale_int,
-                    self.slint_renderer.as_mut(),
                     self.bounce_app_id.take().as_ref(),
                     self.click_app_id.take().as_ref(),
                     self.minimize_app_id.take().as_ref(),

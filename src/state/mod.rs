@@ -247,12 +247,6 @@ pub struct AppState {
     // Dock configuration
     pub config: crate::config::DockConfig,
 
-    // Slint dock renderer (software renderer - direct buffer rendering)
-    pub slint_renderer: Option<crate::render::slint_dock::SlintDockRenderer>,
-
-    // Slint bluetooth popup renderer
-    pub bluetooth_renderer: Option<crate::render::bluetooth::SlintBluetoothRenderer>,
-
     /// App ID that should trigger a bounce animation on the next render frame
     pub bounce_app_id: Option<String>,
     /// App ID that should trigger a click animation on the next render frame

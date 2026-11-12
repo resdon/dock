@@ -423,25 +423,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             status_sidebars_only = false;
         }
 
-        // **FIX (v1.5.5)**: Tick animation counters each loop iteration so they
+        // **FIX (v1.5.5)**: Tick GPU animation counters each loop iteration so they
         // decay even when the render path is skipped by the frame scheduler.
-        // Without this, has_active_animation() returns true forever, causing ~1000 FPS spinning.
-        if let Some(ref mut slint_renderer) = state.slint_renderer {
-            slint_renderer.tick_animations();
-        }
         library::app::dock::tick_gpu_animations();
-
-        // Check if Slint animations are active — trigger animation-driven redraws
-        // at the frame scheduler's 75 FPS limit, not immediately.
-        let slint_animations_active = state
-            .slint_renderer
-            .as_ref()
-            .map(|r| r.has_active_animation())
-            .unwrap_or(false);
-        if slint_animations_active {
-            state.needs_redraw = true;
-            status_sidebars_only = false;
-        }
 
         // **FIX (v1.5.5)**: When the Bluetooth popup is open and scanning, the
         // radar animation needs continuous redraws even though the snapshot hasn't
@@ -460,7 +444,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // that ran at up to ~125 FPS (8ms poll timeout) whenever needs_redraw was true.
         let animations_active = menu_fade_animating
             || window_list_fade_animating
-            || slint_animations_active
             || bluetooth_scanning_active
             || animated_apps_changed
             || state.bounce_app_id.is_some()
@@ -511,7 +494,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 && !frame_advanced
                 && !full_redraw_was_already_pending
                 && !proximity_changed
-                && !slint_animations_active
                 && !animated_apps_changed
                 && (menu_fade_animating || window_list_fade_animating);
             state.draw(&qh, !popup_only_animation && !status_sidebars_only);

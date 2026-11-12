@@ -59,9 +59,6 @@ rgb = "0.8"
 # SIMD-optimized image resizing (replaces custom Lanczos-3)
 fast_image_resize = { version = "5.0", features = ["image"] }
 
-# Slint for dock icon rendering (wgpu-30 GPU renderer)
-slint = { version = "~1.18", features = ["unstable-wgpu-30"] }
-
 # PipeWire for window capture (list-widget integration)
 pipewire = "0.10.1"
 
@@ -97,8 +94,5 @@ dhat-heap = ["dep:dhat"]
 [profile.profiling]
 inherits = "release"
 debug = true
-
-[build-dependencies]
-slint-build = { version = "1.18.1" }
 
 

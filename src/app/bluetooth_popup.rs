@@ -1,54 +1,90 @@
 //! Bluetooth popup panel and hit-test helpers.
 //!
 //! The Bluetooth icon on the dashed block toggles a subsurface popup rendered
-//! by Slint. This module provides the draw function and hit-test helpers for
-//! the popup buttons (minimize, power, scan, device actions).
+//! via wgpu GPU rendering. This module provides the draw function and hit-test
+//! helpers for the popup buttons (minimize, power, scan, device actions).
 //!
 //! The popup is a subsurface of the dock surface, positioned relative to the
 //! dock's coordinate space. Since the dashed block sits to the left of the dock,
 //! the popup X coordinate is negative relative to the dock's left edge, but
 //! subsurfaces support negative coordinates and will render correctly on-screen.
 
+use wayland_client::Proxy;
+
 use smithay_client_toolkit::{
     compositor::CompositorState, dmabuf::DmabufState, output::OutputState, shell::WaylandSurface,
     shm::slot::SlotPool,
 };
-use wayland_client::protocol::wl_shm;
 use wayland_client::QueueHandle;
 
 use crate::config::DockConfig;
 use crate::models::{BluetoothAction, BluetoothSnapshot};
-use crate::render::bluetooth::{
-    render_bluetooth_surface, SlintBluetoothRenderer, BLUETOOTH_POPUP_HEIGHT,
-    BLUETOOTH_POPUP_WIDTH, DEVICE_ACTION_H, DEVICE_ACTION_W, DEVICE_ACTION_X,
-    DEVICE_ACTION_Y_OFFSET, DEVICE_LIST_Y, DEVICE_ROW_COUNT, HEADER_MINIMIZE_H, HEADER_MINIMIZE_W,
-    HEADER_MINIMIZE_X, HEADER_MINIMIZE_Y, PAIRED_LIST_X, PAIRED_LIST_Y, POWER_BUTTON_H,
-    POWER_BUTTON_W, POWER_BUTTON_X, POWER_BUTTON_Y, SCAN_BUTTON_H, SCAN_BUTTON_W, SCAN_BUTTON_X,
-    SCAN_BUTTON_Y,
-};
 use crate::state::AppState;
 use crate::types::{DockInstance, PopupSurface};
 
 use super::draw::DrawFrameData;
 
+/// Popup width matching the bluetooth-widget Slint design.
+pub const BLUETOOTH_POPUP_WIDTH: i32 = 402;
+/// Popup height matching the bluetooth-widget Slint design.
+pub const BLUETOOTH_POPUP_HEIGHT: i32 = 318;
+
+// ===== Hit-test constants (unchanged from Slint layout) =====
+
+/// Minimize button in the header (top-right corner).
+pub const HEADER_MINIMIZE_X: i32 = 358;
+pub const HEADER_MINIMIZE_Y: i32 = 14;
+pub const HEADER_MINIMIZE_W: i32 = 20;
+pub const HEADER_MINIMIZE_H: i32 = 20;
+
+/// Power toggle card (controls row, left).
+pub const POWER_BUTTON_X: i32 = 12;
+pub const POWER_BUTTON_Y: i32 = 85;
+pub const POWER_BUTTON_W: i32 = 89;
+pub const POWER_BUTTON_H: i32 = 40;
+
+/// Scan toggle card (controls row, right).
+pub const SCAN_BUTTON_X: i32 = 107;
+pub const SCAN_BUTTON_Y: i32 = 85;
+pub const SCAN_BUTTON_W: i32 = 89;
+pub const SCAN_BUTTON_H: i32 = 40;
+
+/// Device list section.
+pub const DEVICE_LIST_Y: i32 = 154;
+pub const DEVICE_ROW_HEIGHT: i32 = 39;
+pub const DEVICE_ROW_COUNT: usize = 4;
+pub const DEVICE_CARD_WIDTH: i32 = 174;
+pub const DEVICE_CARD_HEIGHT: i32 = 39;
+
+/// Action button within a device card.
+pub const DEVICE_ACTION_X: i32 = 123;
+pub const DEVICE_ACTION_W: i32 = 51;
+pub const DEVICE_ACTION_Y_OFFSET: i32 = 0;
+pub const DEVICE_ACTION_H: i32 = 23;
+
+/// Paired list starts higher (y=111) to align with adapter label.
+pub const PAIRED_LIST_X: i32 = 208;
+pub const PAIRED_LIST_Y: i32 = 111;
+
 /// Draw the Bluetooth popup as a subsurface of the dock.
 ///
 /// Creates the subsurface on first open, positions it centered on the screen,
-/// renders the Slint BluetoothWidget, and commits the buffer.
+/// renders via wgpu GPU (DrawCommand list), and commits via DMA-BUF.
 pub fn draw_bluetooth_popup(
     dock: &mut DockInstance,
     qh: &QueueHandle<AppState>,
     _frame: &DrawFrameData<'_>,
-    pool: &mut SlotPool,
+    _pool: &mut SlotPool,
     compositor_state: &CompositorState,
     subcompositor: Option<&wayland_client::protocol::wl_subcompositor::WlSubcompositor>,
     output_state: &OutputState,
-    renderer: &mut SlintBluetoothRenderer,
+    _renderer: &(),
     is_open: bool,
     snapshot: &BluetoothSnapshot,
     _tray_item_count: usize,
-    _gpu_context: Option<&mut wgpu_api::Renderer>,
-    _dmabuf_state: &DmabufState,
+    mut gpu_context: Option<&mut wgpu_api::Renderer>,
+    dmabuf_state: &DmabufState,
+    dmabuf_pool: &crate::render::dmabuf_export::DmabufPool,
     config: &DockConfig,
 ) {
     if !is_open {
@@ -63,33 +99,19 @@ pub fn draw_bluetooth_popup(
     let phys_width = (BLUETOOTH_POPUP_WIDTH as f64 * scale).round().max(1.0) as i32;
     let phys_height = (BLUETOOTH_POPUP_HEIGHT as f64 * scale).round().max(1.0) as i32;
 
-    // **FIX (v1.5.5)**: Screen-center positioning for the Bluetooth popup.
-    // The popup is a subsurface of the dock, so its position is relative to the
-    // dock's top-left corner. To center it on screen, we compute the offset from
-    // the dock's position to the screen center. The dock is a layer surface
-    // anchored to the bottom, centered horizontally.
-    //
-    // Previously, the popup was positioned relative to the Bluetooth icon on the
-    // dashed block, which placed it off-screen or at wrong coordinates.
+    // Screen-center positioning for the Bluetooth popup.
     let output_size = output_state
         .info(&dock.output)
         .and_then(|info| info.logical_size)
         .unwrap_or((1920, 1080));
-    
-    // Use the actual dock surface dimensions, not the popup dimensions
+
     let actual_dock_width = dock.width as i32;
     let actual_dock_height = dock.height as i32;
-    
-    // Dock is centered horizontally at the bottom of the screen
     let dock_left_edge = (output_size.0 / 2) - (actual_dock_width / 2);
     let margin = config.margin;
     let dock_top_edge = output_size.1 - actual_dock_height - margin;
-    
-    // Screen center
     let screen_center_x = output_size.0 / 2;
     let screen_center_y = output_size.1 / 2;
-    
-    // Popup position relative to dock's top-left corner
     let popup_x = screen_center_x - dock_left_edge - BLUETOOTH_POPUP_WIDTH / 2;
     let popup_y = screen_center_y - dock_top_edge - BLUETOOTH_POPUP_HEIGHT / 2;
 
@@ -114,7 +136,6 @@ pub fn draw_bluetooth_popup(
             cached_phys_width: 0,
             cached_phys_height: 0,
             input_region_key: 0,
-            // FIX (v1.5.5): Initialize last_content_hash to 0 for content-hash caching.
             last_content_hash: 0,
             last_texture_generation: 0,
         });
@@ -128,49 +149,342 @@ pub fn draw_bluetooth_popup(
     popup.width = BLUETOOTH_POPUP_WIDTH as u32;
     popup.height = BLUETOOTH_POPUP_HEIGHT as u32;
 
-    let expected_len = phys_width as usize * phys_height as usize * 4;
-    popup.cached_content.resize(expected_len, 0);
-    render_bluetooth_surface(
-        renderer,
-        &mut popup.cached_content,
-        phys_width as u32,
-        phys_height as u32,
-        scale as f32,
-        snapshot,
-    );
-    popup.cached_phys_width = phys_width;
-    popup.cached_phys_height = phys_height;
+    // GPU rendering path: build draw commands and render via DMA-BUF
+    let scale_f32 = scale as f32;
+    let width = phys_width as f32;
+    let height = phys_height as f32;
+    let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::new();
 
-    let (buffer, canvas) = match pool.create_buffer(
-        phys_width,
-        phys_height,
-        phys_width * 4,
-        wl_shm::Format::Argb8888,
-    ) {
-        Ok(bc) => bc,
-        Err(e) => {
-            tracing::warn!("Failed to allocate bluetooth popup buffer: {}", e);
-            return;
+    // Parse colors from config
+    let popup_bg = DockConfig::parse_hex_color(&config.background_color);
+    let popup_border = DockConfig::parse_hex_color(&config.popup_border_color);
+    let popup_text = DockConfig::parse_hex_color(&config.popup_text_color);
+
+    // Background
+    draw_commands.push(wgpu_api::DrawCommand::Rectangle {
+        rect: wgpu_api::Rect::new(0.0, 0.0, width, height),
+        color: wgpu_api::Color {
+            r: popup_bg.0 as f32 / 255.0,
+            g: popup_bg.1 as f32 / 255.0,
+            b: popup_bg.2 as f32 / 255.0,
+            a: config.background_alpha,
+        },
+        radius: config.border_radius as f32 * scale_f32,
+        stroke: Some(wgpu_api::Color {
+            r: popup_border.0 as f32 / 255.0,
+            g: popup_border.1 as f32 / 255.0,
+            b: popup_border.2 as f32 / 255.0,
+            a: config.border_alpha,
+        }),
+        stroke_width: 1.0 * scale_f32,
+    });
+
+    // Header: "Bluetooth" title
+    draw_commands.push(wgpu_api::DrawCommand::Text {
+        position: wgpu_api::Point::new(12.0 * scale_f32, 24.0 * scale_f32),
+        content: "Bluetooth".to_string(),
+        font_size: config.popup_font_size as f32 * 1.4 * scale_f32,
+        color: wgpu_api::Color {
+            r: popup_text.0 as f32 / 255.0,
+            g: popup_text.1 as f32 / 255.0,
+            b: popup_text.2 as f32 / 255.0,
+            a: 1.0,
+        },
+        align: 0.0,
+    });
+
+    // Minimize button (X)
+    draw_commands.push(wgpu_api::DrawCommand::Text {
+        position: wgpu_api::Point::new(
+            (HEADER_MINIMIZE_X + HEADER_MINIMIZE_W / 2) as f32 * scale_f32,
+            ((HEADER_MINIMIZE_Y + HEADER_MINIMIZE_H / 2 + 6) as f32) * scale_f32,
+        ),
+        content: "✕".to_string(),
+        font_size: 12.0 * scale_f32,
+        color: wgpu_api::Color {
+            r: popup_text.0 as f32 / 255.0,
+            g: popup_text.1 as f32 / 255.0,
+            b: popup_text.2 as f32 / 255.0,
+            a: 0.7,
+        },
+        align: 0.5,
+    });
+
+    // Adapter label
+    if snapshot.available {
+        draw_commands.push(wgpu_api::DrawCommand::Text {
+            position: wgpu_api::Point::new(12.0 * scale_f32, 55.0 * scale_f32),
+            content: format!("Adapter: {}", snapshot.adapter_name),
+            font_size: config.popup_font_size as f32 * 0.9 * scale_f32,
+            color: wgpu_api::Color {
+                r: popup_text.0 as f32 / 255.0,
+                g: popup_text.1 as f32 / 255.0,
+                b: popup_text.2 as f32 / 255.0,
+                a: 0.7,
+            },
+            align: 0.0,
+        });
+
+        // Power button
+        let power_bg = if snapshot.powered {
+            wgpu_api::Color { r: 0.2, g: 0.6, b: 0.2, a: 0.3 }
+        } else {
+            wgpu_api::Color { r: 0.6, g: 0.2, b: 0.2, a: 0.3 }
+        };
+        draw_commands.push(wgpu_api::DrawCommand::Rectangle {
+            rect: wgpu_api::Rect::new(
+                POWER_BUTTON_X as f32 * scale_f32,
+                POWER_BUTTON_Y as f32 * scale_f32,
+                POWER_BUTTON_W as f32 * scale_f32,
+                POWER_BUTTON_H as f32 * scale_f32,
+            ),
+            color: power_bg,
+            radius: 6.0 * scale_f32,
+            stroke: None,
+            stroke_width: 0.0,
+        });
+        draw_commands.push(wgpu_api::DrawCommand::Text {
+            position: wgpu_api::Point::new(
+                (POWER_BUTTON_X + POWER_BUTTON_W / 2) as f32 * scale_f32,
+                ((POWER_BUTTON_Y + POWER_BUTTON_H / 2 + 5) as f32) * scale_f32,
+            ),
+            content: if snapshot.powered { "On" } else { "Off" }.to_string(),
+            font_size: config.popup_font_size as f32 * scale_f32,
+            color: wgpu_api::Color {
+                r: popup_text.0 as f32 / 255.0,
+                g: popup_text.1 as f32 / 255.0,
+                b: popup_text.2 as f32 / 255.0,
+                a: 1.0,
+            },
+            align: 0.5,
+        });
+
+        // Scan button
+        let scan_bg = if snapshot.discovering {
+            wgpu_api::Color { r: 0.2, g: 0.4, b: 0.8, a: 0.3 }
+        } else {
+            wgpu_api::Color { r: 0.3, g: 0.3, b: 0.3, a: 0.3 }
+        };
+        draw_commands.push(wgpu_api::DrawCommand::Rectangle {
+            rect: wgpu_api::Rect::new(
+                SCAN_BUTTON_X as f32 * scale_f32,
+                SCAN_BUTTON_Y as f32 * scale_f32,
+                SCAN_BUTTON_W as f32 * scale_f32,
+                SCAN_BUTTON_H as f32 * scale_f32,
+            ),
+            color: scan_bg,
+            radius: 6.0 * scale_f32,
+            stroke: None,
+            stroke_width: 0.0,
+        });
+        draw_commands.push(wgpu_api::DrawCommand::Text {
+            position: wgpu_api::Point::new(
+                (SCAN_BUTTON_X + SCAN_BUTTON_W / 2) as f32 * scale_f32,
+                ((SCAN_BUTTON_Y + SCAN_BUTTON_H / 2 + 5) as f32) * scale_f32,
+            ),
+            content: if snapshot.discovering { "Scanning" } else { "Scan" }.to_string(),
+            font_size: config.popup_font_size as f32 * scale_f32,
+            color: wgpu_api::Color {
+                r: popup_text.0 as f32 / 255.0,
+                g: popup_text.1 as f32 / 255.0,
+                b: popup_text.2 as f32 / 255.0,
+                a: 1.0,
+            },
+            align: 0.5,
+        });
+
+        // Device lists
+        let discovered: Vec<_> = snapshot.devices.iter().filter(|d| !d.paired).collect();
+        let paired: Vec<_> = snapshot.devices.iter().filter(|d| d.paired).collect();
+
+        // Discovered list header
+        draw_commands.push(wgpu_api::DrawCommand::Text {
+            position: wgpu_api::Point::new(22.0 * scale_f32, (DEVICE_LIST_Y - 12) as f32 * scale_f32),
+            content: "Discovered".to_string(),
+            font_size: config.popup_font_size as f32 * 0.85 * scale_f32,
+            color: wgpu_api::Color {
+                r: popup_text.0 as f32 / 255.0,
+                g: popup_text.1 as f32 / 255.0,
+                b: popup_text.2 as f32 / 255.0,
+                a: 0.6,
+            },
+            align: 0.0,
+        });
+
+        // Paired list header
+        draw_commands.push(wgpu_api::DrawCommand::Text {
+            position: wgpu_api::Point::new(
+                PAIRED_LIST_X as f32 * scale_f32,
+                (PAIRED_LIST_Y - 12) as f32 * scale_f32,
+            ),
+            content: "Paired".to_string(),
+            font_size: config.popup_font_size as f32 * 0.85 * scale_f32,
+            color: wgpu_api::Color {
+                r: popup_text.0 as f32 / 255.0,
+                g: popup_text.1 as f32 / 255.0,
+                b: popup_text.2 as f32 / 255.0,
+                a: 0.6,
+            },
+            align: 0.0,
+        });
+
+        // Discovered devices (left column)
+        for (idx, device) in discovered.iter().take(DEVICE_ROW_COUNT).enumerate() {
+            let card_y = (DEVICE_LIST_Y + idx as i32 * 43) as f32 * scale_f32;
+            let card_x = 22.0 * scale_f32;
+            let card_w = DEVICE_CARD_WIDTH as f32 * scale_f32;
+            let card_h = DEVICE_CARD_HEIGHT as f32 * scale_f32;
+
+            // Device card background
+            draw_commands.push(wgpu_api::DrawCommand::Rectangle {
+                rect: wgpu_api::Rect::new(card_x, card_y, card_w, card_h),
+                color: wgpu_api::Color { r: 0.15, g: 0.15, b: 0.15, a: 0.5 },
+                radius: 4.0 * scale_f32,
+                stroke: None,
+                stroke_width: 0.0,
+            });
+
+            // Device name
+            draw_commands.push(wgpu_api::DrawCommand::Text {
+                position: wgpu_api::Point::new(card_x + 4.0 * scale_f32, card_y + 14.0 * scale_f32),
+                content: device.name.clone(),
+                font_size: config.popup_font_size as f32 * 0.85 * scale_f32,
+                color: wgpu_api::Color {
+                    r: popup_text.0 as f32 / 255.0,
+                    g: popup_text.1 as f32 / 255.0,
+                    b: popup_text.2 as f32 / 255.0,
+                    a: 1.0,
+                },
+                align: 0.0,
+            });
+
+            // Action button
+            let action_text = if device.connected { "Disconnect" } else { "Pair" };
+            let action_x = card_x + DEVICE_ACTION_X as f32 * scale_f32;
+            draw_commands.push(wgpu_api::DrawCommand::Text {
+                position: wgpu_api::Point::new(
+                    action_x + DEVICE_ACTION_W as f32 * scale_f32 / 2.0,
+                    card_y + 14.0 * scale_f32,
+                ),
+                content: action_text.to_string(),
+                font_size: config.popup_font_size as f32 * 0.8 * scale_f32,
+                color: wgpu_api::Color {
+                    r: popup_text.0 as f32 / 255.0,
+                    g: popup_text.1 as f32 / 255.0,
+                    b: popup_text.2 as f32 / 255.0,
+                    a: 0.8,
+                },
+                align: 0.5,
+            });
         }
-    };
-    if !super::copy_popup_content(canvas, &popup.cached_content) {
-        return;
-    }
-    popup
-        .surface
-        .set_buffer_scale(scale.round().max(1.0) as i32);
-    if let Err(e) = buffer.attach_to(&popup.surface) {
-        tracing::warn!("Failed to attach bluetooth popup buffer: {}", e);
-        return;
-    }
-    popup.surface.damage_buffer(0, 0, phys_width, phys_height);
 
-    let region = compositor_state.wl_compositor().create_region(qh, ());
-    region.add(0, 0, BLUETOOTH_POPUP_WIDTH, BLUETOOTH_POPUP_HEIGHT);
-    popup.surface.set_input_region(Some(&region));
-    region.destroy();
-    popup.surface.commit();
-    popup.current_buffer = Some(buffer);
+        // Paired devices (right column)
+        for (idx, device) in paired.iter().take(4).enumerate() {
+            let card_y = (PAIRED_LIST_Y + idx as i32 * 43) as f32 * scale_f32;
+            let card_x = PAIRED_LIST_X as f32 * scale_f32;
+            let card_w = DEVICE_CARD_WIDTH as f32 * scale_f32;
+            let card_h = DEVICE_CARD_HEIGHT as f32 * scale_f32;
+
+            draw_commands.push(wgpu_api::DrawCommand::Rectangle {
+                rect: wgpu_api::Rect::new(card_x, card_y, card_w, card_h),
+                color: wgpu_api::Color { r: 0.15, g: 0.15, b: 0.15, a: 0.5 },
+                radius: 4.0 * scale_f32,
+                stroke: None,
+                stroke_width: 0.0,
+            });
+
+            draw_commands.push(wgpu_api::DrawCommand::Text {
+                position: wgpu_api::Point::new(card_x + 4.0 * scale_f32, card_y + 14.0 * scale_f32),
+                content: device.name.clone(),
+                font_size: config.popup_font_size as f32 * 0.85 * scale_f32,
+                color: wgpu_api::Color {
+                    r: popup_text.0 as f32 / 255.0,
+                    g: popup_text.1 as f32 / 255.0,
+                    b: popup_text.2 as f32 / 255.0,
+                    a: 1.0,
+                },
+                align: 0.0,
+            });
+
+            let action_text = if device.connected { "Connected" } else { "Connect" };
+            let action_x = card_x + DEVICE_ACTION_X as f32 * scale_f32;
+            draw_commands.push(wgpu_api::DrawCommand::Text {
+                position: wgpu_api::Point::new(
+                    action_x + DEVICE_ACTION_W as f32 * scale_f32 / 2.0,
+                    card_y + 14.0 * scale_f32,
+                ),
+                content: action_text.to_string(),
+                font_size: config.popup_font_size as f32 * 0.8 * scale_f32,
+                color: wgpu_api::Color {
+                    r: popup_text.0 as f32 / 255.0,
+                    g: popup_text.1 as f32 / 255.0,
+                    b: popup_text.2 as f32 / 255.0,
+                    a: 0.8,
+                },
+                align: 0.5,
+            });
+        }
+    } else {
+        // Bluetooth unavailable
+        draw_commands.push(wgpu_api::DrawCommand::Text {
+            position: wgpu_api::Point::new(width / 2.0, height / 2.0),
+            content: "Bluetooth unavailable".to_string(),
+            font_size: config.popup_font_size as f32 * 1.2 * scale_f32,
+            color: wgpu_api::Color {
+                r: popup_text.0 as f32 / 255.0,
+                g: popup_text.1 as f32 / 255.0,
+                b: popup_text.2 as f32 / 255.0,
+                a: 0.6,
+            },
+            align: 0.5,
+        });
+    }
+
+    // Render via GPU
+    let gpu_success = if let Some(ref mut renderer) = gpu_context {
+        if let (Some(adapter), Some(device)) = (renderer.adapter(), renderer.device()) {
+            match dmabuf_pool.acquire_texture(
+                adapter, device, qh, dmabuf_state,
+                phys_width as u32, phys_height as u32,
+            ) {
+                Ok((texture, export_info)) => {
+                    if renderer.render_to_texture(
+                        &texture, phys_width as u32, phys_height as u32,
+                        1.0, &draw_commands,
+                    ).is_err() {
+                        false
+                    } else {
+                        match crate::render::dmabuf_export::create_buffer_from_export(
+                            dmabuf_state, qh, &export_info,
+                        ) {
+                            Ok(wl_buffer) => {
+                                dmabuf_pool.set_buffer_id(wl_buffer.id());
+                                popup.surface.set_buffer_scale(scale_f32.round().max(1.0) as i32);
+                                popup.surface.attach(Some(&wl_buffer), 0, 0);
+                                popup.surface.damage_buffer(0, 0, phys_width, phys_height);
+                                let region = compositor_state.wl_compositor().create_region(qh, ());
+                                region.add(0, 0, BLUETOOTH_POPUP_WIDTH, BLUETOOTH_POPUP_HEIGHT);
+                                popup.surface.set_input_region(Some(&region));
+                                region.destroy();
+                                popup.surface.commit();
+                                true
+                            }
+                            Err(_) => false,
+                        }
+                    }
+                }
+                Err(_) => false,
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    if !gpu_success {
+        tracing::warn!("Bluetooth popup GPU rendering failed, skipping frame");
+    }
 }
 
 pub fn minimize_button_at(x: f64, y: f64) -> bool {
