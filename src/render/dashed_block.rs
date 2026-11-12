@@ -202,7 +202,7 @@ pub fn render_dashed_block(
             continue;
         }
         let glyph = font_manager.get_glyph(c, kb_font_size as f32);
-        kb_text_width += glyph.metrics.advance_width.round() as i32;
+        kb_text_width += glyph.advance_width.round() as i32;
     }
     // Position text to the left of the bottom row icons, vertically centered with the row
     let kb_text_x = row_start_x as i32 - kb_text_width - 4;

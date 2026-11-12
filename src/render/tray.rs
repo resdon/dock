@@ -383,7 +383,6 @@ fn measure_text(font_manager: &mut FontManager, text: &str, size: f32) -> i32 {
         .map(|character| {
             font_manager
                 .get_glyph(character, size)
-                .metrics
                 .advance_width
         })
         .sum::<f32>()

@@ -31,7 +31,7 @@ pub fn draw_text(
         // called Font::rasterize() directly for every character on every
         // redraw, which made popup opening and hover changes CPU-heavy.
         let glyph = font_manager.get_glyph(c, glyph_size);
-        let advance = glyph.metrics.advance_width.round() as i32;
+        let advance = glyph.advance_width.round() as i32;
 
         if !glyph.bitmap.is_empty() {
             World::blit_glyph(
@@ -126,7 +126,7 @@ impl World {
             }
 
             let glyph = self.font_manager.get_glyph(c, size);
-            let advance = glyph.metrics.advance_width.round() as usize;
+            let advance = glyph.advance_width.round() as usize;
 
             if !glyph.bitmap.is_empty() {
                 Self::blit_glyph(
@@ -158,14 +158,14 @@ impl World {
         y: i32,
         color: [u8; 3],
     ) {
-        let g_width = glyph.metrics.width as i32;
-        let g_height = glyph.metrics.height as i32;
+        let g_width = glyph.width as i32;
+        let g_height = glyph.height as i32;
         if g_width <= 0 || g_height <= 0 || width == 0 || height == 0 {
             return;
         }
 
-        let base_x = x + glyph.metrics.xmin;
-        let base_y = y - glyph.metrics.ymin - g_height;
+        let base_x = x + glyph.bearing_x;
+        let base_y = y - glyph.bearing_y - g_height;
 
         let start_col = (-base_x).max(0);
         let start_row = (-base_y).max(0);
@@ -177,7 +177,7 @@ impl World {
 
         for row in start_row..end_row {
             let target_y = (base_y + row) as usize;
-            let row_base = row as usize * glyph.metrics.width;
+            let row_base = row as usize * glyph.width as usize;
             for col in start_col..end_col {
                 let bitmap_idx = row_base + col as usize;
                 if bitmap_idx >= glyph.bitmap.len() {

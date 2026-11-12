@@ -1366,7 +1366,6 @@ dependencies = [
  "dashmap",
  "dirs",
  "fast_image_resize",
- "fontdue",
  "futures-util",
  "icy_sixel",
  "image",
@@ -1391,6 +1390,7 @@ dependencies = [
  "slint",
  "slint-build",
  "smithay-client-toolkit 0.20.0",
+ "swash 0.1.19",
  "sysinfo",
  "thiserror 2.0.18",
  "tiny-skia 0.12.0",
@@ -1853,16 +1853,6 @@ dependencies = [
  "memmap2 0.9.10",
  "slotmap",
  "tinyvec",
-]
-
-[[package]]
-name = "fontdue"
-version = "0.9.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e796cb6894e6418daacea84b28dd4f98d3b32c74d5bb452ba1ecfbf5ad8e84ca"
-dependencies = [
- "hashbrown 0.15.5",
- "ttf-parser 0.25.1",
 ]
 
 [[package]]
