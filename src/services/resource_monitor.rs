@@ -92,21 +92,10 @@ fn query_vram_mb(pid: u32) -> Option<u64> {
         }
     }
 
-    // Fallback: try `nvidia-smi --query-gpu=memory.used --format=csv,noheader`
-    // for total GPU VRAM usage (not per-process)
-    let output2 = Command::new("nvidia-smi")
-        .args(&["--query-gpu=memory.used", "--format=csv,noheader"])
-        .output()
-        .ok()?;
-
-    let stdout2 = String::from_utf8_lossy(&output2.stdout);
-    for line in stdout2.lines() {
-        let trimmed = line.trim().trim_end_matches('M').trim_end_matches("iB");
-        if let Ok(val) = trimmed.parse::<u64>() {
-            return Some(val);
-        }
-    }
-
+    // Removed fallback to `nvidia-smi --query-gpu=memory.used` which reports
+    // system-wide GPU memory usage, not per-process usage. Returning that value
+    // as dock's VRAM is misleading. Display "N/A" when per-process VRAM cannot
+    // be determined via `nvidia-smi pmon`.
     None
 }
 

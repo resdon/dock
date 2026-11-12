@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, 1.5.0]
   pull_request:
-    branches: [main, master]
+    branches: [main, master, 1.5.0]
 
 env:
   CARGO_TERM_COLOR: always
@@ -70,10 +70,12 @@ jobs:
         run: cargo audit
 
   # ============================================================
-  # wgpu-api Physics Tests
+  # wgpu-api Full Test Suite
   # ============================================================
-  physics-tests:
-    name: Physics Tests
+  # wgpu-api is not a workspace member, so `cargo test --workspace` skips it.
+  # This job runs the full test suite for the wgpu-api crate, not just physics.
+  wgpu-api-tests:
+    name: wgpu-api Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -92,8 +94,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Run physics tests
-        run: cd wgpu-api && cargo test physics
+      - name: Run wgpu-api tests
+        run: cd wgpu-api && cargo test
 
   # ============================================================
   # Documentation

@@ -17,7 +17,7 @@ pub mod tray;
 pub mod utils;
 pub mod widget_bar;
 
-pub use badges::{draw_canvas_badge, draw_dock_item_badge};
+pub use badges::draw_canvas_badge;
 pub use dock::{
     render_dock_background, render_dock_items, render_dock_surface, render_dragged_icon,
     DockRenderResources,

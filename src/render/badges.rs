@@ -2,7 +2,7 @@
 //!
 //! Renders notification badge counts on dock icons.
 
-use crate::models::{BadgeUpdate, DockItem};
+use crate::models::BadgeUpdate;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
@@ -104,55 +104,6 @@ pub fn draw_canvas_badge(
     }
 }
 
-pub fn draw_dock_item_badge(
-    cr: &cairo::Context,
-    item: &DockItem,
-    icon_x: f64,
-    icon_y: f64,
-    icon_size: f64,
-) {
-    // 1. Draw Download Progress Bar
-    if item.show_progress {
-        let bar_h = 4.0;
-        let bar_w = icon_size * 0.8;
-        let bar_x = icon_x + (icon_size - bar_w) / 2.0;
-        let bar_y = icon_y + icon_size - bar_h;
-
-        cr.set_source_rgba(0.12, 0.11, 0.15, 0.88);
-        cr.rectangle(bar_x, bar_y, bar_w, bar_h);
-        let _ = cr.fill();
-
-        cr.set_source_rgba(0.98, 0.80, 0.08, 0.98);
-        cr.rectangle(bar_x, bar_y, bar_w * item.progress, bar_h);
-        let _ = cr.fill();
-    }
-
-    // 2. Draw Unread Count Badge
-    if item.show_badge {
-        let badge_text = if item.badge_count > 99 {
-            "99+".to_string()
-        } else {
-            item.badge_count.to_string()
-        };
-
-        let radius = 9.0;
-        let badge_cx = icon_x + icon_size - radius;
-        let badge_cy = icon_y + radius;
-
-        cr.set_source_rgb(0.86, 0.12, 0.12);
-        cr.arc(badge_cx, badge_cy, radius, 0.0, 2.0 * std::f64::consts::PI);
-        let _ = cr.fill();
-
-        cr.set_source_rgb(1.0, 0.95, 0.80);
-        cr.set_font_size(10.0);
-        cr.select_font_face("Sans", cairo::FontSlant::Normal, cairo::FontWeight::Bold);
-
-        if let Ok(extents) = cr.text_extents(&badge_text) {
-            let text_x = badge_cx - (extents.width() / 2.0 + extents.x_bearing());
-            let text_y = badge_cy - (extents.height() / 2.0 + extents.y_bearing());
-
-            cr.move_to(text_x, text_y);
-            let _ = cr.show_text(&badge_text);
-        }
-    }
-}
+// Removed `draw_dock_item_badge` — dead code using cairo-rs. The live badge
+// renderer is `draw_canvas_badge` which uses raw pixel manipulation. Cairo was
+// removed as an unused dependency.

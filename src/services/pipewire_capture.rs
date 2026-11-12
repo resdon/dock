@@ -130,7 +130,11 @@ pub struct StreamFrameData {
     /// performs bilinear interpolation and allocates a new Vec<u8> on every call.
     /// When the generation hasn't changed, the cache is returned directly, avoiding
     /// redundant conversions. The Arc<[u8]> payload ensures cache hits are cheap.
-    pub cached_rgba: Arc<parking_lot::Mutex<Option<(u64, u32, u32, Arc<[u8]>)>>>,
+    ///
+    /// Cache entry tuple: (gen, src_w, src_h, scale, out_w, out_h, rgba).
+    /// Source dimensions and scale are stored separately from output dimensions
+    /// so that downscaled frames still hit the cache correctly.
+    pub cached_rgba: Arc<parking_lot::Mutex<Option<(u64, u32, u32, f32, u32, u32, Arc<[u8]>)>>>,
     /// Negotiated video format: (width, height, format), set once during
     /// format negotiation when the stream receives its first `ParamType::Format` event.
     pub format_info: Arc<Mutex<Option<(u32, u32, pw::spa::param::video::VideoFormat)>>>,
@@ -675,13 +679,18 @@ impl PipewireCaptureService {
                             return Some((out_w, out_h, Arc::from(rgba.as_slice())));
                         }
                     };
-                    if let Some((cached_gen, cached_w, cached_h, cached_rgba)) = cache.as_ref() {
-                        if *cached_gen == current_gen && *cached_w == w && *cached_h == h {
-                            // FIX (v1.5.5): Cache hit — the raw frame hasn't changed since
-                            // the last conversion. Return a clone of the Arc<[u8]> directly.
-                            // Cloning an Arc increments the reference count (~10ns) instead
-                            // of copying the entire pixel array (~8MB for 1080p).
-                            return Some((*cached_w, *cached_h, cached_rgba.clone()));
+                    if let Some((cached_gen, cached_src_w, cached_src_h, cached_scale, cached_out_w, cached_out_h, cached_rgba)) = cache.as_ref() {
+                        // FIX (v1.5.5): Cache key includes source dimensions and scale factor
+                        // so that downscaled frames still hit. Previously only source dimensions
+                        // were checked, but output dimensions were stored, causing misses when
+                        // out_w != src_w or out_h != src_h.
+                        if *cached_gen == current_gen
+                            && *cached_src_w == w
+                            && *cached_src_h == h
+                            && (*cached_scale - scale).abs() < f32::EPSILON
+                        {
+                            // Cache hit — return the cached output dimensions and Arc<[u8]>
+                            return Some((*cached_out_w, *cached_out_h, cached_rgba.clone()));
                         }
                     }
                     drop(cache);
@@ -691,7 +700,9 @@ impl PipewireCaptureService {
                 let (out_w, out_h, rgba) = convert_to_rgba(w, h, fmt, &bytes, scale);
                 let rgba_arc: Arc<[u8]> = Arc::from(rgba.as_slice());
                 if let Some(mut cache) = stream.cached_rgba.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) {
-                    cache.replace((current_gen, out_w, out_h, rgba_arc.clone()));
+                    // Store source dimensions, scale, and output dimensions separately
+                    // so the cache key matches on lookup regardless of downscaling
+                    cache.replace((current_gen, w, h, scale, out_w, out_h, rgba_arc.clone()));
                 }
                 Some((out_w, out_h, rgba_arc))
             }

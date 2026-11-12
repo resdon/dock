@@ -14,16 +14,22 @@ FINAL_DATADIR = $(DESTDIR)$(DATADIR)
 
 all: build
 
+# Build target: only compiles from source when Cargo.toml is present.
+# Precompiled release archives contain no Cargo.toml, so this is a no-op.
 build:
-	@if [ ! -f target/release/$(BINARY_NAME) ] && [ ! -f target/debug/$(BINARY_NAME) ]; then \
-		echo "Compiling $(BINARY_NAME)..."; \
-		cargo build --release; \
+	@if [ -f Cargo.toml ]; then \
+		if [ ! -f target/release/$(BINARY_NAME) ] && [ ! -f target/debug/$(BINARY_NAME) ]; then \
+			echo "Compiling $(BINARY_NAME)..."; \
+			cargo build --release; \
+		fi \
 	fi
 
 install: build
 	@echo "Installing $(BINARY_NAME) binary to $(FINAL_BINDIR)..."
 	mkdir -p $(FINAL_BINDIR)
-	@if [ -f target/release/$(BINARY_NAME) ]; then \
+	@if [ -f $(BINARY_NAME) ]; then \
+		install -m 755 $(BINARY_NAME) $(FINAL_BINDIR)/$(BINARY_NAME); \
+	elif [ -f target/release/$(BINARY_NAME) ]; then \
 		install -m 755 target/release/$(BINARY_NAME) $(FINAL_BINDIR)/$(BINARY_NAME); \
 	elif [ -f target/debug/$(BINARY_NAME) ]; then \
 		install -m 755 target/debug/$(BINARY_NAME) $(FINAL_BINDIR)/$(BINARY_NAME); \

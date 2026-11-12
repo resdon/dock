@@ -32,8 +32,6 @@ sysinfo = "0.40"
 linicon = "2.3"
 image = "0.25.10"
 base64 = "0.22" # Required to encode the binary image bytes over the terminal stream
-sixel-rs = "0.5.0"
-icy_sixel = "0.5.0"
 walkdir = "2.5.0"
 resvg = "0.47.0"
 # FIX (v1.5.5): Replaced fontdue with swash to eliminate ~23 MB retained font geometry
@@ -51,9 +49,6 @@ os_pipe = "1.2.3"
 zbus = { version = "6", features = ["tokio"] }
 tokio = { version = "1.54", features = ["rt-multi-thread", "sync", "time", "macros"] }
 futures-util = "0.3"
-cairo-rs = "0.19"
-usvg = "0.48.1"
-tiny-skia = "0.12.0"
 
 # wgpu GPU rendering (via wgpu-api crate)
 wgpu = { version = "30", features = ["vulkan"] }
@@ -69,8 +64,6 @@ slint = { version = "~1.18", features = ["unstable-wgpu-30"] }
 
 # PipeWire for window capture (list-widget integration)
 pipewire = "0.10.1"
-pipewire-sys = "0.10.1"
-libspa-sys = "0.10.1"
 
 # Concurrent and bounded caching
 dashmap = "6.1"
@@ -82,8 +75,6 @@ parking_lot = "0.12"
 # Lock-free structures, channels, and thread coordination
 crossbeam = "0.8"
 
-# Fast memory allocator — benchmark before/after to verify benefit
-mimalloc = "0.1"
 
 # Error handling: thiserror for typed errors, anyhow for propagation, miette for diagnostics
 thiserror = "2"

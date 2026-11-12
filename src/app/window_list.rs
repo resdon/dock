@@ -499,7 +499,10 @@ pub fn draw_window_list_popup(
                     if gen_available && popup.last_content_hash == content_hash {
                         return;
                     }
-                    popup.last_content_hash = content_hash;
+                    // Do NOT commit last_content_hash here. It is committed only after
+                    // a successful buffer attach + surface commit, so that a temporary
+                    // buffer failure (allocation, copy, or attach) doesn't permanently
+                    // freeze the popup on a stale hash. See the commit points below.
 
                     let expected_len = geom.phys_width as usize * geom.phys_height as usize * 4;
 
@@ -875,6 +878,8 @@ pub fn draw_window_list_popup(
                                                 popup.surface.set_input_region(Some(&region));
                                                 region.destroy();
                                                 popup.surface.commit();
+                                                // Commit hash only after successful GPU surface commit
+                                                popup.last_content_hash = content_hash;
                                                 true
                                             }
                                             Err(_) => false,
@@ -955,6 +960,8 @@ pub fn draw_window_list_popup(
 
                         popup.surface.commit();
                         popup.current_buffer = Some(buffer);
+                        // Commit hash only after successful CPU fallback surface commit
+                        popup.last_content_hash = content_hash;
                     }
                 } else if let Some(popup) = dock.window_list_popup.take() {
                     popup.surface.attach(None, 0, 0);
