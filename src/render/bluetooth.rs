@@ -7,9 +7,8 @@
 //! The Slint widget handles all layout, styling, animations, and state transitions
 //! natively — no hand-coded pixel drawing needed.
 
-use std::rc::Rc;
+use std::time::Instant;
 
-use slint::platform::software_renderer::{MinimalSoftwareWindow, PremultipliedRgbaColor};
 use slint::{ModelRc, PhysicalSize, SharedString};
 
 use crate::models::BluetoothSnapshot;
@@ -60,16 +59,21 @@ pub const PAIRED_LIST_X: i32 = 208;
 pub const PAIRED_LIST_Y: i32 = 111;
 
 /// Renderer that uses the actual Slint BluetoothWidget component.
+///
+/// The widget is associated with the Slint platform's window adapter (the dock's
+/// MinimalSoftwareWindow), not a separate window. Slint's platform can only provide
+/// one window adapter, so all Slint widgets share the same underlying window.
+/// Rendering uses Window::take_snapshot() to get pixel data.
 pub struct SlintBluetoothRenderer {
     widget: BluetoothWidget,
-    window: Rc<MinimalSoftwareWindow>,
-    /// Reusable render buffer to avoid per-frame allocation
-    render_buffer: Vec<PremultipliedRgbaColor>,
     /// Cache key for last rendered snapshot.
     last_snapshot: Option<BluetoothSnapshot>,
     /// Cached BGRA output for the last rendered snapshot/canvas size.
     last_bgra: Vec<u8>,
     last_size: (u32, u32),
+    /// **FIX (v1.5.5)**: Timer for the radar sweep animation when scanning is active.
+    /// Drives the sweepCos, sweepSin, and dot1/2/3 X/Y properties on the Slint widget.
+    radar_timer: Instant,
 }
 
 impl SlintBluetoothRenderer {
@@ -77,30 +81,29 @@ impl SlintBluetoothRenderer {
     ///
     /// Reuses the Slint platform already set by the dock renderer
     /// (SlintDockRenderer). Does not call set_platform() to avoid
-    /// overriding the existing platform.
+    /// overriding the existing platform. The BluetoothWidget is associated
+    /// with the platform's window adapter (the dock's MinimalSoftwareWindow),
+    /// so rendering must use the platform's window, not a separate one.
     pub fn new() -> Result<Self, String> {
         // The dock renderer already set the Slint platform.
-        // Create a window using the existing platform's window adapter.
-        let window = MinimalSoftwareWindow::new(Default::default());
-
+        // The BluetoothWidget will be associated with the platform's window adapter.
         let widget = BluetoothWidget::new()
             .map_err(|e| format!("Failed to create BluetoothWidget: {:?}", e))?;
 
         Ok(Self {
             widget,
-            window,
-            render_buffer: Vec::new(),
             last_snapshot: None,
             last_bgra: Vec::new(),
             last_size: (0, 0),
+            radar_timer: Instant::now(),
         })
     }
 
     /// Render the Bluetooth widget to a BGRA8888 canvas buffer.
     ///
     /// The canvas is in BGRA8888 format (4 bytes per pixel, stride = width * 4).
-    /// Slint's software renderer outputs PremultipliedRgbaColor which is RGBA.
-    /// We convert RGBA -> BGRA for the Wayland SHM buffer.
+    /// Uses Window::take_snapshot() to render the Slint scene and get RGBA8 pixels,
+    /// then converts to BGRA for the Wayland SHM buffer.
     pub fn render(
         &mut self,
         canvas: &mut [u8],
@@ -113,7 +116,12 @@ impl SlintBluetoothRenderer {
             return;
         }
 
-        if self.last_snapshot.as_ref() == Some(snapshot)
+        // **FIX (v1.5.5)**: Cache hit: reuse last rendered output, but skip cache
+        // when scanning is active because the radar animation properties change
+        // every frame. Without this, the radar animation would freeze on the first
+        // frame because the cached output would be reused indefinitely.
+        if !snapshot.discovering
+            && self.last_snapshot.as_ref() == Some(snapshot)
             && self.last_size == (phys_width, phys_height)
             && self.last_bgra.len() == required
         {
@@ -121,28 +129,9 @@ impl SlintBluetoothRenderer {
             return;
         }
 
-        let slint_width = BLUETOOTH_POPUP_WIDTH as usize;
-        let slint_height = BLUETOOTH_POPUP_HEIGHT as usize;
-        let total_pixels = slint_width * slint_height;
-
-        // Resize render buffer if needed
-        if self.render_buffer.len() < total_pixels {
-            self.render_buffer.resize(
-                total_pixels,
-                PremultipliedRgbaColor {
-                    red: 0,
-                    green: 0,
-                    blue: 0,
-                    alpha: 0,
-                },
-            );
-        }
-        // Split borrows so we can mutate widget/window while borrowing render_buffer.
-        let render_buffer = &mut self.render_buffer;
-        let slint_buffer = &mut render_buffer[..total_pixels];
-
         // Set the Slint window size
-        self.window.set_size(PhysicalSize::new(
+        let window = self.widget.window();
+        window.set_size(PhysicalSize::new(
             BLUETOOTH_POPUP_WIDTH as u32,
             BLUETOOTH_POPUP_HEIGHT as u32,
         ));
@@ -206,34 +195,64 @@ impl SlintBluetoothRenderer {
         self.widget
             .set_pairedModel(ModelRc::from(paired.as_slice()));
 
-        // Clear the Slint render buffer to transparent
-        slint_buffer.fill(PremultipliedRgbaColor {
-            red: 0,
-            green: 0,
-            blue: 0,
-            alpha: 0,
-        });
+        // **FIX (v1.5.5)**: Radar sweep animation for Bluetooth scanning.
+        // Update radar animation properties when scanning is active. The radar consists
+        // of a sweeping dot orbiting the center and three trailing dots at fixed angles.
+        // Previously, the radar properties (sweepCos, sweepSin, dot1X/Y, etc.) were
+        // defined in the Slint widget but never set from Rust, so they stayed at 0.0.
+        if snapshot.discovering {
+            let elapsed = self.radar_timer.elapsed().as_secs_f64();
+            // Sweep period: 2 seconds per full rotation
+            let angle = elapsed * 2.0 * std::f64::consts::PI / 2.0;
+            let sweep_cos = angle.cos();
+            let sweep_sin = angle.sin();
+            
+            // Three trailing dots at 120° intervals behind the sweep
+            let dot1_angle = angle - std::f64::consts::PI * 2.0 / 3.0;
+            let dot2_angle = angle - std::f64::consts::PI * 4.0 / 3.0;
+            let dot3_angle = angle - std::f64::consts::PI * 5.0 / 3.0;
+            
+            // Dot radius: 6 (smaller orbit than sweep which uses radius 8)
+            let dot_radius = 6.0;
+            
+            global.set_sweepCos(sweep_cos as f32);
+            global.set_sweepSin(sweep_sin as f32);
+            global.set_dot1X((dot1_angle.cos() * dot_radius) as f32);
+            global.set_dot1Y((dot1_angle.sin() * dot_radius) as f32);
+            global.set_dot2X((dot2_angle.cos() * dot_radius) as f32);
+            global.set_dot2Y((dot2_angle.sin() * dot_radius) as f32);
+            global.set_dot3X((dot3_angle.cos() * dot_radius) as f32);
+            global.set_dot3Y((dot3_angle.sin() * dot_radius) as f32);
+        } else {
+            // **FIX (v1.5.5)**: Reset radar timer when scanning stops so the
+            // animation starts fresh next time scanning is enabled.
+            self.radar_timer = Instant::now();
+        }
 
-        // Render via Slint
-        self.window.request_redraw();
+        // **FIX (v1.5.5)**: Force Slint to re-render the scene with updated state
+        // before taking a snapshot. Without request_redraw(), take_snapshot() may
+        // return a cached render from before the global state (powered, discovering)
+        // was updated, so clicking buttons had no visual effect.
+        window.request_redraw();
         slint::platform::update_timers_and_animations();
-        self.window.draw_if_needed(|renderer| {
-            renderer.render(slint_buffer, slint_width);
-        });
 
-        // Convert Slint's RGBA buffer to BGRA for Wayland SHM
+        // Render via Slint using Window::take_snapshot() which re-renders the scene
+        // and returns RGBA8 pixels. This works regardless of which window adapter
+        // the widget is associated with.
         canvas[..required].fill(0);
-        let copy_width = slint_width.min(phys_width as usize);
-        let copy_height = slint_height.min(phys_height as usize);
-        let copy_pixels = copy_width * copy_height;
-        let max_pixels = copy_pixels.min(slint_buffer.len()).min(canvas.len() / 4);
-
-        for (idx, pixel) in slint_buffer.iter().take(max_pixels).enumerate() {
-            let offset = idx * 4;
-            canvas[offset] = pixel.blue;
-            canvas[offset + 1] = pixel.green;
-            canvas[offset + 2] = pixel.red;
-            canvas[offset + 3] = pixel.alpha;
+        if let Ok(snap) = window.take_snapshot() {
+            let snap_bytes = snap.as_bytes();
+            let copy_pixels = snap_bytes.len() / 4;
+            for (idx, chunk) in snap_bytes.chunks_exact(4).take(copy_pixels.min(required / 4)).enumerate() {
+                let offset = idx * 4;
+                // Convert RGBA -> BGRA for Wayland SHM
+                canvas[offset] = chunk[2];   // B
+                canvas[offset + 1] = chunk[1]; // G
+                canvas[offset + 2] = chunk[0]; // R
+                canvas[offset + 3] = chunk[3]; // A
+            }
+        } else {
+            tracing::warn!("Failed to take Bluetooth widget snapshot");
         }
 
         self.last_snapshot = Some(snapshot.clone());

@@ -412,6 +412,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 state.needs_redraw = true;
                 frame_scheduler.mark_content_changed();
             }
+            // **FIX**: interaction::update() can return true for click events that
+            // toggle popups (Bluetooth, context menu, etc.) without changing the hover
+            // icon. In that case, needs_redraw is set by the click handler, but
+            // mark_content_changed() was never called, so the frame scheduler would
+            // skip the draw. Mark content changed whenever proximity_changed is true
+            // and needs_redraw was set, to ensure popup toggles render immediately.
+            if state.needs_redraw {
+                frame_scheduler.mark_content_changed();
+            }
             status_sidebars_only = false;
         }
 
@@ -435,12 +444,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             status_sidebars_only = false;
         }
 
+        // **FIX (v1.5.5)**: When the Bluetooth popup is open and scanning, the
+        // radar animation needs continuous redraws even though the snapshot hasn't
+        // changed. Without this, the radar animation freezes because the frame
+        // scheduler skips renders when no content change is detected.
+        let bluetooth_scanning_active = state
+            .bluetooth_panel_open
+            && state.bluetooth_snapshot.discovering;
+        if bluetooth_scanning_active {
+            state.needs_redraw = true;
+            status_sidebars_only = false;
+        }
+
         // FIX (v1.5.5): Frame scheduler enforces 75 FPS animation limit and tracks
         // whether visual content actually changed. This replaces the previous logic
         // that ran at up to ~125 FPS (8ms poll timeout) whenever needs_redraw was true.
         let animations_active = menu_fade_animating
             || window_list_fade_animating
             || slint_animations_active
+            || bluetooth_scanning_active
             || animated_apps_changed
             || state.bounce_app_id.is_some()
             || state.click_app_id.is_some()

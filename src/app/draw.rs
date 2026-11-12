@@ -187,6 +187,11 @@ impl AppState {
                     &mut self.pool,
                     &self.compositor_state,
                     self.subcompositor.as_ref(),
+                    &self.output_state,
+                    // **FIX (v1.5.5)**: Pass output_state for screen-center positioning
+                    // of the Bluetooth popup. The popup is a subsurface of the dock,
+                    // so its position must be computed relative to the dock's screen
+                    // position, not absolute screen coordinates.
                     bt_renderer,
                     self.bluetooth_panel_open,
                     &self.bluetooth_snapshot,

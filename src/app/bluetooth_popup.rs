@@ -10,7 +10,8 @@
 //! subsurfaces support negative coordinates and will render correctly on-screen.
 
 use smithay_client_toolkit::{
-    compositor::CompositorState, dmabuf::DmabufState, shell::WaylandSurface, shm::slot::SlotPool,
+    compositor::CompositorState, dmabuf::DmabufState, output::OutputState, shell::WaylandSurface,
+    shm::slot::SlotPool,
 };
 use wayland_client::protocol::wl_shm;
 use wayland_client::QueueHandle;
@@ -32,9 +33,8 @@ use super::draw::DrawFrameData;
 
 /// Draw the Bluetooth popup as a subsurface of the dock.
 ///
-/// Creates the subsurface on first open, positions it below the Bluetooth icon
-/// on the dashed block (using negative X relative to dock), renders the Slint
-/// BluetoothWidget, and commits the buffer.
+/// Creates the subsurface on first open, positions it centered on the screen,
+/// renders the Slint BluetoothWidget, and commits the buffer.
 pub fn draw_bluetooth_popup(
     dock: &mut DockInstance,
     qh: &QueueHandle<AppState>,
@@ -42,6 +42,7 @@ pub fn draw_bluetooth_popup(
     pool: &mut SlotPool,
     compositor_state: &CompositorState,
     subcompositor: Option<&wayland_client::protocol::wl_subcompositor::WlSubcompositor>,
+    output_state: &OutputState,
     renderer: &mut SlintBluetoothRenderer,
     is_open: bool,
     snapshot: &BluetoothSnapshot,
@@ -62,31 +63,35 @@ pub fn draw_bluetooth_popup(
     let phys_width = (BLUETOOTH_POPUP_WIDTH as f64 * scale).round().max(1.0) as i32;
     let phys_height = (BLUETOOTH_POPUP_HEIGHT as f64 * scale).round().max(1.0) as i32;
 
-    // Compute the Bluetooth icon's position within the dashed block.
-    let icon_size = config.dashed_block_icon_size as i32;
-    let icon_gap = config.dashed_block_icon_gap as i32;
-    let db_width = config.dashed_block_width as i32;
-    let row_offset = config.dashed_block_row_offset as i32;
-    let top_row_y = config.dashed_block_top_row_y as i32;
-    let row_width = icon_size * 2 + icon_gap;
-    let icons_start_x = (db_width - row_width) / 2;
-    let row_start_x = icons_start_x + row_offset;
-    // Bluetooth is the right icon in the top row
-    let bt_x = row_start_x + icon_size + icon_gap;
-    let bt_center_x = bt_x + icon_size / 2;
-    let bt_center_y = top_row_y + icon_size / 2;
-
-    // The popup is a subsurface of the dock surface. The dashed block sits to the
-    // left of the dock with a gap. We compute the popup position relative to the
-    // dock's left edge, which will be negative X.
-    let gap = config.dashed_block_gap_from_dock as i32;
-    // Dashed block's right edge is at: -gap (relative to dock's left edge)
-    // Dashed block's left edge is at: -gap - db_width
-    // BT icon's X within the dashed block is bt_center_x
-    // So relative to dock: -gap - db_width + bt_center_x
-    let popup_x = -gap - db_width + bt_center_x - BLUETOOTH_POPUP_WIDTH / 2;
-    // Popup Y: below the BT icon, aligned with the dock's Y
-    let popup_y = bt_center_y + icon_size / 2;
+    // **FIX (v1.5.5)**: Screen-center positioning for the Bluetooth popup.
+    // The popup is a subsurface of the dock, so its position is relative to the
+    // dock's top-left corner. To center it on screen, we compute the offset from
+    // the dock's position to the screen center. The dock is a layer surface
+    // anchored to the bottom, centered horizontally.
+    //
+    // Previously, the popup was positioned relative to the Bluetooth icon on the
+    // dashed block, which placed it off-screen or at wrong coordinates.
+    let output_size = output_state
+        .info(&dock.output)
+        .and_then(|info| info.logical_size)
+        .unwrap_or((1920, 1080));
+    
+    // Use the actual dock surface dimensions, not the popup dimensions
+    let actual_dock_width = dock.width as i32;
+    let actual_dock_height = dock.height as i32;
+    
+    // Dock is centered horizontally at the bottom of the screen
+    let dock_left_edge = (output_size.0 as i32 / 2) - (actual_dock_width / 2);
+    let margin = config.margin;
+    let dock_top_edge = output_size.1 as i32 - actual_dock_height - margin;
+    
+    // Screen center
+    let screen_center_x = output_size.0 as i32 / 2;
+    let screen_center_y = output_size.1 as i32 / 2;
+    
+    // Popup position relative to dock's top-left corner
+    let popup_x = screen_center_x - dock_left_edge - BLUETOOTH_POPUP_WIDTH / 2;
+    let popup_y = screen_center_y - dock_top_edge - BLUETOOTH_POPUP_HEIGHT / 2;
 
     if dock.bluetooth_popup.is_none() {
         let surface = compositor_state.create_surface(qh);

@@ -538,10 +538,11 @@ pub fn handle_click_events(
                 });
                 if on_bluetooth_popup {
                     if button == BTN_LEFT {
-                        if crate::app::bluetooth_popup::minimize_button_at(
+                        let min_hit = crate::app::bluetooth_popup::minimize_button_at(
                             event.position.0,
                             event.position.1,
-                        ) {
+                        );
+                        if min_hit {
                             state.bluetooth_panel_open = false;
                             state.needs_redraw = true;
                             layer_changed = true;
@@ -553,6 +554,13 @@ pub fn handle_click_events(
                             event.position.1,
                         ) {
                             let _ = state.send_bluetooth_action(action);
+                            // **FIX (v1.5.5)**: Trigger immediate redraw so the popup
+                            // re-renders with updated state. The Bluetooth monitor sends
+                            // a new snapshot asynchronously, but we need to redraw now to
+                            // show the action status message and any immediate state changes.
+                            // Without this, clicking buttons had no visual feedback.
+                            state.needs_redraw = true;
+                            layer_changed = true;
                         }
                     }
                     continue;

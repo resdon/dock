@@ -372,9 +372,12 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
         Err(_e) => None,
     };
     state.bluetooth_renderer = match crate::render::bluetooth::SlintBluetoothRenderer::new() {
-        Ok(renderer) => Some(renderer),
-        Err(_e) => {
-            tracing::warn!("Failed to initialize Bluetooth renderer: {}", _e);
+        Ok(_renderer) => {
+            tracing::info!("Bluetooth renderer initialized successfully");
+            Some(_renderer)
+        }
+        Err(e) => {
+            tracing::error!("Failed to initialize Bluetooth renderer: {}", e);
             None
         }
     };
