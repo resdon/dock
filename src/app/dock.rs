@@ -315,6 +315,11 @@ pub fn draw_main_dock(
 
         // Draw icons and running indicators — layout matches ui.slint exactly
         for (i, pin) in dock_state.pins.iter().enumerate() {
+            // Skip the dragged icon — it will be drawn at the cursor position below
+            if is_dragging && dragged_app_id.is_some_and(|id| *id == pin.app_id) {
+                continue;
+            }
+
             // Calculate horizontal offset for sliding animation during drag
             let offset_x = if is_dragging && gpu_drag_source_idx >= 0 {
                 let idx = i as i32;

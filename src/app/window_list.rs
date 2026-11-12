@@ -408,32 +408,12 @@ pub fn draw_window_list_popup(
                     // Calculate the target frame display dimensions (inner area, excluding border).
                     // These are passed to get_active_frame() so it can downscale the capture
                     // to match the display size exactly, instead of using a fixed scale factor.
-                    let frame_border = 8.0; // 4px on each side, matches popup.rs
-                    let target_frame_w = (popup_width as f32 - frame_border).max(1.0) as u32;
-                    let target_frame_h = (frame_logical_h as f32 - frame_border).max(1.0) as u32;
+                    let frame_border_val = 8.0; // 4px on each side, matches popup.rs
+                    let target_frame_w = (popup_width as f32 - frame_border_val).max(1.0) as u32;
+                    let target_frame_h = (frame_logical_h as f32 - frame_border_val).max(1.0) as u32;
 
-                    // Get the capture frame for the active row with original dimensions.
-                    // Only show frame data if the hovered row has a valid PipeWire stream match.
-                    let capture_frame_data = if has_valid_stream {
-                        pipewire_capture.and_then(|service| {
-                            let row = *service.active_row.lock();
-                            let (orig_w, orig_h) =
-                                service.get_stream_dimensions(row).unwrap_or((0, 0));
-                            service
-                                .get_active_frame(Some(target_frame_w), Some(target_frame_h))
-                                .map(|(w, h, rgba)| CaptureFrameData {
-                                    width: w,
-                                    height: h,
-                                    rgba,
-                                    original_width: orig_w,
-                                    original_height: orig_h,
-                                })
-                        })
-                    } else {
-                        // No matching stream for this window — show a placeholder frame
-                        // The renderer will draw a gray placeholder when capture_frame_data is None
-                        None
-                    };
+                    // Capture frame data will be fetched below when rendering.
+                    let mut capture_frame_data: Option<CaptureFrameData> = None;
 
                     // GPU rendering path: build draw commands and render via DMA-BUF
                     let windows: Vec<WindowState> = if use_matched {
@@ -443,8 +423,10 @@ pub fn draw_window_list_popup(
                     };
 
                     // Compute a content hash so we can skip rendering when nothing changed.
-                    // The hash combines: window count, window titles, hovered item, and the
-                    // PipeWire capture generation counter for the active stream.
+                    // The hash combines: window count, window titles, hovered item, pointer
+                    // position, and the PipeWire capture generation counter for the active stream.
+                    // Including the pointer position ensures the highlight updates when the user
+                    // moves the mouse, even if the hovered row and frame generation are unchanged.
                     let mut content_hash: u64 = windows.len() as u64;
                     for w in &windows {
                         for b in w.title.bytes() {
@@ -453,28 +435,45 @@ pub fn draw_window_list_popup(
                     }
                     content_hash = content_hash.wrapping_mul(37).wrapping_add(hovered_item as u64);
 
+                    // Include the rounded pointer position so that mouse movement within the
+                    // popup always triggers a re-render. This prevents the highlight from
+                    // freezing when the captured window is static and the generation counter
+                    // does not increment.
+                    content_hash = content_hash.wrapping_mul(43)
+                        .wrapping_add(local_ptr_x as u64)
+                        .wrapping_add((local_ptr_y as i64) as u64);
+
                     // Include the PipeWire capture generation counter so we detect when the
                     // underlying window's content has changed, even if the title hasn't.
-                    let capture_generation = if has_valid_stream
+                    // If the generation is unavailable (mutex timeout), we force a re-render
+                    // rather than risking a stale hash that skips rendering forever.
+                    let (capture_generation, gen_available) = if has_valid_stream
                         && use_matched
                         && (hovered_item as usize) < matched_windows.len()
                     {
                         if let Some(stream_idx) = matched_windows[hovered_item as usize].1 {
-                            pipewire_capture
+                            if let Some(gen) = pipewire_capture
                                 .and_then(|service| service.get_stream_generation(stream_idx))
-                                .unwrap_or(0)
+                            {
+                                (gen, true)
+                            } else {
+                                // Generation unavailable — force re-render
+                                (0, false)
+                            }
                         } else {
-                            0
+                            (0, true)
                         }
                     } else {
-                        0
+                        (0, true)
                     };
                     content_hash = content_hash.wrapping_mul(41).wrapping_add(capture_generation);
 
                     // Skip rendering if the content hash matches the previous frame.
                     // This avoids rebuilding draw commands, replacing GPU textures, creating
                     // new DMABUF buffers, and committing the surface when nothing changed.
-                    if popup.last_content_hash == content_hash {
+                    // But always render when the generation counter was unavailable, to avoid
+                    // freezing the popup on a stale hash.
+                    if gen_available && popup.last_content_hash == content_hash {
                         return;
                     }
                     popup.last_content_hash = content_hash;
@@ -501,51 +500,10 @@ pub fn draw_window_list_popup(
                     let rows_area_y = frame_phys_h;
                     let phys_item_h = config.popup_row_height as f32 * scale;
 
-                    // Draw PipeWire capture frame as a textured quad if available
-                    if let Some(ref frame_data) = capture_frame_data {
-                        if let Some(ref mut renderer) = gpu_context {
-                            let active_stream_idx = pipewire_capture
-                                .map(|service| *service.active_row.lock())
-                                .unwrap_or(0);
-                            let cache_key = format!(
-                                "window-list-capture:{:?}:{}",
-                                dock.output.id(),
-                                active_stream_idx
-                            );
-                            if let Some(texture_id) = renderer.replace_cached_texture_from_pixels(
-                                &cache_key,
-                                &frame_data.rgba,
-                                frame_data.width as u32,
-                                frame_data.height as u32,
-                            ) {
-                                let frame_inner_w = width - frame_border * 2.0;
-                                let frame_inner_h = frame_phys_h - frame_border * 2.0;
-                                draw_commands.push(wgpu_api::DrawCommand::Image {
-                                    dest_rect: wgpu_api::Rect {
-                                        x: frame_border,
-                                        y: frame_border / 2.0,
-                                        width: frame_inner_w,
-                                        height: frame_inner_h,
-                                    },
-                                    texture: texture_id,
-                                    source_uv: wgpu_api::Rect {
-                                        x: 0.0,
-                                        y: 0.0,
-                                        width: 1.0,
-                                        height: 1.0,
-                                    },
-                                    tint: wgpu_api::Color {
-                                        r: 1.0,
-                                        g: 1.0,
-                                        b: 1.0,
-                                        a: 1.0,
-                                    },
-                                });
-                            }
-                        }
-                    }
-
-                    // Draw window rows
+                    // Draw window rows first, before the expensive PipeWire frame fetch.
+                    // The dashed perimeter highlight must render immediately when switching
+                    // hovered rows — it should not be delayed by frame mutex locks, RGBA
+                    // conversion, or GPU texture upload.
                     for (i, window) in windows.iter().enumerate() {
                         let item_top = rows_area_y + (i as f32 * phys_item_h);
                         let item_h = phys_item_h;
@@ -712,6 +670,76 @@ pub fn draw_window_list_popup(
                                 stroke_width: 0.0,
                             });
                             x += dash_period;
+                        }
+                    }
+
+                    // Draw PipeWire capture frame as a textured quad if available.
+                    // The content hash check above already includes the generation counter,
+                    // so if we reach here, we know the content has changed and need a fresh frame.
+                    // We always fetch and upload the latest frame rather than checking the texture
+                    // cache, because the cache key is based only on the stream index and would
+                    // never evict a stale texture for the same stream.
+                    if let Some(ref mut renderer) = gpu_context {
+                        let active_stream_idx = pipewire_capture
+                            .map(|service| *service.active_row.lock())
+                            .unwrap_or(0);
+                        let cache_key = format!(
+                            "window-list-capture:{:?}:{}",
+                            dock.output.id(),
+                            active_stream_idx
+                        );
+                        // Fetch the latest frame data and upload it, replacing any cached texture.
+                        let frame_data = if has_valid_stream {
+                            pipewire_capture.and_then(|service| {
+                                let row = *service.active_row.lock();
+                                let (orig_w, orig_h) =
+                                    service.get_stream_dimensions(row).unwrap_or((0, 0));
+                                service
+                                    .get_active_frame(Some(target_frame_w), Some(target_frame_h))
+                                    .map(|(w, h, rgba)| CaptureFrameData {
+                                        width: w,
+                                        height: h,
+                                        rgba,
+                                        original_width: orig_w,
+                                        original_height: orig_h,
+                                    })
+                            })
+                        } else {
+                            None
+                        };
+                        capture_frame_data = frame_data;
+                        let texture_id = capture_frame_data.as_ref().and_then(|fd| {
+                            renderer.replace_cached_texture_from_pixels(
+                                &cache_key,
+                                &fd.rgba,
+                                fd.width as u32,
+                                fd.height as u32,
+                            )
+                        });
+                        if let Some(texture_id) = texture_id {
+                            let frame_inner_w = width - frame_border * 2.0;
+                            let frame_inner_h = frame_phys_h - frame_border * 2.0;
+                            draw_commands.push(wgpu_api::DrawCommand::Image {
+                                dest_rect: wgpu_api::Rect {
+                                    x: frame_border,
+                                    y: frame_border / 2.0,
+                                    width: frame_inner_w,
+                                    height: frame_inner_h,
+                                },
+                                texture: texture_id,
+                                source_uv: wgpu_api::Rect {
+                                    x: 0.0,
+                                    y: 0.0,
+                                    width: 1.0,
+                                    height: 1.0,
+                                },
+                                tint: wgpu_api::Color {
+                                    r: 1.0,
+                                    g: 1.0,
+                                    b: 1.0,
+                                    a: 1.0,
+                                },
+                            });
                         }
                     }
 

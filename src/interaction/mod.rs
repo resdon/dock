@@ -55,10 +55,58 @@ pub fn update(
 
     // State tracking flags
     let pointer_inside_dock = state.interaction.pointer_inside;
-    // Popup-surface Enter/Motion flags are authoritative. Pointer coordinates
-    // may remain at the last position after a Leave event, so geometry-only
-    // checks can otherwise keep a popup falsely marked as hovered forever.
-    let on_context_menu = state.menu_state.is_open && state.menu_state.pointer_inside_popup;
+
+    // Detect whether the pointer is over a popup using two methods:
+    // 1. Surface-based: the compositor routed the event to the popup surface
+    // 2. Geometry-based: the pointer position falls within the popup's bounds
+    // The geometry fallback is essential because some compositors route pointer
+    // events over subsurfaces to the parent surface, making surface-based detection
+    // fail entirely. Without this, the popup never detects hover, cursor movement
+    // never triggers redraws, and the highlight/freezing issues persist.
+    let pointer_x = state.interaction.pointer_position.x;
+    let pointer_y = state.interaction.pointer_position.y;
+
+    let mut pointer_over_context_menu = state.menu_state.pointer_inside_popup;
+    let mut pointer_over_window_list = state.window_list_state.pointer_inside_popup;
+
+    // Geometry-based fallback: check if pointer is within any popup's bounds.
+    // Popup positions and sizes are in dock-surface logical coordinates.
+    if !pointer_over_context_menu || !pointer_over_window_list {
+        for dock in &state.docks {
+            if !pointer_over_context_menu && state.menu_state.is_open {
+                if let Some(ref popup) = dock.context_menu_popup {
+                    let px = popup.position.0 as f64;
+                    let py = popup.position.1 as f64;
+                    let pw = popup.width as f64;
+                    let ph = popup.height as f64;
+                    if pointer_x >= px
+                        && pointer_x < px + pw
+                        && pointer_y >= py
+                        && pointer_y < py + ph
+                    {
+                        pointer_over_context_menu = true;
+                    }
+                }
+            }
+            if !pointer_over_window_list && state.window_list_state.is_open {
+                if let Some(ref popup) = dock.window_list_popup {
+                    let px = popup.position.0 as f64;
+                    let py = popup.position.1 as f64;
+                    let pw = popup.width as f64;
+                    let ph = popup.height as f64;
+                    if pointer_x >= px
+                        && pointer_x < px + pw
+                        && pointer_y >= py
+                        && pointer_y < py + ph
+                    {
+                        pointer_over_window_list = true;
+                    }
+                }
+            }
+        }
+    }
+
+    let on_context_menu = state.menu_state.is_open && pointer_over_context_menu;
 
     // Window list state
     let window_list_target = state
@@ -70,7 +118,7 @@ pub fn update(
 
     let on_window_list = state.window_list_state.is_open
         && window_count > 0
-        && state.window_list_state.pointer_inside_popup;
+        && pointer_over_window_list;
 
     // Pointer on dock check
     let on_dock = pointer_inside_dock && !on_context_menu && !on_window_list;
@@ -187,6 +235,13 @@ pub fn update(
         }
     }
 
+    // If the cursor moved while the window list popup is open, trigger a redraw
+    // so the popup can update the hover highlight and capture frame. Without this,
+    // the popup only re-renders when PipeWire captures a new frame, causing the
+    // highlight to freeze when the captured window is static.
+    if cursor_moved && on_window_list {
+        layer_changed = true;
+    }
     state.menu_state.cursor_moved = false;
 
     // --- AUTO-HIDE STATE ENGINE ---

@@ -357,6 +357,9 @@ export component DockWidget inherits Window {
                             hover when item.is_hovered && root.hover_highlight: {
                                 icon_outline.visible: true;
                             }
+                            dragging when item.is_dragging: {
+                                item_touch.opacity: 0;
+                            }
                         ]
                     }
             }

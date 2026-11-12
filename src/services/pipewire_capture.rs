@@ -108,6 +108,14 @@ pub struct StreamFrameData {
     /// last-rendered generation to skip redundant texture uploads and frame
     /// conversions when the underlying capture content hasn't changed.
     pub generation: Arc<parking_lot::Mutex<u64>>,
+    /// Cached RGBA conversion result: (generation, width, height, rgba bytes).
+    /// When the generation matches the current frame's generation, the cached
+    /// result is returned directly without re-running the expensive conversion.
+    /// The RGBA payload is an Arc<[u8]> so cache hits clone a reference count
+    /// instead of the entire pixel buffer.
+    /// Protected by a separate mutex so the render thread can read/write the
+    /// cache without blocking the stream thread's frame updates.
+    pub cached_rgba: Arc<parking_lot::Mutex<Option<(u64, u32, u32, Arc<[u8]>)>>>,
     /// Negotiated video format: (width, height, format), set once during
     /// format negotiation when the stream receives its first `ParamType::Format` event.
     pub format_info: Arc<Mutex<Option<(u32, u32, pw::spa::param::video::VideoFormat)>>>,
@@ -605,7 +613,44 @@ impl PipewireCaptureService {
                     // No target provided — use the configured max scale factor
                     max_scale
                 };
-                Some(convert_to_rgba(w, h, fmt, &bytes, scale))
+
+                // Check cached RGBA conversion result. If the generation matches,
+                // the raw frame hasn't changed, so the cached conversion is still valid.
+                // This avoids the expensive bilinear interpolation and memory allocation.
+                // Use timeout locks so the render thread never blocks indefinitely.
+                let current_gen = match stream.generation.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) {
+                    Some(g) => *g,
+                    None => {
+                        // Can't read generation — skip cache, convert directly
+                        let (out_w, out_h, rgba) = convert_to_rgba(w, h, fmt, &bytes, scale);
+                        return Some((out_w, out_h, rgba));
+                    }
+                };
+                {
+                    let cache = match stream.cached_rgba.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) {
+                        Some(g) => g,
+                        None => {
+                            // Can't read cache — skip cache, convert directly
+                            let (out_w, out_h, rgba) = convert_to_rgba(w, h, fmt, &bytes, scale);
+                            return Some((out_w, out_h, rgba));
+                        }
+                    };
+                    if let Some((cached_gen, cached_w, cached_h, cached_rgba)) = cache.as_ref() {
+                        if *cached_gen == current_gen && *cached_w == w && *cached_h == h {
+                            // Cache hit — clone the Arc reference, not the pixel buffer
+                            return Some((*cached_w, *cached_h, cached_rgba.to_vec()));
+                        }
+                    }
+                    drop(cache);
+                }
+
+                // Cache miss or stale — convert and store the result
+                let (out_w, out_h, rgba) = convert_to_rgba(w, h, fmt, &bytes, scale);
+                let rgba_arc = Arc::from(rgba.as_slice());
+                if let Some(mut cache) = stream.cached_rgba.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) {
+                    cache.replace((current_gen, out_w, out_h, rgba_arc));
+                }
+                Some((out_w, out_h, rgba))
             }
             None => None,
         }
@@ -655,7 +700,10 @@ impl PipewireCaptureService {
         if idx >= frames.len() {
             return None;
         }
-        let gen = *frames[idx].generation.lock();
+        let gen = match frames[idx].generation.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) {
+            Some(g) => *g,
+            None => return None,
+        };
         Some(gen)
     }
 
@@ -933,6 +981,7 @@ pub async fn init_capture_service(
         let stream_data = Arc::new(StreamFrameData {
             frame: Arc::new(Mutex::new(None)),
             generation: Arc::new(parking_lot::Mutex::new(0)),
+            cached_rgba: Arc::new(parking_lot::Mutex::new(None)),
             format_info: Arc::new(Mutex::new(None)),
             ready: Arc::new(AtomicBool::new(false)),
             title: title.clone(),
@@ -1645,6 +1694,10 @@ fn spawn_stream_thread(fd: OwnedFd, node_id: u32, idx: usize, stream_data: Arc<S
                                     // Increment generation counter so the render thread can
                                     // detect that a new frame has arrived and skip redundant
                                     // work when the generation hasn't changed.
+                                    // Use a blocking lock here — the increment is a fast u64 write
+                                    // that completes instantly. If we used try_lock and failed,
+                                    // the frame would update but the generation would stay the same,
+                                    // causing the content hash to match and the render to skip forever.
                                     {
                                         let mut gen = generation_for_process.lock();
                                         *gen += 1;
@@ -2243,6 +2296,7 @@ pub async fn start_monitor_inner(
                         let stream_data = Arc::new(StreamFrameData {
                             frame: Arc::new(Mutex::new(None)),
                             generation: Arc::new(parking_lot::Mutex::new(0)),
+                            cached_rgba: Arc::new(parking_lot::Mutex::new(None)),
                             format_info: Arc::new(Mutex::new(None)),
                             ready: Arc::new(AtomicBool::new(false)),
                             title: captured_title.clone(),
