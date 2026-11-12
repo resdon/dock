@@ -1,6 +1,6 @@
 # Dock
 
-[![Rust CI](https://github.com/resdon/dock/actions/workflows/rust.yml/badge.svg?branch=1.3.8)](https://github.com/resdon/dock/actions/workflows/rust.yml)
+[![Rust CI](https://github.com/resdon/dock/actions/workflows/ci.yml/badge.svg?branch=1.5.0)](https://github.com/resdon/dock/actions/workflows/ci.yml)
 
 A lightweight, high-performance Wayland dock written in Rust
 
@@ -16,7 +16,7 @@ A lightweight, high-performance Wayland dock written in Rust
 - **Pins**: Pin or unpin applications, and drag-and-drop icons to reorder them anywhere on the dock.
 - **Wayland Native**: Built with Layer Shell and Foreign Toplevel protocols for smooth integration.
 - **Fast & Transparent**: Low resource consumption with seamless transparent animations.
-- **RAM & CPU**: ~35–40 MB RAM | Single-thread CPU: 0.6% idle, ~25% active average (60% peak).
+- **RAM & CPU**: ~152 MB PSS (exclusive) | ~6–13% CPU (0.1 cores), ~70 FPS continuous rendering.
 - **Desktop & Steam Integration**: Resolves application icons, `.desktop` files, and Steam game launcher shortcuts dynamically.
 - **D-Bus Support**: Integrates with system protocols for dynamic window management, drag-and-drop handling, and running status indicators.
 
@@ -42,18 +42,18 @@ Ensure the following build tools and development libraries are installed on your
 
 - **Build Tools**: `make`, `gcc`, `pkg-config`
 - **Wayland Libraries**: `wayland-client`, `wayland-protocols`
-- **Input & Graphics**: `libxkbcommon`, `pixman`, `cairo`, `glib2`, `mesa` (EGL/GLES)
-- **System Services**: `dbus`
+- **Input & Graphics**: `libxkbcommon`, `fontconfig`, `mesa` (Vulkan)
+- **System Services**: `dbus`, `pipewire`
 
 #### Installing Dependencies on Arch Linux:
 ```bash
-sudo pacman -S --needed base-devel cargo wayland wayland-protocols libxkbcommon fontconfig dbus cairo glib2 mesa
+sudo pacman -S --needed base-devel cargo wayland wayland-protocols libxkbcommon fontconfig dbus mesa pipewire
 ```
 
 #### Installing Dependencies on Ubuntu / Debian:
 ```bash
 sudo apt update
-sudo apt install -y build-essential cargo pkg-config libwayland-dev wayland-protocols libxkbcommon-dev libfontconfig1-dev libdbus-1-dev libglib2.0-dev libcairo2-dev libegl1-mesa-dev libgles2-mesa-dev
+sudo apt install -y build-essential cargo pkg-config libwayland-dev wayland-protocols libxkbcommon-dev libfontconfig1-dev libdbus-1-dev libegl1-mesa-dev pipewire
 ```
 
 ## Installation
@@ -122,16 +122,18 @@ dock/
 ├── assets/          # Bundled fonts and connection indicator icons
 ├── scripts/         # Launcher and icon listing scripts
 ├── src/             # Core Rust source files
-│   ├── app/         # Main event loop and draw calls
-│   ├── cache/       # Icon indexing and state persistence
-│   ├── geometry/    # Dock layout math and bounding boxes
-│   ├── graphics/    # Animation, fade, and visual effects
-│   ├── handlers/    # Window list and context menu event handlers
+│   ├── app/         # Dock widgets, popups, and GPU draw command builders
+│   ├── events/      # Wayland event handling
+│   ├── handlers/    # Popup interaction and click handlers
 │   ├── interaction/ # Proximity, motion, and hover routines
-│   ├── pointer/     # Click, drag, and scroll input handling
-│   ├── render/      # Framebuffer drawing and font rendering
-│   ├── resolvers/   # Desktop file parser and Steam app resolver
-│   └── services/    # Display & monitor detection services
+│   ├── listeners/   # Wayland protocol and D-Bus listeners
+│   ├── render/      # DMA-BUF texture pool and GPU utilities
+│   ├── resolvers/   # Desktop file parser, icon, and Steam app resolver
+│   ├── services/    # PipeWire capture, resource monitoring, system services
+│   ├── state/       # Application state management
+│   └── ...          # Config, models, frame scheduler, etc
+├── wgpu-api/        # GPU rendering library (wgpu backend, text, video, physics)
+├── docs/            # Architecture docs, ADRs, contracts, and diagrams
 ├── Cargo.toml       # Cargo package manifest
 ├── Makefile         # Build & installation targets
 └── PKGBUILD         # Arch Linux packaging file
@@ -142,11 +144,27 @@ dock/
 Distributed under the MIT License.
 
 
+## Rendering Architecture
+
+The dock uses **100% GPU rendering** via wgpu with DMA-BUF zero-copy sharing to the Wayland compositor. All surfaces — main dock, popups, side bars, and status panels — render through `DrawCommand`-based GPU pipelines. There is no CPU pixel buffer rendering or Slint dependency.
+
+### GPU Features
+- **Persistent vertex buffers** — eliminates per-primitive GPU buffer allocation (~3,750/sec reduced to 2/sec)
+- **Cross-frame text cache** — skips cosmic-text shaping for static text, reducing CPU usage by ~20%
+- **Content-hash caching** — skips render passes for static popups (context menu, Bluetooth)
+- **Format-aware video upload** — BGRx/BGRA frames upload directly without intermediate copies
+- **Lazy TextManager** — defers GPU font loading until first popup needs text rendering
+
+### Performance
+- **~70 FPS** continuous rendering at 75 FPS cap
+- **~152 MB PSS** exclusive memory (including ~43 MB NVIDIA Vulkan driver)
+- **~6–13% CPU** usage (0.1 cores)
+
 ## Tray and status strip
 
-The dock supports StatusNotifierItem (SNI) clients and renders the tray in a dedicated band at the top of the existing dock surface. Right-clicking a tray icon opens a dock-native context menu with activation and SNI context-menu actions. The same band shows the active keyboard layout, network download/upload rates, date, and time: tray/status indicators occupy the left/center-left area, while date and time are aligned to the right.
+The dock supports StatusNotifierItem (SNI) clients and renders the tray in a dedicated box to the left of the centered application dock. Right-clicking a tray icon opens a dock-native GPU-rendered context menu. The bottom status panel shows keyboard layout, network throughput, and date/time.
 
-Application icons are loaded at 512px source resolution when possible and downsampled with bilinear filtering for display. Icon cache format version 4 ensures older low-resolution cache entries are reloaded.
+Application icons are loaded at 512px source resolution when possible and downsampled using SIMD-optimized Lanczos-3 filtering via `fast_image_resize`. Icon cache format version 4 ensures older low-resolution cache entries are reloaded.
 
 ### PipeWire audio mixer
 
