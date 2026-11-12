@@ -173,10 +173,16 @@ pub fn update(
     let window_list_timed_out = elapsed.window_list >= hard_timeout;
 
     // **FIX (v1.5.5)**: Border-based closing for window list popup.
+    // Track entry using geometry-based detection so all borders work, not just
+    // the bottom border (which is the only one sending Wayland Enter events).
+    if state.window_list_state.is_open && pointer_over_window_list {
+        if state.window_list_state.entry_count == 0 {
+            state.window_list_state.entry_count = 1;
+        }
+    }
     // When the cursor leaves the popup area, close it — but only after the
     // cursor has entered at least once. The first entry keeps it open;
     // when the cursor leaves (entry_count >= 1), the popup closes immediately.
-    // This replaces the cursor idle timeout for the window list.
     let window_list_border_close = state.window_list_state.is_open
         && !pointer_over_window_list
         && state.window_list_state.entry_count >= 1;

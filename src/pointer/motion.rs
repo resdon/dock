@@ -182,11 +182,6 @@ pub fn handle_motion_events(
                     state.menu_state.pointer_inside_popup = true;
                 }
                 if is_window_list_surface {
-                    if !state.window_list_state.pointer_inside_popup {
-                        // **FIX (v1.5.5)**: Cursor entered the window list popup.
-                        // Increment entry count for border-based closing logic.
-                        state.window_list_state.entry_count += 1;
-                    }
                     state.window_list_state.pointer_inside_popup = true;
                 }
 
