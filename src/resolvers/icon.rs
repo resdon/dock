@@ -201,7 +201,13 @@ pub fn search_icon_list_file(query: &str) -> Option<PathBuf> {
 
 pub fn get_icon_path(app_id: &str) -> Option<PathBuf> {
     if app_id.starts_with("steam_icon_") {
-        let sys_scanner = sysinfo::System::new().expect("Failed to create sysinfo System");
+        // FIX (v1.5.5): Use minimal specifics instead of System::new() to avoid
+        // loading all process metadata. Steam lookup only needs process names.
+        let sys_scanner = sysinfo::System::new_with_specifics(
+            sysinfo::RefreshKind::nothing()
+                .with_processes(sysinfo::ProcessRefreshKind::nothing().with_cpu().with_memory()),
+        )
+        .expect("Failed to create sysinfo System");
         if let Some((_, _, icon_path)) = resolve_steam_game_details(app_id, "", &sys_scanner, None)
         {
             return Some(icon_path);

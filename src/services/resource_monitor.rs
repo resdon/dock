@@ -117,7 +117,13 @@ fn query_vram_mb(pid: u32) -> Option<u64> {
 /// `nvidia-smi` and shows "N/A" if the command is unavailable.
 pub fn start_resource_monitor() {
     thread::spawn(|| {
-        let mut sys = System::new_all().expect("Failed to create sysinfo System");
+        // FIX (v1.5.5): Use minimal specifics instead of new_all() to avoid loading
+        // all process metadata at startup. Only the dock process is tracked.
+        let mut sys = System::new_with_specifics(
+            sysinfo::RefreshKind::nothing()
+                .with_processes(ProcessRefreshKind::nothing().with_cpu().with_memory()),
+        )
+        .expect("Failed to create sysinfo System");
 
         let pid = match sysinfo::get_current_pid() {
             Ok(p) => p,
