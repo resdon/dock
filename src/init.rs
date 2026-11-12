@@ -263,6 +263,7 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
             context_menu_timer: None,
             window_list_timer: None,
             pointer_inside_popup: false,
+            // **FIX (v1.5.5)**: Entry count for border-based window list closing.
             entry_count: 0,
             popup_timer: None,
         },

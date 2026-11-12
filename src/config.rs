@@ -305,8 +305,10 @@ pub struct DockConfig {
     /// Dock hard inactivity timeout in milliseconds (closes all popups)
     #[serde(default = "default_hard_timeout")]
     pub hard_timeout: u64,
-    /// Cursor idle timeout in milliseconds — closes all popups when the cursor
-    /// hasn't moved for this duration, regardless of cursor position.
+    /// **FIX (v1.5.5)**: Cursor idle timeout in milliseconds — closes all popups
+    /// when the cursor hasn't moved for this duration, regardless of cursor position.
+    /// Replaced the 2-second hard idle timeout with border-based closing for the
+    /// window list, but retained for the context menu and as a fallback.
     #[serde(default = "default_cursor_idle_timeout")]
     pub cursor_idle_timeout: u64,
 
@@ -673,6 +675,7 @@ fn default_context_menu_timeout() -> u64 {
 fn default_hard_timeout() -> u64 {
     10000
 }
+/// **FIX (v1.5.5)**: Default cursor idle timeout is 2 seconds.
 fn default_cursor_idle_timeout() -> u64 {
     2000
 }
@@ -913,6 +916,7 @@ impl Default for DockConfig {
             popup_timeout: default_popup_timeout(),
             context_menu_timeout: default_context_menu_timeout(),
             hard_timeout: default_hard_timeout(),
+            // **FIX (v1.5.5)**: Cursor idle timeout for popup auto-close.
             cursor_idle_timeout: default_cursor_idle_timeout(),
             // Icon badge
             badge_text_color: default_badge_text_color(),
@@ -1340,6 +1344,7 @@ impl DockConfig {
             } else {
                 self.hard_timeout
             },
+            // **FIX (v1.5.5)**: Cursor idle timeout merge with fallback to default.
             cursor_idle_timeout: if self.cursor_idle_timeout == 0 {
                 default_cfg.cursor_idle_timeout
             } else {
