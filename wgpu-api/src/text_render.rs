@@ -120,10 +120,37 @@ impl TextManager {
         // stale glyphs from being evicted, eventually exhausting the atlas.
         self.atlas.trim();
 
+        // FIX (v1.5.5): Deduplicate identical text+size+max_width combinations
+        // within a frame to avoid redundant cosmic-text shaping. When the same
+        // string at the same size appears multiple times (e.g., repeated window
+        // titles), we shape it once and reuse the shaped buffer for all occurrences.
+        // The glyphon swash_cache + atlas already handles cross-frame glyph reuse,
+        // so this within-frame deduplication targets the most expensive part:
+        // the cosmic-text shaping and bidi processing.
+        let mut shaped_this_frame: std::collections::HashMap<(String, u32, u32), usize> =
+            std::collections::HashMap::new();
+
         for item_batch in items.chunks(8) {
             // Build buffers first — they must outlive the TextArea references.
             let mut buffers: Vec<Buffer> = Vec::with_capacity(item_batch.len());
+            let mut buffer_indices: Vec<usize> = Vec::with_capacity(item_batch.len());
+
             for item in item_batch {
+                let cache_key = (
+                    item.text.clone(),
+                    item.font_size as u32,
+                    item.max_width as u32,
+                );
+
+                // FIX (v1.5.5): Check if we already shaped this exact text+size+width
+                // combination in this frame. If so, reuse the buffer index instead
+                // of reshaping.
+                if let Some(&idx) = shaped_this_frame.get(&cache_key) {
+                    buffer_indices.push(idx);
+                    continue;
+                }
+
+                // Shape normally
                 let metrics = Metrics::new(item.font_size, item.font_size * 1.2);
                 let mut buffer = Buffer::new(&mut self.font_system, metrics);
                 buffer.set_size(Some(item.max_width), None);
@@ -139,13 +166,19 @@ impl TextManager {
                     None,
                 );
                 buffer.shape_until_scroll(&mut self.font_system, false);
+
+                let idx = buffers.len();
+                shaped_this_frame.insert(cache_key, idx);
                 buffers.push(buffer);
+                buffer_indices.push(idx);
             }
 
+            // Build text areas using the correct buffer for each item
             let text_areas: Vec<glyphon::TextArea> = item_batch
                 .iter()
-                .zip(buffers.iter())
-                .map(|(item, buffer)| {
+                .zip(buffer_indices.iter())
+                .map(|(item, &buf_idx)| {
+                    let buffer = &buffers[buf_idx];
                     let text_width = buffer
                         .layout_runs()
                         .map(|run| run.line_w)
@@ -188,7 +221,6 @@ impl TextManager {
             }
         }
     }
-
 }
 
 #[cfg(test)]
