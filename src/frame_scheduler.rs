@@ -41,9 +41,10 @@ use std::time::{Duration, Instant};
 /// 75 FPS balances smoothness with CPU efficiency.
 const DEFAULT_MAX_FPS: f64 = 75.0;
 
-/// Minimum poll timeout in milliseconds when idle.
-/// Prevents busy-waiting when no events are expected.
-const IDLE_TIMEOUT_MS: i32 = 1000;
+/// Maximum poll timeout in milliseconds when idle but the dock is visible.
+/// Must be short enough to respond to mouse hover/click events promptly,
+/// while still allowing the CPU to sleep between frames.
+const IDLE_TIMEOUT_MS: i32 = 16;
 
 /// Minimum poll timeout in milliseconds when waiting for animation frames.
 /// Ensures the loop doesn't spin faster than the frame rate limit.
@@ -92,6 +93,10 @@ pub struct FrameScheduler {
     /// Whether any animations are currently active (fades, bounces, etc.).
     /// Used to distinguish animation-driven redraws from event-driven ones.
     animations_active: bool,
+    
+    /// When true, the scheduler renders continuously at max_fps regardless of
+    /// whether animations are active or content has changed.
+    continuous_render: bool,
 }
 
 impl FrameScheduler {
@@ -105,6 +110,7 @@ impl FrameScheduler {
             last_frame_time: None,
             content_changed: false,
             animations_active: false,
+            continuous_render: true,
         }
     }
 
@@ -118,6 +124,7 @@ impl FrameScheduler {
             last_frame_time: None,
             content_changed: false,
             animations_active: false,
+            continuous_render: true,
         }
     }
 
@@ -137,6 +144,14 @@ impl FrameScheduler {
         self.animations_active = active;
     }
 
+    /// Enable or disable continuous rendering mode.
+    ///
+    /// When enabled, the scheduler renders at max_fps regardless of whether
+    /// animations are active or content has changed. Enabled by default.
+    pub fn set_continuous_render(&mut self, enabled: bool) {
+        self.continuous_render = enabled;
+    }
+
     /// Check whether a frame should be rendered now.
     ///
     /// Returns `true` if:
@@ -151,8 +166,8 @@ impl FrameScheduler {
     /// subsequent calls within the same loop iteration return `false` unless
     /// new changes are marked.
     pub fn should_render(&mut self, needs_redraw: bool) -> bool {
-        // If nothing needs a redraw, skip rendering
-        if !needs_redraw {
+        // If nothing needs a redraw and not in continuous mode, skip rendering
+        if !needs_redraw && !self.continuous_render {
             self.content_changed = false;
             return false;
         }
@@ -179,10 +194,23 @@ impl FrameScheduler {
             }
         }
 
+        // Continuous render mode: render at max_fps regardless of animation state
+        if self.continuous_render {
+            match self.last_frame_time {
+                Some(last) => {
+                    let elapsed = last.elapsed();
+                    if elapsed >= self.frame_interval {
+                        return true;
+                    }
+                }
+                None => {
+                    // First frame — render immediately
+                    return true;
+                }
+            }
+        }
+
         // **FIX (v1.5.5)**: No content change and not animation-driven — skip render.
-        // This is the critical path: when needs_redraw is true but nothing visual changed
-        // (e.g., pointer motion events from the compositor), we skip the render entirely.
-        // Without this return false, the render loop spins at ~800 FPS.
         self.content_changed = false;
         false
     }
@@ -209,23 +237,24 @@ impl FrameScheduler {
     /// # Returns
     /// Timeout in milliseconds for `poll()`
     pub fn poll_timeout(&self, needs_redraw: bool, animations_active: bool) -> i32 {
-        if !needs_redraw && !animations_active {
-            // Fully idle — sleep until an event arrives
-            return IDLE_TIMEOUT_MS;
-        }
-
         if self.content_changed {
             // Content actually changed — render as soon as possible
             return ANIMATION_MIN_TIMEOUT_MS;
         }
 
+        let effective_active = animations_active || self.continuous_render;
+
+        if !needs_redraw && !effective_active {
+            // Fully idle — sleep until an event arrives
+            return IDLE_TIMEOUT_MS;
+        }
+
         // **FIX (v1.5.5)**: Do NOT return minimal timeout for needs_redraw alone.
         // needs_redraw can be set by pointer motion events even when nothing visual
         // changed. Only content_changed should trigger immediate wakeup.
-        // needs_redraw without content_changed is handled by the animation rate limiter below.
 
-        if animations_active {
-            // Animation-driven — respect frame rate limit
+        if effective_active {
+            // Animation-driven or continuous render — respect frame rate limit
             if let Some(last) = self.last_frame_time {
                 let elapsed = last.elapsed();
                 if elapsed >= self.frame_interval {
@@ -255,6 +284,7 @@ impl FrameScheduler {
         self.last_frame_time = None;
         self.content_changed = false;
         self.animations_active = false;
+        // Preserve continuous_render setting on reset
     }
 }
 
@@ -288,10 +318,11 @@ mod tests {
     #[test]
     fn no_change_skips_render() {
         let mut scheduler = FrameScheduler::new();
+        scheduler.set_continuous_render(false);
         scheduler.on_frame_rendered();
         std::thread::sleep(Duration::from_millis(10));
         
-        // No content change, no animations
+        // No content change, no animations, continuous render off
         assert!(!scheduler.should_render(true));
     }
 
@@ -311,7 +342,8 @@ mod tests {
 
     #[test]
     fn idle_timeout_is_long() {
-        let scheduler = FrameScheduler::new();
+        let mut scheduler = FrameScheduler::new();
+        scheduler.set_continuous_render(false);
         let timeout = scheduler.poll_timeout(false, false);
         assert_eq!(timeout, IDLE_TIMEOUT_MS);
     }

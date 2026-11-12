@@ -10,41 +10,42 @@
 //!   for NVIDIA GPUs. Falls back to "N/A" if not available.
 
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::OnceLock;
+use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 
-/// Global FPS counter shared between the event loop and resource monitor.
+/// Rolling window for instantaneous FPS calculation (2 seconds).
+const FPS_WINDOW_SECS: f64 = 2.0;
+
+/// Global FPS tracker shared between the event loop and resource monitor.
 ///
-/// The main loop increments `FRAME_COUNT` for each rendered frame.
-/// The resource monitor calculates average render FPS from the elapsed time.
+/// The main loop records each frame's timestamp via `increment_frame_counter()`.
+/// The resource monitor calculates instantaneous FPS over the last 2 seconds.
+static FRAME_TIMESTAMPS: Mutex<Vec<Instant>> = Mutex::new(Vec::new());
 
-static FRAME_COUNT: AtomicU64 = AtomicU64::new(0);
-static START_TIME: OnceLock<Instant> = OnceLock::new();
-
-/// Increment the global render-frame counter.
+/// Increment the global render-frame counter with the current timestamp.
 /// Call this once after each call to `AppState::draw`.
 pub fn increment_frame_counter() {
-    START_TIME.get_or_init(Instant::now);
-    FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
+    let mut timestamps = FRAME_TIMESTAMPS.lock().unwrap_or_else(|e| e.into_inner());
+    // Prune old entries outside the rolling window to keep memory bounded.
+    let cutoff = Instant::now().checked_sub(Duration::from_secs_f64(FPS_WINDOW_SECS + 1.0)).unwrap_or(Instant::now());
+    timestamps.retain(|t| *t > cutoff);
+    timestamps.push(Instant::now());
 }
 
-/// Calculate FPS from the frame counter.
-/// Returns the average FPS since the first frame was counted.
+/// Calculate instantaneous FPS from recent frame timestamps.
+/// Returns the number of frames rendered in the last 2 seconds.
 pub fn get_fps() -> f64 {
-    let count = FRAME_COUNT.load(Ordering::Relaxed);
-    let start = match START_TIME.get() {
-        Some(t) => t,
-        None => return 0.0,
-    };
-    let elapsed = start.elapsed().as_secs_f64();
-    if elapsed < 0.1 {
-        return 0.0;
-    }
-    count as f64 / elapsed
+    let mut timestamps = FRAME_TIMESTAMPS.lock().unwrap_or_else(|e| e.into_inner());
+    let now = Instant::now();
+    let cutoff = now.checked_sub(Duration::from_secs_f64(FPS_WINDOW_SECS)).unwrap_or(now);
+    // Count frames within the rolling window
+    let count = timestamps.iter().filter(|t| **t > cutoff).count() as f64;
+    // Prune old entries
+    timestamps.retain(|t| *t > cutoff);
+    count / FPS_WINDOW_SECS
 }
 
 /// Query VRAM usage from `nvidia-smi` for the current process.
