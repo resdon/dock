@@ -149,6 +149,28 @@ pub fn draw_bluetooth_popup(
     popup.width = BLUETOOTH_POPUP_WIDTH as u32;
     popup.height = BLUETOOTH_POPUP_HEIGHT as u32;
 
+    // FIX (v1.5.5): Content-hash caching — skip rendering if Bluetooth state
+    // hasn't changed. The popup is typically static once opened.
+    let mut content_hash: u64 = if snapshot.available { 1 } else { 0 };
+    content_hash = content_hash.wrapping_mul(31).wrapping_add(snapshot.powered as u64);
+    content_hash = content_hash.wrapping_mul(31).wrapping_add(snapshot.discovering as u64);
+    content_hash = content_hash.wrapping_mul(31).wrapping_add(snapshot.discovery_owned as u64);
+    for b in snapshot.adapter_name.bytes() {
+        content_hash = content_hash.wrapping_mul(37).wrapping_add(b as u64);
+    }
+    content_hash = content_hash.wrapping_mul(41).wrapping_add(snapshot.devices.len() as u64);
+    for dev in &snapshot.devices {
+        for b in dev.name.bytes() {
+            content_hash = content_hash.wrapping_mul(37).wrapping_add(b as u64);
+        }
+        content_hash = content_hash.wrapping_mul(43)
+            .wrapping_add(dev.paired as u64)
+            .wrapping_add(dev.connected as u64);
+    }
+    if popup.last_content_hash == content_hash {
+        return;
+    }
+
     // GPU rendering path: build draw commands and render via DMA-BUF
     let scale_f32 = scale as f32;
     let width = phys_width as f32;
@@ -467,6 +489,8 @@ pub fn draw_bluetooth_popup(
                                 popup.surface.set_input_region(Some(&region));
                                 region.destroy();
                                 popup.surface.commit();
+                                // Commit hash only after successful GPU surface commit
+                                popup.last_content_hash = content_hash;
                                 true
                             }
                             Err(_) => false,

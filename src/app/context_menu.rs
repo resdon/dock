@@ -149,6 +149,35 @@ pub fn draw_context_menu_popup(
                 -1
             };
 
+            // FIX (v1.5.5): Content-hash caching — skip rendering if menu content
+            // and hover state haven't changed. The context menu is typically static
+            // once opened, so this eliminates per-frame text shaping and GPU uploads.
+            let mut content_hash: u64 = menu_state.items.len() as u64;
+            for item in &menu_state.items {
+                for b in item.label.bytes() {
+                    content_hash = content_hash.wrapping_mul(31).wrapping_add(b as u64);
+                }
+                content_hash = content_hash.wrapping_mul(37)
+                    .wrapping_add(match &item.item_type {
+                        MenuItemType::CloseApp => 1,
+                        MenuItemType::LaunchNew => 2,
+                        MenuItemType::Focus => 3,
+                        MenuItemType::TogglePin => 4,
+                        _ => 0,
+                    } as u64);
+            }
+            content_hash = content_hash.wrapping_mul(43)
+                .wrapping_add(hovered_item as u64)
+                .wrapping_add(popup.current_app_id.as_deref().map(|s| {
+                    let mut h: u64 = 0;
+                    for b in s.bytes() { h = h.wrapping_mul(31).wrapping_add(b as u64); }
+                    h
+                }).unwrap_or(0));
+
+            if popup.last_content_hash == content_hash {
+                return;
+            }
+
             // Build draw commands for the context menu
             let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::new();
             let config = frame.config;
@@ -273,6 +302,8 @@ pub fn draw_context_menu_popup(
                                         popup.surface.set_input_region(Some(&region));
                                         region.destroy();
                                         popup.surface.commit();
+                                        // Commit hash only after successful GPU surface commit
+                                        popup.last_content_hash = content_hash;
                                         true
                                     }
                                     Err(_) => false,
