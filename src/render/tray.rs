@@ -66,7 +66,7 @@ pub fn tray_logical_size(item_count: usize) -> (i32, i32) {
 
     // Match the right 76x72 utility box. SNI icons are arranged in two columns
     // and wrap to additional rows only when more than four are registered.
-    let rows = (item_count + 1) / 2;
+    let rows = item_count.div_ceil(2);
     let content_height =
         rows as i32 * TRAY_ICON_SIZE + rows.saturating_sub(1) as i32 * TRAY_SPACING;
     let height = (content_height + TRAY_PADDING_Y * 2).max(TRAY_HEIGHT);
@@ -80,7 +80,7 @@ pub fn tray_icon_position(index: usize, item_count: usize) -> Option<(i32, i32)>
         return None;
     }
     let (width, height) = tray_logical_size(item_count);
-    let rows = (item_count + 1) / 2;
+    let rows = item_count.div_ceil(2);
     let row = index / 2;
     let first_index_in_row = row * 2;
     let items_in_row = (item_count - first_index_in_row).min(2) as i32;
@@ -477,7 +477,7 @@ pub fn render_tray_into_canvas(
     let width = phys_width as i32;
     let height = phys_height as i32;
     let layout = tray_layout((width as f64 / scale).round() as i32, items.len(), bar);
-    if debug {}
+    
     let left_x = layout.panel_x;
     let panel_y = tray_y + 2;
     draw_rounded_panel(
@@ -492,7 +492,7 @@ pub fn render_tray_into_canvas(
         alpha * 0.92,
         [28, 27, 33],
     );
-    if debug {}
+    
 
     // Keyboard layout badge.
     let keyboard_x = layout.keyboard_x;
@@ -529,7 +529,7 @@ pub fn render_tray_into_canvas(
         ((tray_y + 24) as f64 * scale).round() as i32,
         (250, 204, 21),
     );
-    if debug {}
+    
 
     // Network rates immediately follow the keyboard indicator. The arrows are
     // drawn as vector pixels, not font glyphs, so no fc-match or font parsing
@@ -582,7 +582,7 @@ pub fn render_tray_into_canvas(
         network_baseline,
         (224, 219, 201),
     );
-    if debug {}
+    
 
     // Date is placed to the left of the time; the pair is right-aligned to the
     // dock surface instead of depending on the current tray item count.
@@ -653,7 +653,7 @@ pub fn render_tray_into_canvas(
         baseline,
         (34, 30, 24),
     );
-    if debug {}
+    
 
     // Tray item icons occupy the leading portion of the left status group.
     for (index, item) in items.iter().enumerate() {
@@ -799,7 +799,7 @@ pub fn render_tray_icons_into_canvas(
     let width = phys_width as i32;
     let height = phys_height as i32;
     let (logical_width, logical_height) = tray_logical_size(items.len());
-    if debug {}
+    
     // Match the right-hand utility panel: same 76x72 footprint, full rounded
     // silhouette, corner radius, and dark panel treatment.
     draw_rounded_panel_with_radius(

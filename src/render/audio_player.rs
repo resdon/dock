@@ -42,7 +42,7 @@ pub fn player_position() -> (i32, i32) {
 }
 
 pub fn compact_region_contains(x: i32, y: i32) -> bool {
-    x >= COMPACT_X && x < PLAYER_WIDTH && y >= COMPACT_Y - 45 && y < PLAYER_HEIGHT
+    (COMPACT_X..PLAYER_WIDTH).contains(&x) && (COMPACT_Y - 45..PLAYER_HEIGHT).contains(&y)
 }
 
 pub fn player_area_contains(x: i32, y: i32, expanded: bool) -> bool {

@@ -334,7 +334,7 @@ fn parse_wpctl_list(text: &str) -> Vec<AudioDevice> {
             if name.is_empty() {
                 return None;
             }
-            let is_default = fields.iter().any(|field| *field == "*");
+            let is_default = fields.contains(&"*");
             Some(AudioDevice {
                 id,
                 name: name.to_string(),

@@ -81,13 +81,13 @@ pub fn draw_bluetooth_popup(
     let actual_dock_height = dock.height as i32;
     
     // Dock is centered horizontally at the bottom of the screen
-    let dock_left_edge = (output_size.0 as i32 / 2) - (actual_dock_width / 2);
+    let dock_left_edge = (output_size.0 / 2) - (actual_dock_width / 2);
     let margin = config.margin;
-    let dock_top_edge = output_size.1 as i32 - actual_dock_height - margin;
+    let dock_top_edge = output_size.1 - actual_dock_height - margin;
     
     // Screen center
-    let screen_center_x = output_size.0 as i32 / 2;
-    let screen_center_y = output_size.1 as i32 / 2;
+    let screen_center_x = output_size.0 / 2;
+    let screen_center_y = output_size.1 / 2;
     
     // Popup position relative to dock's top-left corner
     let popup_x = screen_center_x - dock_left_edge - BLUETOOTH_POPUP_WIDTH / 2;

@@ -337,21 +337,15 @@ impl PipewireCaptureService {
     /// holds either lock for an extended period.
     pub fn get_bound_stream(&self, window_id: u32) -> Option<usize> {
         // Use timeout — if the monitor holds bindings, skip
-        let Some(bindings) = self
+        let bindings = self
             .bindings
-            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
-        else {
-            return None;
-        };
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))?;
         let stream_idx = bindings.get(&window_id).copied()?;
         // Release bindings before acquiring stream_frames to avoid ABBA deadlock
         drop(bindings);
-        let Some(frames) = self
+        let frames = self
             .stream_frames
-            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
-        else {
-            return None;
-        };
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))?;
         if stream_idx < frames.len() {
             Some(stream_idx)
         } else {
@@ -458,12 +452,9 @@ impl PipewireCaptureService {
             }
         }
         // Slow path: scan streams by window_id field (for streams not yet in registry)
-        let Some(frames) = self
+        let frames = self
             .stream_frames
-            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
-        else {
-            return None;
-        };
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))?;
         for (i, stream) in frames.iter().enumerate() {
             if exclude.contains(&i) {
                 continue;
@@ -586,7 +577,7 @@ impl PipewireCaptureService {
             Some(g) => *g,
             None => {
                 static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-                if COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % 120 == 0 {
+                if COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed).is_multiple_of(120) {
                     eprintln!("[PIPEWIRE] get_active_frame: active_row lock timeout");
                 }
                 return None;
@@ -609,7 +600,7 @@ impl PipewireCaptureService {
                 .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
             else {
                 static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-                if COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % 120 == 0 {
+                if COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed).is_multiple_of(120) {
                     eprintln!("[PIPEWIRE] get_active_frame: stream_frames lock timeout");
                 }
                 return None;
@@ -628,7 +619,7 @@ impl PipewireCaptureService {
             Some(guard) => (*guard).clone(),
             None => {
                 static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-                if COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed) % 120 == 0 {
+                if COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed).is_multiple_of(120) {
                     eprintln!(
                         "[PIPEWIRE] get_active_frame: per-stream frame lock timeout, row={}",
                         row
@@ -742,12 +733,9 @@ impl PipewireCaptureService {
 
         // Lock stream_frames briefly to get the stream reference
         let stream = {
-            let Some(frames) = self
+            let frames = self
                 .stream_frames
-                .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
-            else {
-                return None;
-            };
+                .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))?;
             if row >= frames.len() {
                 return None;
             }
@@ -755,13 +743,10 @@ impl PipewireCaptureService {
         };
 
         // Use timeout lock — if a stream thread blocks frame, skip it
-        let frame_data = match stream
+        let frame_data = stream
             .frame
             .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
-        {
-            Some(guard) => (*guard).clone(),
-            None => return None,
-        };
+            .map(|guard| (*guard).clone())?;
 
         match frame_data {
             Some((w, h, fmt, bytes)) => {
@@ -786,12 +771,9 @@ impl PipewireCaptureService {
     pub fn get_stream_dimensions(&self, idx: usize) -> Option<(u32, u32)> {
         // Get the format_info Arc without holding stream_frames lock
         let format_info = {
-            let Some(frames) = self
+            let frames = self
                 .stream_frames
-                .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
-            else {
-                return None;
-            };
+                .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))?;
             if idx >= frames.len() {
                 return None;
             }
@@ -801,7 +783,7 @@ impl PipewireCaptureService {
         // Use timeout lock — if a stream thread blocks format_info, skip it
         format_info
             .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
-            .map(|guard| (*guard).clone())
+            .map(|guard| *guard)
             .and_then(|fmt| fmt.map(|(w, h, _)| (w, h)))
     }
 
@@ -818,13 +800,9 @@ impl PipewireCaptureService {
     ///
     /// Returns `None` if the stream index is out of bounds or the mutex times out.
     pub fn get_stream_generation(&self, idx: usize) -> Option<u64> {
-        let frames = match self
+        let frames = self
             .stream_frames
-            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
-        {
-            Some(g) => g,
-            None => return None,
-        };
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))?;
         if idx >= frames.len() {
             return None;
         }
@@ -877,12 +855,9 @@ impl PipewireCaptureService {
             return None;
         }
         // Use timeout — if the monitor holds stream_frames, skip
-        let Some(frames) = self
+        let frames = self
             .stream_frames
-            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
-        else {
-            return None;
-        };
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))?;
         let title_lower = title.to_lowercase();
 
         // Try exact match first (compare against the title-without-hash)
@@ -1202,7 +1177,7 @@ fn save_restore_token(token: &str) {
         Err(_) => return,
     };
     let dir = format!("{}/.config/dock", home);
-    if let Err(_) = std::fs::create_dir_all(&dir) {
+    if std::fs::create_dir_all(&dir).is_err() {
         return;
     }
     let _ = std::fs::write(format!("{}/pipewire_restore_token", dir), token);
@@ -1460,7 +1435,7 @@ async fn start_capture(
                     if let Variant::Structure(tup) = item {
                         let mut node_id = 0u32;
                         let mut stream_props = HashMap::new();
-                        for (i, field) in tup.fields().into_iter().enumerate() {
+                        for (i, field) in tup.fields().iter().enumerate() {
                             match field {
                                 Variant::U32(id) if i == 0 => {
                                     node_id = *id;
@@ -1478,7 +1453,7 @@ async fn start_capture(
                                         if let Variant::Structure(entry_tup) = entry {
                                             let mut entry_key = String::new();
                                             let mut entry_val = String::new();
-                                            for (j, f) in entry_tup.fields().into_iter().enumerate()
+                                            for (j, f) in entry_tup.fields().iter().enumerate()
                                             {
                                                 match f {
                                                     Variant::Str(s) if j == 0 => {
@@ -1709,7 +1684,7 @@ async fn capture_windows_range(
 ///
 /// The `process` callback copies each buffer into `stream_data.frame` for the
 /// render thread to read. Format conversion happens on demand in `get_active_frame()`.
-
+///
 /// Shared state passed to stream threads for visibility-based capture control.
 ///
 /// **FIX (v1.5.5)**: Each stream thread needs to know whether the window list
@@ -2479,91 +2454,87 @@ pub async fn start_monitor_inner(
             token.clone()
         };
         for (idx, portal_idx) in to_capture.into_iter().enumerate() {
-            match capture_windows_range(
+            if let Ok((new_streams, _new_token)) = capture_windows_range(
                 &connection,
                 &desktop,
                 portal_idx,
                 portal_idx + 1,
                 current_restore_token.clone(),
             )
-            .await
-            {
-                Ok((new_streams, _new_token)) => {
-                    for (fd, node_id, captured_title) in new_streams {
-                        let stream_idx = current_stream_count + idx + added_count;
-                        // Look up the stable Wayland window ID for this title.
-                        // Strip the portal hash suffix so "dock (hash)" matches Wayland title "dock".
-                        // For same-title windows, use the chooser file order (portal_idx)
-                        // to determine which window gets which stream.
-                        let window_id = {
-                            // Release window_ids before bindings to avoid lock ordering issues
-                            let ids = {
-                                let map = service.window_ids.lock();
-                                let clean_title =
-                                    PipewireCaptureService::strip_portal_hash(&captured_title);
-                                map.get(clean_title).cloned()
-                            };
-                            ids.and_then(|v| {
-                                let bindings = service.bindings.lock();
-                                if v.len() <= 1 {
-                                    v.iter().find(|id| !bindings.contains_key(id)).copied()
-                                } else {
-                                    // Multiple windows with the same title — use chooser file order.
-                                    let clean_title_for_count =
-                                        PipewireCaptureService::strip_portal_hash(&captured_title)
+            .await {
+                for (fd, node_id, captured_title) in new_streams {
+                    let stream_idx = current_stream_count + idx + added_count;
+                    // Look up the stable Wayland window ID for this title.
+                    // Strip the portal hash suffix so "dock (hash)" matches Wayland title "dock".
+                    // For same-title windows, use the chooser file order (portal_idx)
+                    // to determine which window gets which stream.
+                    let window_id = {
+                        // Release window_ids before bindings to avoid lock ordering issues
+                        let ids = {
+                            let map = service.window_ids.lock();
+                            let clean_title =
+                                PipewireCaptureService::strip_portal_hash(&captured_title);
+                            map.get(clean_title).cloned()
+                        };
+                        ids.and_then(|v| {
+                            let bindings = service.bindings.lock();
+                            if v.len() <= 1 {
+                                v.iter().find(|id| !bindings.contains_key(id)).copied()
+                            } else {
+                                // Multiple windows with the same title — use chooser file order.
+                                let clean_title_for_count =
+                                    PipewireCaptureService::strip_portal_hash(&captured_title)
+                                        .to_string();
+                                let mut same_title_count_before = 0;
+                                for ci in 0..portal_idx {
+                                    if let Some(chooser_title) = chooser_titles.get(ci) {
+                                        let chooser_clean =
+                                            PipewireCaptureService::strip_portal_hash(
+                                                chooser_title,
+                                            )
                                             .to_string();
-                                    let mut same_title_count_before = 0;
-                                    for ci in 0..portal_idx {
-                                        if let Some(chooser_title) = chooser_titles.get(ci) {
-                                            let chooser_clean =
-                                                PipewireCaptureService::strip_portal_hash(
-                                                    chooser_title,
-                                                )
-                                                .to_string();
-                                            if chooser_clean == clean_title_for_count {
-                                                same_title_count_before += 1;
-                                            }
+                                        if chooser_clean == clean_title_for_count {
+                                            same_title_count_before += 1;
                                         }
                                     }
-                                    v.iter()
-                                        .filter(|id| !bindings.contains_key(id))
-                                        .nth(same_title_count_before)
-                                        .copied()
                                 }
-                            })
-                        };
-                        let stream_data = Arc::new(StreamFrameData {
-                            frame: Arc::new(Mutex::new(None)),
-                            generation: Arc::new(parking_lot::Mutex::new(0)),
-                            cached_rgba: Arc::new(parking_lot::Mutex::new(None)),
-                            format_info: Arc::new(Mutex::new(None)),
-                            ready: Arc::new(AtomicBool::new(false)),
-                            title: captured_title.clone(),
-                            window_id: Arc::new(Mutex::new(window_id)),
-                        });
+                                v.iter()
+                                    .filter(|id| !bindings.contains_key(id))
+                                    .nth(same_title_count_before)
+                                    .copied()
+                            }
+                        })
+                    };
+                    let stream_data = Arc::new(StreamFrameData {
+                        frame: Arc::new(Mutex::new(None)),
+                        generation: Arc::new(parking_lot::Mutex::new(0)),
+                        cached_rgba: Arc::new(parking_lot::Mutex::new(None)),
+                        format_info: Arc::new(Mutex::new(None)),
+                        ready: Arc::new(AtomicBool::new(false)),
+                        title: captured_title.clone(),
+                        window_id: Arc::new(Mutex::new(window_id)),
+                    });
 
-                        // Add to shared stream_frames vector (lock guard dropped before next .await)
-                        {
-                            let mut frames = service_frames.lock();
-                            frames.push(stream_data.clone());
-                        }
-
-                        // Bind the new stream to the window in the persistent registry
-                        if let Some(wid) = window_id {
-                            service.bind_window_to_stream(wid, stream_idx, &captured_title);
-                        }
-
-                        // FIX (v1.5.5): Pass visibility info for streams spawned by the monitor.
-                        let vis = StreamVisibility {
-                            window_list_open: service_window_list_open.clone(),
-                            active_row: service_active_row.clone(),
-                            stream_idx,
-                        };
-                        spawn_stream_thread(fd, node_id, stream_idx, stream_data.clone(), vis);
-                        added_count += 1;
+                    // Add to shared stream_frames vector (lock guard dropped before next .await)
+                    {
+                        let mut frames = service_frames.lock();
+                        frames.push(stream_data.clone());
                     }
+
+                    // Bind the new stream to the window in the persistent registry
+                    if let Some(wid) = window_id {
+                        service.bind_window_to_stream(wid, stream_idx, &captured_title);
+                    }
+
+                    // FIX (v1.5.5): Pass visibility info for streams spawned by the monitor.
+                    let vis = StreamVisibility {
+                        window_list_open: service_window_list_open.clone(),
+                        active_row: service_active_row.clone(),
+                        stream_idx,
+                    };
+                    spawn_stream_thread(fd, node_id, stream_idx, stream_data.clone(), vis);
+                    added_count += 1;
                 }
-                Err(_) => {}
             }
         }
 
@@ -2625,13 +2596,13 @@ fn convert_to_rgba(
                 let scale_y = src_h as f64 / dst_h as f64;
 
                 for y in 0..dst_h {
-                    let y0 = (y as f64 * scale_y) as f64;
+                    let y0 = y as f64 * scale_y;
                     let x0_row = y0.floor() as usize * src_w * 4;
                     let y1_row = (y0.floor() as usize + 1).min(src_h - 1) * src_w * 4;
                     let dy = y0 - y0.floor();
 
                     for x in 0..dst_w {
-                        let x0 = (x as f64 * scale_x) as f64;
+                        let x0 = x as f64 * scale_x;
                         let x0i = x0.floor() as usize;
                         let x1i = (x0i + 1).min(src_w - 1);
                         let dx = x0 - x0i as f64;
@@ -2695,13 +2666,13 @@ fn convert_to_rgba(
                 let scale_y = src_h as f64 / dst_h as f64;
 
                 for y in 0..dst_h {
-                    let y0 = (y as f64 * scale_y) as f64;
+                    let y0 = y as f64 * scale_y;
                     let x0_row = y0.floor() as usize * src_w * 4;
                     let y1_row = (y0.floor() as usize + 1).min(src_h - 1) * src_w * 4;
                     let dy = y0 - y0.floor();
 
                     for x in 0..dst_w {
-                        let x0 = (x as f64 * scale_x) as f64;
+                        let x0 = x as f64 * scale_x;
                         let x0i = x0.floor() as usize;
                         let x1i = (x0i + 1).min(src_w - 1);
                         let dx = x0 - x0i as f64;
@@ -2761,13 +2732,13 @@ fn convert_to_rgba(
                 let scale_y = src_h as f64 / dst_h as f64;
 
                 for y in 0..dst_h {
-                    let y0 = (y as f64 * scale_y) as f64;
+                    let y0 = y as f64 * scale_y;
                     let x0_row = y0.floor() as usize * src_w * 3;
                     let y1_row = (y0.floor() as usize + 1).min(src_h - 1) * src_w * 3;
                     let dy = y0 - y0.floor();
 
                     for x in 0..dst_w {
-                        let x0 = (x as f64 * scale_x) as f64;
+                        let x0 = x as f64 * scale_x;
                         let x0i = x0.floor() as usize;
                         let x1i = (x0i + 1).min(src_w - 1);
                         let dx = x0 - x0i as f64;
@@ -2829,13 +2800,13 @@ fn convert_to_rgba(
                 let scale_y = src_h as f64 / dst_h as f64;
 
                 for y in 0..dst_h {
-                    let y0 = (y as f64 * scale_y) as f64;
+                    let y0 = y as f64 * scale_y;
                     let x0_row = y0.floor() as usize * src_w * 4;
                     let y1_row = (y0.floor() as usize + 1).min(src_h - 1) * src_w * 4;
                     let dy = y0 - y0.floor();
 
                     for x in 0..dst_w {
-                        let x0 = (x as f64 * scale_x) as f64;
+                        let x0 = x as f64 * scale_x;
                         let x0i = x0.floor() as usize;
                         let x1i = (x0i + 1).min(src_w - 1);
                         let dx = x0 - x0i as f64;

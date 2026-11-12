@@ -278,7 +278,7 @@ pub fn render_rclone_surface(
         return;
     }
 
-    let page_count = ((snapshot.mounts.len() + ROWS_PER_PAGE - 1) / ROWS_PER_PAGE).max(1);
+    let page_count = snapshot.mounts.len().div_ceil(ROWS_PER_PAGE).max(1);
     let page = page.min(page_count - 1);
     let start = page * ROWS_PER_PAGE;
     for (row, mount) in snapshot
@@ -306,7 +306,7 @@ pub fn render_rclone_surface(
             .find(|part| !part.is_empty())
             .unwrap_or(&mount.mount_point);
         let identity = if mount.source.is_empty() {
-            format!("{}", mount_name)
+            mount_name.to_string()
         } else {
             format!("{} <- {}", mount_name, mount.source)
         };
