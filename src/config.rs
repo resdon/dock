@@ -305,6 +305,10 @@ pub struct DockConfig {
     /// Dock hard inactivity timeout in milliseconds (closes all popups)
     #[serde(default = "default_hard_timeout")]
     pub hard_timeout: u64,
+    /// Cursor idle timeout in milliseconds — closes all popups when the cursor
+    /// hasn't moved for this duration, regardless of cursor position.
+    #[serde(default = "default_cursor_idle_timeout")]
+    pub cursor_idle_timeout: u64,
 
     // ═══════════════════════════════════════════════════════════
     // ICON BADGE — Notification indicators on dock icons
@@ -669,6 +673,9 @@ fn default_context_menu_timeout() -> u64 {
 fn default_hard_timeout() -> u64 {
     10000
 }
+fn default_cursor_idle_timeout() -> u64 {
+    2000
+}
 /// Default text color for icon badge notification numbers.
 /// Green (#00FF00) provides high contrast against the red badge background.
 fn default_badge_text_color() -> String {
@@ -906,6 +913,7 @@ impl Default for DockConfig {
             popup_timeout: default_popup_timeout(),
             context_menu_timeout: default_context_menu_timeout(),
             hard_timeout: default_hard_timeout(),
+            cursor_idle_timeout: default_cursor_idle_timeout(),
             // Icon badge
             badge_text_color: default_badge_text_color(),
             badge_bg_color: default_badge_bg_color(),
@@ -1331,6 +1339,11 @@ impl DockConfig {
                 default_cfg.hard_timeout
             } else {
                 self.hard_timeout
+            },
+            cursor_idle_timeout: if self.cursor_idle_timeout == 0 {
+                default_cfg.cursor_idle_timeout
+            } else {
+                self.cursor_idle_timeout
             },
 
             // Icon badge

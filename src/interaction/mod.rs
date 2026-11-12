@@ -162,15 +162,21 @@ pub fn update(
     let context_menu_timed_out = elapsed.context_menu >= hard_timeout;
     let window_list_timed_out = elapsed.window_list >= hard_timeout;
 
+    // Cursor idle timeout: close all popups when the cursor hasn't moved
+    // for the configured duration, regardless of cursor position.
+    let cursor_idle_timeout = Duration::from_millis(state.config.cursor_idle_timeout);
+    let cursor_idle_timed_out = elapsed.no_motion >= cursor_idle_timeout;
+
     // Context menu timers rules
-    if state.menu_state.is_open && (no_motion_timed_out || dock_timed_out || context_menu_timed_out)
+    if state.menu_state.is_open
+        && (no_motion_timed_out || dock_timed_out || context_menu_timed_out || cursor_idle_timed_out)
     {
         layer_changed |= state.request_context_menu_close();
     }
 
     // Window list timers rules
     if state.window_list_state.is_open
-        && (no_motion_timed_out || dock_timed_out || window_list_timed_out)
+        && (no_motion_timed_out || dock_timed_out || window_list_timed_out || cursor_idle_timed_out)
     {
         layer_changed |= state.request_window_list_close();
     }
