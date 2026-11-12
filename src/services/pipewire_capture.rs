@@ -275,8 +275,9 @@ impl PipewireCaptureService {
     /// Set whether the window list popup is currently open.
     ///
     /// When `true`, the active (hovered) stream captures at full FPS and
-    /// inactive streams capture at a reduced rate (1 frame per 2 seconds).
-    /// When `false`, all streams skip frame processing entirely.
+    /// inactive streams capture at a reduced rate (1 frame per 500ms).
+    /// When `false`, all streams capture at 1 frame per 500ms to keep
+    /// thumbnails fresh when the user opens the popup.
     ///
     /// **FIX (v1.5.5)**: Called when the window list popup opens or closes
     /// so stream threads can stop processing frames when not visible.
@@ -1829,7 +1830,7 @@ fn spawn_stream_thread(
                     // Popup closed and stream already has a frame — capture at a low rate
                     // so the thumbnail stays fresh when the user switches to this row.
                     if last_inactive_frame_time.elapsed()
-                        < std::time::Duration::from_millis(2000)
+                        < std::time::Duration::from_millis(500)
                     {
                         let _ = stream.dequeue_buffer();
                         return;
@@ -1849,8 +1850,9 @@ fn spawn_stream_thread(
                 };
 
                 if !is_active {
-                    // Inactive stream — only process 1 frame per 2 seconds
-                    if last_inactive_frame_time.elapsed() < std::time::Duration::from_millis(2000) {
+                    // Inactive stream — only process 1 frame per 500ms so thumbnails
+                    // stay reasonably fresh when the user switches to this row.
+                    if last_inactive_frame_time.elapsed() < std::time::Duration::from_millis(500) {
                         let _ = stream.dequeue_buffer();
                         return;
                     }
