@@ -62,7 +62,7 @@ impl FontManager {
         // and leaking ~1 MB is far better than retaining ~23 MB of parsed geometry.
         let data_leaked: &'static [u8] = Box::leak(data.into_boxed_slice());
         let primary_font = swash::FontRef::from_index(data_leaked, 0)
-            .ok_or_else(|| "Failed to parse font file")?;
+            .ok_or("Failed to parse font file")?;
 
         let cache_dir = dirs::cache_dir()
             .unwrap_or_else(|| PathBuf::from("/tmp"))
@@ -232,8 +232,8 @@ impl FontManager {
         let mut y = y0;
 
         loop {
-            let xi = x as i32;
-            let yi = y as i32;
+            let xi = x;
+            let yi = y;
             if xi >= 0 && xi < width as i32 && yi >= 0 && yi < bitmap.len() as i32 / width as i32 {
                 let idx = (yi * width as i32 + xi) as usize;
                 if idx < bitmap.len() {

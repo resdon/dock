@@ -29,6 +29,7 @@ use crate::models::system::{
 /// Used to determine how windows appear in the dock and popup lists.
 /// Some types (tooltips, notifications) may be excluded from the dock.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Default)]
 pub enum WindowType {
     /// A main application window
     Main,
@@ -49,14 +50,10 @@ pub enum WindowType {
     /// A utility window (color picker, font picker, etc.)
     Utility,
     /// Window type could not be determined
+    #[default]
     Unknown,
 }
 
-impl Default for WindowType {
-    fn default() -> Self {
-        Self::Unknown
-    }
-}
 
 /// Tracks the spatial areas occupied by a window.
 ///

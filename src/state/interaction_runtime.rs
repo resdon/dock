@@ -19,20 +19,17 @@ pub enum InputTarget {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Default)]
 pub enum DropTarget {
     App(AppId),
     Window(WindowId),
     Dock,
     WindowList(AppId),
     ContextMenu,
+    #[default]
     None,
 }
 
-impl Default for DropTarget {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 #[derive(Clone, Debug)]
 pub struct PointerRuntimeState {

@@ -685,8 +685,8 @@ impl SlintDockRenderer {
         let half_size = target_size / 2;
 
         // Center the icon on the cursor
-        let start_x = (pointer_x as i32 - half_size as i32).max(0) as usize;
-        let start_y = (pointer_y as i32 - half_size as i32).max(0) as usize;
+        let start_x = (pointer_x - half_size as i32).max(0) as usize;
+        let start_y = (pointer_y - half_size as i32).max(0) as usize;
 
         // Draw the icon fully opaque (no alpha blending)
         for dy in 0..target_size {
@@ -733,7 +733,7 @@ impl SlintDockRenderer {
         }
 
         // Draw window count dashes below the icon
-        if window_count >= 1 && window_count <= 5 {
+        if (1..=5).contains(&window_count) {
             let dash_y = start_y + target_size; // 2px below icon (y=58 for 60px dock)
             let dash_color = if focused {
                 // Cyan #00E5FF: B=0xFF, G=0xE5, R=0x00

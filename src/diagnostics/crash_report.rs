@@ -53,7 +53,7 @@ impl CrashReport {
     /// Format the crash report as a human-readable string.
     pub fn format(&self) -> String {
         let mut report = String::new();
-        report.push_str(&format!("=== Crash Report ===\n"));
+        report.push_str("=== Crash Report ===\n");
         report.push_str(&format!("Timestamp: {:?}\n", self.timestamp));
         report.push_str(&format!("Subsystem: {}\n", self.subsystem));
         report.push_str(&format!("Message: {}\n", self.message));

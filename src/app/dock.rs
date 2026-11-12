@@ -214,7 +214,7 @@ pub fn draw_main_dock(
         let mut icon_textures: HashMap<String, wgpu_api::TextureId> = HashMap::new();
         for pin in &dock_state.pins {
             if let Some((pixels, size)) = icon_cache.get(&pin.app_id) {
-                let icon_size = *size as u32;
+                let icon_size = *size;
                 tracing::debug!(
                     "GPU upload {}: {}x{} pixels",
                     pin.app_id,

@@ -476,8 +476,8 @@ mod tests {
         b.velocity = Vector2D::new(-10.0, 0.0);
         let collision = circle_vs_circle(&a, &b).unwrap();
         resolve_collision(&collision, &mut a, &mut b, 0.2);
-        // A should move right, B should slow down or reverse
-        assert!(a.velocity.x > 0.0 || a.position.x > 0.0);
+        // B moves left into A, so A gets pushed left (negative velocity) and B slows or reverses
+        assert!(a.velocity.x < 0.0 || b.velocity.x > -10.0);
     }
 
     #[test]

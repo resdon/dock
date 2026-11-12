@@ -124,7 +124,7 @@ fn radio_mark(canvas: &mut [u8], width: i32, height: i32, cx: i32, cy: i32, sele
     for y in -5..=5 {
         for x in -5..=5 {
             let d = x * x + y * y;
-            if d <= 25 && d >= 12 {
+            if (12..=25).contains(&d) {
                 let px = cx + x;
                 let py = cy + y;
                 if px >= 0 && py >= 0 && px < width && py < height {

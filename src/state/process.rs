@@ -11,20 +11,17 @@ use crate::models::system::{
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Default)]
 pub enum ProcessHealthState {
     Running,
     Sleeping,
     Stopped,
     Zombie,
     Unresponsive,
+    #[default]
     Unknown,
 }
 
-impl Default for ProcessHealthState {
-    fn default() -> Self {
-        Self::Unknown
-    }
-}
 
 #[derive(Clone, Debug, Default)]
 pub struct ProcessTelemetry {
