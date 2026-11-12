@@ -96,10 +96,13 @@ use pw::spa::pod::Pod;
 /// by its dedicated stream thread. The frame buffer holds the latest raw video
 /// data, which is converted to RGBA on demand by `get_active_frame()`.
 pub struct StreamFrameData {
-    /// Latest captured frame: (width, height, video format, raw pixel bytes).
+    /// Latest captured frame: (width, height, video format, shared raw pixel bytes).
     /// Updated by the stream thread's `process` callback on every buffer.
-    /// Protected by a Mutex so the render thread can read it safely.
-    pub frame: Arc<Mutex<Option<(u32, u32, pw::spa::param::video::VideoFormat, Vec<u8>)>>>,
+    /// The byte payload is reference-counted so readers can take a stable
+    /// snapshot without cloning the full frame while holding the mutex.
+    /// PipeWire's borrowed buffer is copied once into this Arc because its
+    /// memory is only valid for the duration of the process callback.
+    pub frame: Arc<Mutex<Option<(u32, u32, pw::spa::param::video::VideoFormat, Arc<[u8]>)>>>,
     /// Negotiated video format: (width, height, format), set once during
     /// format negotiation when the stream receives its first `ParamType::Format` event.
     pub format_info: Arc<Mutex<Option<(u32, u32, pw::spa::param::video::VideoFormat)>>>,
@@ -1602,7 +1605,8 @@ fn spawn_stream_thread(fd: OwnedFd, node_id: u32, idx: usize, stream_data: Arc<S
                                     }
                                 };
                                 if w > 0 && h > 0 {
-                                    let bytes = samples[0..size.min(samples.len())].to_vec();
+                                    let bytes: Arc<[u8]> =
+                                        Arc::from(&samples[0..size.min(samples.len())]);
                                     // If we can't get the frame lock, skip this frame
                                     let result =
                                         frame_data_for_process.try_lock().map(|mut guard| {
