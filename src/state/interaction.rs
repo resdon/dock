@@ -158,6 +158,8 @@ impl AppState {
         while let Ok(result) = self.icon_rx.try_recv() {
             self.pending_icon_searches.remove(&result.app_id);
             let app_id = result.app_id.clone();
+            // FIX (v1.5.5): Store icon as Arc<[u8]> so the cache shares the
+            // underlying data with Slint and GPU rendering paths instead of copying.
             self.icon_cache
                 .insert(app_id.clone(), (Arc::from(result.rgba.as_slice()), result.size));
             if let Some(anim) = result.animation {

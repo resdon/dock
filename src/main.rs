@@ -314,6 +314,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for (app_id, anim) in state.animations.iter_mut() {
             if anim.update() {
                 if let Some(frame) = anim.current_frame() {
+                    // FIX (v1.5.5): Store animated icon frame as Arc<[u8]> so
+                    // the cache shares data with Slint and GPU paths.
                     state
                         .icon_cache
                         .insert(app_id.clone(), (Arc::from(frame.rgba.as_slice()), frame.width));

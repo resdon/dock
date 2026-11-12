@@ -65,6 +65,8 @@ pub fn draw_dashed_block(
     let a = alpha.clamp(0.0, 1.0);
 
     // Try GPU rendering via DMA-BUF first
+    // FIX (v1.5.5): Use pooled DMABUF texture instead of allocating a new one.
+    // The pool reuses textures across frames, eliminating per-frame Vulkan allocations.
     if let Some(ref mut renderer) = gpu_context {
         let mut draw_commands = Vec::new();
 

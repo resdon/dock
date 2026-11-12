@@ -114,6 +114,8 @@ pub fn draw_date_time_block(
             });
         }
 
+        // FIX (v1.5.5): Use pooled DMABUF texture instead of allocating a new one.
+        // The pool reuses textures across frames, eliminating per-frame Vulkan allocations.
         if let (Some(adapter), Some(device)) = (renderer.adapter(), renderer.device()) {
             match dmabuf_pool.acquire_texture(
                 adapter, device, qh, dmabuf_state, phys_width as u32, phys_height as u32,

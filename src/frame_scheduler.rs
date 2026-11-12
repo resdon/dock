@@ -1,5 +1,10 @@
 //! Frame scheduler and invalidation system.
 //!
+//! **FIX (v1.5.5)**: New module that replaces the previous ~125 FPS spin loop
+//! (8ms poll timeout) with an adaptive frame scheduler. It enforces a 75 FPS
+//! maximum for animation-driven redraws and eliminates unnecessary renders by
+//! tracking whether visual content actually changed.
+//!
 //! Enforces a maximum frame rate for animation-driven redraws and eliminates
 //! unnecessary renders by tracking whether visual content actually changed.
 //!

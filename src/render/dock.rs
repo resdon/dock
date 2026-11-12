@@ -16,6 +16,8 @@ pub struct DockRenderResources<'a> {
     pub phys_width: u32,
     pub phys_height: u32,
     pub running_by_app: &'a HashMap<String, Vec<&'a WindowState>>,
+    /// FIX (v1.5.5): Changed from Vec<u8> to Arc<[u8]> so the GPU renderer
+    /// shares the same underlying data as the Slint path instead of copying.
     pub icon_cache: &'a HashMap<String, (Arc<[u8]>, u32)>,
     pub loading_apps: &'a HashSet<String>,
     pub badges: &'a HashMap<String, BadgeUpdate>,

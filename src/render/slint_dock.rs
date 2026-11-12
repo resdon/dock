@@ -277,6 +277,9 @@ impl SlintDockRenderer {
         };
 
         // Build dock items from state, using pre-loaded RGBA icon pixels
+        // FIX (v1.5.5): icon_cache parameter type changed to Arc<[u8]> so the
+        // Slint renderer shares the same underlying data as the GPU path instead
+        // of copying the entire pixel buffer for each icon.
         let mut icon_cache_hits = 0u32;
         let mut icon_cache_misses = 0u32;
 

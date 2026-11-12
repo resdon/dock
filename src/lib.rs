@@ -15,6 +15,8 @@ pub mod diagnostics;
 pub mod error;
 pub mod errors;
 pub mod events;
+// FIX (v1.5.5): Frame scheduler enforces 75 FPS animation limit and eliminates
+// unnecessary redraws by tracking whether visual content actually changed.
 pub mod frame_scheduler;
 pub mod geometry;
 pub mod graphics;

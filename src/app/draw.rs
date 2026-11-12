@@ -146,6 +146,8 @@ impl AppState {
             };
 
             // Popups
+            // FIX (v1.5.5): Pass dmabuf_pool reference to all popup draw functions
+            // so they can reuse pooled DMABUF textures instead of allocating new ones.
             window_list::draw_window_list_popup(
                 dock_instance,
                 qh,

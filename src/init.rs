@@ -345,7 +345,11 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
         gpu_context: None,
         gpu_available: false,
         dmabuf_state: smithay_client_toolkit::dmabuf::DmabufState::new(&globals, &qh),
+        // FIX (v1.5.5): DMABUF texture pool with release tracking — reuses GPU
+        // textures across frames to eliminate per-frame Vulkan allocations.
         dmabuf_pool: crate::render::dmabuf_export::DmabufPool::new(),
+        // FIX (v1.5.5): Frame scheduler enforces 75 FPS animation limit and
+        // eliminates unnecessary redraws by tracking content changes.
         frame_scheduler: crate::frame_scheduler::FrameScheduler::new(),
         config: crate::config::DockConfig::load(),
         slint_renderer: None,
