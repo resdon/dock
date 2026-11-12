@@ -389,7 +389,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             status_sidebars_only = false;
         }
 
-        // Check if Slint animations are active — force redraw to advance animation frames
+        // Check if Slint animations are active — trigger animation-driven redraws
+        // at the frame scheduler's 75 FPS limit, not immediately.
+        // **FIX (v1.5.5)**: Removed `mark_content_changed()` call — it was telling
+        // the frame scheduler that content changed every frame, bypassing the 75 FPS
+        // limit entirely. Slint animations should be rate-limited like other animations.
         let slint_animations_active = state
             .slint_renderer
             .as_ref()
@@ -397,7 +401,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .unwrap_or(false);
         if slint_animations_active {
             state.needs_redraw = true;
-            frame_scheduler.mark_content_changed();
             status_sidebars_only = false;
         }
 
@@ -444,6 +447,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 && (menu_fade_animating || window_list_fade_animating);
             state.draw(&qh, !popup_only_animation && !status_sidebars_only);
             frame_scheduler.on_frame_rendered();
+            // **FIX (v1.5.5)**: Clear needs_redraw after drawing to prevent
+            // the render loop from spinning at ~9,440 FPS. The flag was only
+            // ever set to true, never cleared, so once set it stayed true forever.
+            state.needs_redraw = false;
             if state.window_list_state.is_open {
                 last_window_list_refresh = std::time::Instant::now();
             }
