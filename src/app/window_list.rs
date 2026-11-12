@@ -745,33 +745,63 @@ pub fn draw_window_list_popup(
 
                         let texture_id = if generation_changed {
                             // Fetch the latest frame data and upload it, replacing any cached texture.
-                            let frame_data = if has_valid_stream {
-                                pipewire_capture.and_then(|service| {
+                            // FIX (v1.5.5): Try BGRx direct upload first to eliminate two CPU
+                            // conversions per frame (BGRx→RGBA and RGBA→BGRA). The GPU downscales
+                            // via linear sampling by adjusting UV coordinates. Falls back to the
+                            // RGBA conversion path for non-BGRx formats.
+                            let mut bgfx_uploaded = false;
+                            if has_valid_stream {
+                                if let Some(service) = pipewire_capture.as_ref() {
                                     let row = *service.active_row.lock();
                                     let (orig_w, orig_h) =
                                         service.get_stream_dimensions(row).unwrap_or((0, 0));
-                                    service
-                                        .get_active_frame(Some(target_frame_w), Some(target_frame_h))
-                                        .map(|(w, h, rgba)| CaptureFrameData {
+                                    // Try raw BGRx upload — no CPU conversion needed
+                                    if let Some((w, h, bgrx)) = service.get_active_frame_bgfx() {
+                                        capture_frame_data = Some(CaptureFrameData {
                                             width: w,
                                             height: h,
-                                            rgba,
-                                            original_width: orig_w,
-                                            original_height: orig_h,
-                                        })
+                                            rgba: bgrx.clone(),
+                                            original_width: w,
+                                            original_height: h,
+                                        });
+                                        // FIX (v1.5.5): Upload BGRx bytes directly — no CPU conversion
+                                        if renderer.replace_cached_texture_from_bgfx(
+                                            &cache_key,
+                                            &bgrx,
+                                            w as u32,
+                                            h as u32,
+                                        ).is_some() {
+                                            bgfx_uploaded = true;
+                                        }
+                                    } else {
+                                        // Fall back to RGBA conversion for non-BGRx formats
+                                        let frame_data = service
+                                            .get_active_frame(Some(target_frame_w), Some(target_frame_h))
+                                            .map(|(w, h, rgba)| CaptureFrameData {
+                                                width: w,
+                                                height: h,
+                                                rgba,
+                                                original_width: orig_w,
+                                                original_height: orig_h,
+                                            });
+                                        capture_frame_data = frame_data;
+                                    }
+                                }
+                            }
+                            if !bgfx_uploaded {
+                                // Fall back to RGBA upload path if BGRx upload didn't happen
+                                capture_frame_data.as_ref().and_then(|fd| {
+                                    renderer.replace_cached_texture_from_pixels(
+                                        &cache_key,
+                                        &fd.rgba,
+                                        fd.width as u32,
+                                        fd.height as u32,
+                                    )
                                 })
                             } else {
-                                None
-                            };
-                            capture_frame_data = frame_data.clone();
-                            capture_frame_data.as_ref().and_then(|fd| {
-                                renderer.replace_cached_texture_from_pixels(
-                                    &cache_key,
-                                    &fd.rgba,
-                                    fd.width as u32,
-                                    fd.height as u32,
-                                )
-                            })
+                                // BGRx was uploaded — get the cached texture
+                                renderer.cached_texture(&cache_key)
+                            }
                         } else {
                             // Reuse the existing cached texture — frame hasn't changed.
                             renderer.cached_texture(&cache_key)

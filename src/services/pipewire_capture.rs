@@ -676,6 +676,75 @@ impl PipewireCaptureService {
         }
     }
 
+    /// **FIX (v1.5.5)**: Get the raw BGRx frame bytes directly from PipeWire
+    /// without any CPU-side conversion. Returns the original-resolution frame
+    /// so the GPU can downscale via linear sampling instead of the CPU running
+    /// bilinear interpolation.
+    ///
+    /// This eliminates two redundant CPU conversions per frame:
+    /// 1. BGRx→RGBA channel swap in convert_to_rgba()
+    /// 2. RGBA→BGRA channel swap in rgba_to_bgra() before GPU upload
+    ///
+    /// BGRx bytes are uploaded directly as Bgra8UnormSrgb texture. Since
+    /// BGRx byte layout (B=0, G=1, R=2, X=3) matches BGRA layout, the
+    /// fragment shader samples correct colors without reordering.
+    ///
+    /// Returns `None` if the frame format is not BGRx/BGRA (falls back to
+    /// the RGBA conversion path via `get_active_frame()`).
+    ///
+    /// # Returns
+    /// `(width, height, raw_bgrx_bytes)` — the original frame dimensions and
+    /// the raw pixel data ready for direct GPU upload.
+    pub fn get_active_frame_bgfx(
+        &self,
+    ) -> Option<(u32, u32, Arc<[u8]>)> {
+        let row = match self
+            .active_row
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+        {
+            Some(g) => *g,
+            None => return None,
+        };
+
+        // Lock stream_frames briefly to get the stream reference
+        let stream = {
+            let Some(frames) = self
+                .stream_frames
+                .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+            else {
+                return None;
+            };
+            if row >= frames.len() {
+                return None;
+            }
+            frames[row].clone()
+        };
+
+        // Use timeout lock — if a stream thread blocks frame, skip it
+        let frame_data = match stream
+            .frame
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+        {
+            Some(guard) => (*guard).clone(),
+            None => return None,
+        };
+
+        match frame_data {
+            Some((w, h, fmt, bytes)) => {
+                // Only BGRx and BGRA can be uploaded directly as Bgra8UnormSrgb
+                match fmt {
+                    pw::spa::param::video::VideoFormat::BGRx
+                    | pw::spa::param::video::VideoFormat::BGRA => {
+                        Some((w, h, bytes))
+                    }
+                    // For other formats (RGBA, RGB), fall back to conversion
+                    _ => None,
+                }
+            }
+            None => None,
+        }
+    }
+
     /// Get the original (pre-downscale) frame dimensions for a stream index.
     ///
     /// Returns `None` if the stream hasn't negotiated its video format yet.

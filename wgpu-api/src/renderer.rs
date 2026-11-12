@@ -379,6 +379,71 @@ impl Renderer {
         Some(id)
     }
 
+    /// **FIX (v1.5.5)**: Upload BGRA/BGRx bytes directly to GPU without any CPU
+    /// conversion. This eliminates two redundant CPU conversions per frame:
+    /// the BGRx→RGBA channel swap in convert_to_rgba() and the RGBA→BGRA swap
+    /// in rgba_to_bgra(). BGRx bytes are uploaded as Bgra8UnormSrgb where the
+    /// shader samples them as BGRA. Since BGRx has the same byte layout as BGRA
+    /// (B=0, G=1, R=2, X/A=3), no conversion is needed.
+    ///
+    /// The GPU fragment shader reorders channels at sample time:
+    /// `vec4(c.b, c.g, c.r, 1.0)` produces correct RGBA output.
+    ///
+    /// # Arguments
+    /// * `pixels` - Raw BGRA or BGRx pixel data (4 bytes per pixel, BGR order)
+    /// * `width` - Texture width in pixels
+    /// * `height` - Texture height in pixels
+    ///
+    /// # Returns
+    /// A TextureId that can be used in draw commands, or None if GPU backend is unavailable.
+    pub fn upload_bgfx_texture_from_pixels(
+        &mut self,
+        pixels: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Option<TextureId> {
+        let backend = self.gpu_backend.as_mut()?;
+
+        let id = TextureId::new(self.next_texture_id);
+        self.next_texture_id += 1;
+
+        // Create texture config with BGRA format — BGRx bytes match BGRA layout
+        let config = TextureConfig::new(width, height)
+            .with_format(crate::texture::TextureFormat::Bgra8UnormSrgb)
+            .with_usage(crate::texture::TextureUsage::upload_and_sample());
+
+        // Register with GPU backend
+        backend.register_texture(id, config.clone());
+
+        // Upload BGRx bytes directly — no CPU conversion needed
+        backend.upload_texture_data(id, pixels, width, height);
+
+        // Track in renderer's texture map
+        let texture = Texture::new(id, config);
+        self.textures.insert(id, texture);
+
+        Some(id)
+    }
+
+    /// **FIX (v1.5.5)**: Replace the cached texture with raw BGRA/BGRx bytes
+    /// directly, skipping all CPU-side channel conversions. Used for PipeWire
+    /// capture frames where the source is already BGRx.
+    pub fn replace_cached_texture_from_bgfx(
+        &mut self,
+        key: &str,
+        pixels: &[u8],
+        width: u32,
+        height: u32,
+    ) -> Option<TextureId> {
+        self.remove_cached_texture(key);
+        if let Some(id) = self.upload_bgfx_texture_from_pixels(pixels, width, height) {
+            self.cached_texture_ids.insert(key.to_owned(), id);
+            Some(id)
+        } else {
+            None
+        }
+    }
+
     /// Render a frame to the given surface.
     ///
     /// The callback receives a CommandBuffer that the application uses
