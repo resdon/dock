@@ -269,7 +269,9 @@ impl GpuBackend {
                 label: Some("wgpu-api Device"),
                 required_features: wgpu::Features::VULKAN_EXTERNAL_MEMORY_DMA_BUF,
                 required_limits: wgpu::Limits::downlevel_defaults(),
-                memory_hints: wgpu::MemoryHints::default(),
+                // FIX (v1.5.5): Use MemoryUsage instead of default (Performance) to tell the
+                // Vulkan allocator to favor smaller memory blocks and more aggressive cleanup.
+                memory_hints: wgpu::MemoryHints::MemoryUsage,
                 experimental_features: wgpu::ExperimentalFeatures::disabled(),
                 trace: wgpu::Trace::Off,
             })
@@ -738,7 +740,10 @@ impl GpuBackend {
             width: config.width,
             height: config.height,
             present_mode: wgpu::PresentMode::Fifo,
-            desired_maximum_frame_latency: 2,
+            // FIX (v1.5.5): Reduced from 2 to 1. Latency 2 gives ~3 swapchain images on
+            // Vulkan, but the dock renders infrequently (content hash caching skips ~95%).
+            // Latency 1 saves one frame buffer per surface (~8 MB for 1920×1080).
+            desired_maximum_frame_latency: 1,
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
             view_formats: vec![],
         };
