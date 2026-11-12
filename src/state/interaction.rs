@@ -4,6 +4,7 @@
 
 use super::AppState;
 use std::path::PathBuf;
+use std::sync::Arc;
 use wayland_client::QueueHandle;
 
 use crate::geometry::popup::{PopupGeometry, PopupType};
@@ -158,7 +159,7 @@ impl AppState {
             self.pending_icon_searches.remove(&result.app_id);
             let app_id = result.app_id.clone();
             self.icon_cache
-                .insert(app_id.clone(), (result.rgba, result.size));
+                .insert(app_id.clone(), (Arc::from(result.rgba.as_slice()), result.size));
             if let Some(anim) = result.animation {
                 self.animations.insert(app_id, anim);
             } else {

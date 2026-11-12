@@ -3,6 +3,8 @@
 //! Renders the window list popup and context menu to pixel buffers
 //! using the Slint font rasterizer for smooth text.
 
+use std::sync::Arc;
+
 use crate::config::{DockConfig, PopupBorderStyle};
 use crate::geometry::popup::PopupGeometry;
 use crate::geometry::popup::SurfaceGeometry;
@@ -157,11 +159,16 @@ fn radio_mark(canvas: &mut [u8], width: i32, height: i32, cx: i32, cy: i32, sele
 /// Holds the RGBA pixel data for a single captured window frame,
 /// downsampled by the configured `pipewire_scale_factor`. Used by
 /// `draw_capture_frame` to render the thumbnail at the top of the popup.
+///
+/// **FIX (v1.5.5)**: Changed `rgba` from `Vec<u8>` to `Arc<[u8]>` so that
+/// cloning `CaptureFrameData` clones a reference count instead of copying
+/// the entire pixel array (~8MB for 1080p). This eliminates the allocation
+/// hotspot in `get_active_frame()` on every cache hit.
 #[derive(Clone)]
 pub struct CaptureFrameData {
     pub width: u32,
     pub height: u32,
-    pub rgba: Vec<u8>,
+    pub rgba: Arc<[u8]>,
     /// Original window dimensions (before scaling) for aspect ratio calculation
     pub original_width: u32,
     pub original_height: u32,

@@ -17,6 +17,7 @@
 use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, Sender};
+use std::sync::Arc;
 use std::time::Instant;
 
 use crate::animations::IconAnimation;
@@ -217,7 +218,11 @@ pub struct AppState {
     pub process_sort: crate::models::ProcessSort,
 
     // Async Icon Loading & Caching
-    pub icon_cache: HashMap<String, (Vec<u8>, u32)>,
+    /// **FIX (v1.5.5)**: Changed from `Vec<u8>` to `Arc<[u8]>` so that the
+    /// icon cache stores reference-counted pixel data instead of owning a full
+    /// copy. This eliminates redundant copies when the same icon is read by
+    /// both the Slint and GPU rendering paths.
+    pub icon_cache: HashMap<String, (Arc<[u8]>, u32)>,
     pub pending_icon_searches: HashSet<String>,
     pub icon_rx: Receiver<IconLoadResult>,
     pub icon_tx: Sender<IconLoadResult>,

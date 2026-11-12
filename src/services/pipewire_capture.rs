@@ -551,7 +551,7 @@ impl PipewireCaptureService {
         &self,
         target_w: Option<u32>,
         target_h: Option<u32>,
-    ) -> Option<(u32, u32, Vec<u8>)> {
+    ) -> Option<(u32, u32, Arc<[u8]>)> {
         let row = match self
             .active_row
             .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
@@ -640,7 +640,7 @@ impl PipewireCaptureService {
                     None => {
                         // Can't read generation — skip cache, convert directly
                         let (out_w, out_h, rgba) = convert_to_rgba(w, h, fmt, &bytes, scale);
-                        return Some((out_w, out_h, rgba));
+                        return Some((out_w, out_h, Arc::from(rgba.as_slice())));
                     }
                 };
                 {
@@ -649,17 +649,16 @@ impl PipewireCaptureService {
                         None => {
                             // Can't read cache — skip cache, convert directly
                             let (out_w, out_h, rgba) = convert_to_rgba(w, h, fmt, &bytes, scale);
-                            return Some((out_w, out_h, rgba));
+                            return Some((out_w, out_h, Arc::from(rgba.as_slice())));
                         }
                     };
                     if let Some((cached_gen, cached_w, cached_h, cached_rgba)) = cache.as_ref() {
                         if *cached_gen == current_gen && *cached_w == w && *cached_h == h {
                             // FIX (v1.5.5): Cache hit — the raw frame hasn't changed since
-                            // the last conversion. Return the cached RGBA directly.
-                            // Note: to_vec() is still called here because the caller expects
-                            // ownership of the pixel data. The Arc<[u8]> avoids copying when
-                            // multiple callers read the same frame within one render cycle.
-                            return Some((*cached_w, *cached_h, cached_rgba.to_vec()));
+                            // the last conversion. Return a clone of the Arc<[u8]> directly.
+                            // Cloning an Arc increments the reference count (~10ns) instead
+                            // of copying the entire pixel array (~8MB for 1080p).
+                            return Some((*cached_w, *cached_h, cached_rgba.clone()));
                         }
                     }
                     drop(cache);
@@ -667,11 +666,11 @@ impl PipewireCaptureService {
 
                 // Cache miss or stale — convert and store the result
                 let (out_w, out_h, rgba) = convert_to_rgba(w, h, fmt, &bytes, scale);
-                let rgba_arc = Arc::from(rgba.as_slice());
+                let rgba_arc: Arc<[u8]> = Arc::from(rgba.as_slice());
                 if let Some(mut cache) = stream.cached_rgba.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) {
-                    cache.replace((current_gen, out_w, out_h, rgba_arc));
+                    cache.replace((current_gen, out_w, out_h, rgba_arc.clone()));
                 }
-                Some((out_w, out_h, rgba))
+                Some((out_w, out_h, rgba_arc))
             }
             None => None,
         }

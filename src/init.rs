@@ -42,6 +42,7 @@ use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 
@@ -200,7 +201,7 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
     let mut permanent_icon_cache = HashMap::new();
     for app_id in &pinned_vector {
         if let Some((rgba, size)) = crate::cache::load_cached_icon(app_id) {
-            permanent_icon_cache.insert(app_id.clone(), (rgba, size));
+            permanent_icon_cache.insert(app_id.clone(), (Arc::from(rgba.as_slice()), size));
         }
     }
 

@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use smithay_client_toolkit::{
     compositor::CompositorState, dmabuf::DmabufState, shell::WaylandSurface, shm::slot::SlotPool,
@@ -56,7 +57,7 @@ pub fn draw_main_dock(
     _subcompositor: Option<&wayland_client::protocol::wl_subcompositor::WlSubcompositor>,
     _font_manager: &mut FontManager,
     hide_state: &mut AutoHideState,
-    icon_cache: &HashMap<String, (Vec<u8>, u32)>,
+    icon_cache: &HashMap<String, (Arc<[u8]>, u32)>,
     _loading_apps: &HashSet<String>,
     _badges: &HashMap<String, BadgeUpdate>,
     is_dragging: bool,

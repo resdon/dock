@@ -4,6 +4,7 @@
 //! event loop that drives input processing, state updates, and frame rendering.
 
 use library::init::{initialize_app, AppContext};
+use std::sync::Arc;
 
 /// Application entry point.
 ///
@@ -315,7 +316,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Some(frame) = anim.current_frame() {
                     state
                         .icon_cache
-                        .insert(app_id.clone(), (frame.rgba.clone(), frame.width));
+                        .insert(app_id.clone(), (Arc::from(frame.rgba.as_slice()), frame.width));
                     animated_apps_changed = true;
                 }
             }

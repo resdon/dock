@@ -159,7 +159,7 @@ impl SlintDockRenderer {
         dock_state: &DockState,
         phys_width: u32,
         phys_height: u32,
-        icon_cache: &std::collections::HashMap<String, (Vec<u8>, u32)>,
+        icon_cache: &std::collections::HashMap<String, (std::sync::Arc<[u8]>, u32)>,
         hovered_index: Option<usize>,
         is_dragging: bool,
         dragged_app_id: Option<&String>,
@@ -306,7 +306,7 @@ impl SlintDockRenderer {
                     let s = *size as usize;
                     if rgba.len() == s * s * 4 {
                         let buf = SharedPixelBuffer::clone_from_slice(
-                            rgba.as_slice(),
+                            &rgba[..],
                             s as u32,
                             s as u32,
                         );

@@ -96,7 +96,8 @@ pub struct DockRenderState<'a> {
     /// Map from app_id to its running window states
     pub running_by_app: &'a std::collections::HashMap<String, Vec<&'a crate::state::WindowState>>,
     /// Cache of loaded icon images (RGBA bytes + width)
-    pub icon_cache: &'a std::collections::HashMap<String, (Vec<u8>, u32)>,
+    /// **FIX (v1.5.5)**: Changed from Vec<u8> to Arc<[u8]> for shared ownership.
+    pub icon_cache: &'a std::collections::HashMap<String, (std::sync::Arc<[u8]>, u32)>,
     /// Unity badge updates per app
     pub badges: &'a std::collections::HashMap<String, crate::models::BadgeUpdate>,
     /// Font manager for text rendering

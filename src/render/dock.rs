@@ -10,12 +10,13 @@ use crate::types::DockState;
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::sync::Arc;
 
 pub struct DockRenderResources<'a> {
     pub phys_width: u32,
     pub phys_height: u32,
     pub running_by_app: &'a HashMap<String, Vec<&'a WindowState>>,
-    pub icon_cache: &'a HashMap<String, (Vec<u8>, u32)>,
+    pub icon_cache: &'a HashMap<String, (Arc<[u8]>, u32)>,
     pub loading_apps: &'a HashSet<String>,
     pub badges: &'a HashMap<String, BadgeUpdate>,
     pub font_manager: &'a mut FontManager,
@@ -88,7 +89,7 @@ pub fn render_dock_items(canvas: &mut [u8], state: &DockState, res: &mut DockRen
         let cached_icon = res
             .icon_cache
             .get(&pin.app_id)
-            .map(|(rgba, size)| (rgba.as_slice(), *size));
+            .map(|(rgba, size)| (&rgba[..], *size));
         // Prefer the high-resolution desktop/icon-theme source over the often
         // small compositor-provided foreign-toplevel thumbnail icon.
         let icon = match (window_icon, cached_icon) {
@@ -303,7 +304,7 @@ pub fn render_dragged_icon(
     let cached_icon = res
         .icon_cache
         .get(drag_id)
-        .map(|(rgba, size)| (rgba.as_slice(), *size));
+        .map(|(rgba, size)| (&rgba[..], *size));
     let icon = match (window_icon, cached_icon) {
         (Some(window), Some(cached)) if cached.1 >= window.1 => Some(cached),
         (Some(window), _) => Some(window),

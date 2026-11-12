@@ -178,7 +178,7 @@ impl AppState {
 
         if let Some((rgba, size)) = self.icon_cache.get(&app_id).cloned() {
             if let Some(window) = self.windows.get_mut(&window_id) {
-                window.icon_rgba = Some(rgba);
+                window.icon_rgba = Some(rgba.to_vec());
                 window.icon_size = size;
                 window.icon_name = app_id;
                 window.icon_resolved = true;
