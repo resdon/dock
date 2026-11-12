@@ -31,6 +31,8 @@ pub fn draw_text(
         // called Font::rasterize() directly for every character on every
         // redraw, which made popup opening and hover changes CPU-heavy.
         let glyph = font_manager.get_glyph(c, glyph_size);
+        // FIX (v1.5.5): Changed from glyph.metrics.advance_width to glyph.advance_width
+        // after replacing fontdue with swash (flat fields instead of fontdue::Metrics).
         let advance = glyph.advance_width.round() as i32;
 
         if !glyph.bitmap.is_empty() {
@@ -126,6 +128,7 @@ impl World {
             }
 
             let glyph = self.font_manager.get_glyph(c, size);
+            // FIX (v1.5.5): Changed from glyph.metrics.advance_width to glyph.advance_width.
             let advance = glyph.advance_width.round() as usize;
 
             if !glyph.bitmap.is_empty() {
@@ -158,6 +161,8 @@ impl World {
         y: i32,
         color: [u8; 3],
     ) {
+        // FIX (v1.5.5): Changed from glyph.metrics.{width,height,xmin,ymin} to flat fields
+        // (width, height, bearing_x, bearing_y) after replacing fontdue with swash.
         let g_width = glyph.width as i32;
         let g_height = glyph.height as i32;
         if g_width <= 0 || g_height <= 0 || width == 0 || height == 0 {

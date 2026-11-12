@@ -36,6 +36,7 @@ sixel-rs = "0.5.0"
 icy_sixel = "0.5.0"
 walkdir = "2.5.0"
 resvg = "0.47.0"
+# FIX (v1.5.5): Replaced fontdue with swash to eliminate ~23 MB retained font geometry
 swash = "0.1.18"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0"

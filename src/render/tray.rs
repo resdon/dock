@@ -381,6 +381,8 @@ fn draw_rounded_panel_with_radius(
 fn measure_text(font_manager: &mut FontManager, text: &str, size: f32) -> i32 {
     text.chars()
         .map(|character| {
+            // FIX (v1.5.5): Changed from .metrics.advance_width to .advance_width
+            // after replacing fontdue with swash (flat fields instead of fontdue::Metrics).
             font_manager
                 .get_glyph(character, size)
                 .advance_width

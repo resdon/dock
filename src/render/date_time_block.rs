@@ -191,6 +191,7 @@ pub fn render_date_time_block(
             continue;
         }
         let glyph = font_manager.get_glyph(c, time_font_size as f32);
+        // FIX (v1.5.5): Changed from glyph.metrics.advance_width to glyph.advance_width.
         time_text_width += glyph.advance_width.round() as i32;
     }
     let time_text_x = (width as i32 - time_text_width) / 2;
@@ -215,6 +216,7 @@ pub fn render_date_time_block(
             continue;
         }
         let glyph = font_manager.get_glyph(c, date_font_size as f32);
+        // FIX (v1.5.5): Changed from glyph.metrics.advance_width to glyph.advance_width.
         day_month_text_width += glyph.advance_width.round() as i32;
     }
     let day_month_text_x = (width as i32 - day_month_text_width) / 2;
@@ -238,6 +240,7 @@ pub fn render_date_time_block(
             continue;
         }
         let glyph = font_manager.get_glyph(c, date_font_size as f32);
+        // FIX (v1.5.5): Changed from glyph.metrics.advance_width to glyph.advance_width.
         year_text_width += glyph.advance_width.round() as i32;
     }
     let year_text_x = (width as i32 - year_text_width) / 2;
