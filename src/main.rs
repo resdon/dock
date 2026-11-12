@@ -365,11 +365,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let menu_fade_animating = state.docks.iter().any(|dock| {
             (dock.menu_fade.current_alpha - dock.menu_fade.target_alpha).abs() > f32::EPSILON
                 && !dock.menu_fade.is_fully_hidden()
-                || (dock.menu_fade.current_alpha - dock.menu_fade.target_alpha).abs() > f32::EPSILON
         });
         let window_list_fade_animating = state.docks.iter().any(|dock| {
             (dock.window_list_fade.current_alpha - dock.window_list_fade.target_alpha).abs()
                 > f32::EPSILON
+                && !dock.window_list_fade.is_fully_hidden()
         });
 
         // Interaction for click handling — re-enabled
@@ -402,15 +402,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if proximity_changed {
             state.needs_redraw = true;
-            frame_scheduler.mark_content_changed();
+            // **FIX (v1.5.5)**: Only mark content changed for hover state changes
+            // (icon entered/left), not for every pixel movement. The frame scheduler
+            // will rate-limit pixel-movement redraws to 75 FPS via animations_active.
+            // Without this, pointer motion events from the compositor trigger
+            // immediate redraws at ~1000 FPS, bypassing the frame scheduler entirely.
+            let hover_changed = state.interaction.hovered_icon != state.interaction.last_hovered_icon;
+            if hover_changed {
+                state.interaction.last_hovered_icon = state.interaction.hovered_icon;
+                frame_scheduler.mark_content_changed();
+            }
             status_sidebars_only = false;
         }
 
+        // **FIX (v1.5.5)**: Tick animation counters each loop iteration so they
+        // decay even when the render path is skipped by the frame scheduler.
+        // Without this, has_active_animation() returns true forever, causing ~1000 FPS spinning.
+        if let Some(ref mut slint_renderer) = state.slint_renderer {
+            slint_renderer.tick_animations();
+        }
+        library::app::dock::tick_gpu_animations();
+
         // Check if Slint animations are active — trigger animation-driven redraws
         // at the frame scheduler's 75 FPS limit, not immediately.
-        // **FIX (v1.5.5)**: Removed `mark_content_changed()` call — it was telling
-        // the frame scheduler that content changed every frame, bypassing the 75 FPS
-        // limit entirely. Slint animations should be rate-limited like other animations.
         let slint_animations_active = state
             .slint_renderer
             .as_ref()
@@ -451,6 +465,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             || initial_dock_frame_due
             || menu_fade_animating
             || window_list_fade_animating;
+        
         let should_draw = frame_scheduler.should_render(needs_any_redraw) || initial_dock_frame_due;
 
         if should_draw {
@@ -491,12 +506,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Wait for layer configure — don't render yet
             16
         } else if state.window_list_state.is_open {
-            // Window list open — refresh at ~30 FPS for PipeWire frames
+            // Window list open — use frame scheduler for rate limiting, but cap
+            // at ~30 FPS minimum so PipeWire frames update smoothly.
+            // **FIX (v1.5.5)**: Previously hardcoded to 1-16ms, bypassing the
+            // frame scheduler entirely and causing ~780 FPS spinning.
+            let scheduler_timeout = frame_scheduler.poll_timeout(needs_any_redraw, animations_active);
             let ms = window_list_refresh_interval
                 .saturating_sub(last_window_list_refresh.elapsed())
                 .as_millis()
                 .min(i32::MAX as u128) as i32;
-            ms.clamp(1, 16)
+            // Use the frame scheduler timeout when idle, but refresh for PipeWire frames when due
+            scheduler_timeout.min(ms.clamp(1, 33))
         } else {
             // FIX (v1.5.5): Frame scheduler determines the timeout based on:
             // - Content changes: immediate wakeup

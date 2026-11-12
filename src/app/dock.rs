@@ -48,6 +48,23 @@ pub fn has_active_gpu_animation() -> bool {
             .any(|count| *count > 0)
 }
 
+/// Decrement GPU animation counters by one frame and remove expired entries.
+/// Call this each loop iteration so counters decay even when the GPU render
+/// path is skipped by the frame scheduler. Without this, has_active_gpu_animation()
+/// returns true forever, keeping animations_active true and preventing idle sleep.
+/// **FIX (v1.5.5)**: Added to prevent ~1200 FPS spinning caused by stale GPU animation counters.
+pub fn tick_gpu_animations() {
+    if let Some(anims) = GPU_BOUNCE_ANIMATIONS.get() {
+        anims.lock().retain(|_, c| *c > 0 && { *c = c.saturating_sub(1); *c > 0 });
+    }
+    if let Some(anims) = GPU_CLICK_ANIMATIONS.get() {
+        anims.lock().retain(|_, c| *c > 0 && { *c = c.saturating_sub(1); *c > 0 });
+    }
+    if let Some(anims) = GPU_MINIMIZE_ANIMATIONS.get() {
+        anims.lock().retain(|_, c| *c > 0 && { *c = c.saturating_sub(1); *c > 0 });
+    }
+}
+
 pub fn draw_main_dock(
     dock: &mut DockInstance,
     qh: &QueueHandle<AppState>,

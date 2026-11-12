@@ -125,6 +125,10 @@ pub enum MenuId {
 pub struct InteractionState {
     /// Index of the currently hovered dock icon
     pub hovered_icon: Option<usize>,
+    /// **FIX (v1.5.5)**: Last known hovered icon, used to detect hover state
+    /// changes (icon entered/left) vs pixel movement. Only hover state changes
+    /// trigger immediate redraws; pixel movement is rate-limited to 75 FPS.
+    pub last_hovered_icon: Option<usize>,
     /// Which popup menu is currently hovered (context menu or app menu)
     pub hovered_menu: Option<MenuId>,
     /// Index of the icon being dragged (for reordering)
@@ -143,6 +147,7 @@ impl InteractionState {
     pub fn new() -> Self {
         Self {
             hovered_icon: None,
+            last_hovered_icon: None,
             hovered_menu: None,
             dragging_icon: None,
             pointer_position: Point { x: 0.0, y: 0.0 },

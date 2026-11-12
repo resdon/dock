@@ -277,6 +277,8 @@ impl GpuBackend {
                     {
                         features |= wgpu::Features::TIMESTAMP_QUERY;
                     }
+                    #[cfg(not(feature = "profiler"))]
+                    let _ = &mut features; // silence unused_mut warning
                     features
                 },
                 required_limits: wgpu::Limits::downlevel_defaults(),

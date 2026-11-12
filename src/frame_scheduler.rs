@@ -211,10 +211,15 @@ impl FrameScheduler {
             return IDLE_TIMEOUT_MS;
         }
 
-        if self.content_changed || needs_redraw {
-            // Content changed — render as soon as possible
+        if self.content_changed {
+            // Content actually changed — render as soon as possible
             return ANIMATION_MIN_TIMEOUT_MS;
         }
+
+        // **FIX (v1.5.5)**: Do NOT return minimal timeout for needs_redraw alone.
+        // needs_redraw can be set by pointer motion events even when nothing visual
+        // changed. Only content_changed should trigger immediate wakeup.
+        // needs_redraw without content_changed is handled by the animation rate limiter below.
 
         if animations_active {
             // Animation-driven — respect frame rate limit
@@ -233,6 +238,12 @@ impl FrameScheduler {
 
         // Fallback: idle timeout
         IDLE_TIMEOUT_MS
+    }
+
+    /// Check if content has changed (for debugging).
+    #[allow(dead_code)]
+    pub fn content_changed(&self) -> bool {
+        self.content_changed
     }
 
     /// Reset the scheduler state. Useful when the display configuration changes

@@ -631,6 +631,18 @@ impl SlintDockRenderer {
             .insert(app_id.to_string(), total_frames.max(1));
     }
 
+    /// Decrement animation counters by one frame.
+    /// Call this each loop iteration so counters decay even when the Slint
+    /// render path is not used (GPU path). Without this, has_active_animation()
+    /// returns true forever when the GPU path skips the Slint renderer.
+    /// **FIX (v1.5.5)**: Added to prevent ~1000 FPS spinning caused by
+    /// perpetually-active Slint animation counters.
+    pub fn tick_animations(&mut self) {
+        self.bounce_animations.retain(|_, c| *c > 0 && { *c -= 1; true });
+        self.click_animations.retain(|_, c| *c > 0 && { *c -= 1; true });
+        self.minimize_animations.retain(|_, c| *c > 0 && { *c -= 1; true });
+    }
+
     /// Check if any animations are currently active (bounce, click, or minimize).
     /// Returns true if the render loop should continue redrawing at 60fps.
     pub fn has_active_animation(&self) -> bool {
