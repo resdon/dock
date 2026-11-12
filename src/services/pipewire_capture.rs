@@ -1639,6 +1639,7 @@ fn spawn_stream_thread(fd: OwnedFd, node_id: u32, idx: usize, stream_data: Arc<S
 
         let frame_data_for_process = Arc::clone(&stream_data.frame);
         let generation_for_process = Arc::clone(&stream_data.generation);
+        let cached_rgba_for_process = Arc::clone(&stream_data.cached_rgba);
         let format_info_for_process = Arc::clone(&stream_data.format_info);
         let format_info_for_param = Arc::clone(&stream_data.format_info);
         let ready_flag_for_param = Arc::clone(&stream_data.ready);
@@ -1720,6 +1721,14 @@ fn spawn_stream_thread(fd: OwnedFd, node_id: u32, idx: usize, stream_data: Arc<S
                                             guard.replace((w, h, fmt, bytes));
                                         });
                                     let _ = result;
+                                    // FIX (v1.5.5): Invalidate the cached RGBA when a new raw
+                                    // frame arrives. The raw frame and cached RGBA both exist
+                                    // simultaneously (~16MB for 1080p). By clearing the cache,
+                                    // the next get_active_frame() call will rebuild it from
+                                    // the new raw frame. This avoids holding both copies at once.
+                                    if let Some(mut cache) = cached_rgba_for_process.try_lock() {
+                                        *cache = None;
+                                    }
                                     // FIX (v1.5.5): Increment generation counter so the render thread
                                     // can detect that a new frame has arrived and skip redundant work
                                     // when the generation hasn't changed.
