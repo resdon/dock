@@ -264,22 +264,9 @@ impl AppState {
                 &self.dmabuf_pool,
             );
 
-            // Status widget bar: four utility controls (rclone, process, audio, Bluetooth)
-            // in a persistent subsurface to the right of the tray app box.
-            super::widget_bar::draw_status_widget_bar(
-                dock_instance,
-                qh,
-                &mut self.pool,
-                &self.compositor_state,
-                self.subcompositor.as_ref(),
-                &self.bluetooth_snapshot,
-                self.tray_items.len(),
-                true,
-                self.hide_state.current_alpha,
-                self.gpu_context.as_mut(),
-                &self.dmabuf_state,
-                &self.dmabuf_pool,
-            );
+            // Side bars: remaining widgets are disabled.
+            // super::widget_bar::draw_status_widget_bar(...);
+            // side_bars::draw_bottom_system_bar(...);
 
             // Dashed block — separate layer surface to the left of the dock
             super::dashed_block::draw_dashed_block(
