@@ -117,7 +117,13 @@ pub struct StreamFrameData {
     /// popup. Without the generation counter, the popup had no way to detect
     /// whether the captured window's content changed, so it either rendered
     /// every frame (wasting GPU work) or froze (skipping valid updates).
-    pub generation: Arc<parking_lot::Mutex<u64>>,
+    ///
+    /// **FIX**: Uses `AtomicU64` instead of `Mutex<u64>` to eliminate lock
+    /// contention between the stream thread (writer) and render thread (reader).
+    /// The previous blocking `.lock()` in the process callback could starve the
+    /// stream thread when the render thread held the mutex, causing FPS to drop
+    /// to 2-3fps over time.
+    pub generation: Arc<std::sync::atomic::AtomicU64>,
     /// Cached RGBA conversion result: (generation, width, height, rgba bytes).
     /// When the generation matches the current frame's generation, the cached
     /// result is returned directly without re-running the expensive conversion.
@@ -278,13 +284,13 @@ impl PipewireCaptureService {
 
     /// Set whether the window list popup is currently open.
     ///
-    /// When `true`, the active (hovered) stream captures at full FPS and
-    /// inactive streams capture at a reduced rate (1 frame per 500ms).
-    /// When `false`, all streams capture at 1 frame per 500ms to keep
+    /// When `true`, the active (hovered) stream captures at 75 FPS and
+    /// inactive streams capture at a reduced rate (1 frame per 500ms, ~2 FPS).
+    /// When `false`, all streams capture at 1 frame per 500ms (~2 FPS) to keep
     /// thumbnails fresh when the user opens the popup.
     ///
     /// **FIX (v1.5.5)**: Called when the window list popup opens or closes
-    /// so stream threads can stop processing frames when not visible.
+    /// so stream threads can adjust their capture rate dynamically.
     pub fn set_window_list_open(&self, open: bool) {
         self.window_list_open.store(open, Ordering::Release);
     }
@@ -653,14 +659,7 @@ impl PipewireCaptureService {
                 // hasn't changed, the cached result is returned directly.
                 // Use timeout locks so the render thread never blocks indefinitely
                 // waiting for the stream thread's mutex.
-                let current_gen = match stream.generation.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) {
-                    Some(g) => *g,
-                    None => {
-                        // Can't read generation — skip cache, convert directly
-                        let (out_w, out_h, rgba) = convert_to_rgba(w, h, fmt, &bytes, scale);
-                        return Some((out_w, out_h, Arc::from(rgba.as_slice())));
-                    }
-                };
+                let current_gen = stream.generation.load(std::sync::atomic::Ordering::Acquire);
                 {
                     let cache = match stream.cached_rgba.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) {
                         Some(g) => g,
@@ -806,11 +805,7 @@ impl PipewireCaptureService {
         if idx >= frames.len() {
             return None;
         }
-        let gen = match frames[idx].generation.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) {
-            Some(g) => *g,
-            None => return None,
-        };
-        Some(gen)
+        Some(frames[idx].generation.load(std::sync::atomic::Ordering::Acquire))
     }
 
     /// Strip the XDG Desktop Portal hash suffix from a PipeWire stream title.
@@ -1083,7 +1078,7 @@ pub async fn init_capture_service(
         };
         let stream_data = Arc::new(StreamFrameData {
             frame: Arc::new(Mutex::new(None)),
-            generation: Arc::new(parking_lot::Mutex::new(0)),
+            generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             cached_rgba: Arc::new(parking_lot::Mutex::new(None)),
             format_info: Arc::new(Mutex::new(None)),
             ready: Arc::new(AtomicBool::new(false)),
@@ -1688,16 +1683,17 @@ async fn capture_windows_range(
 /// Shared state passed to stream threads for visibility-based capture control.
 ///
 /// **FIX (v1.5.5)**: Each stream thread needs to know whether the window list
-/// popup is open and whether this stream is the active (hovered) row. Only the
-/// active stream should capture at full FPS; inactive streams capture at 1 frame
-/// per 2 seconds; all streams skip when the popup is closed.
+/// popup is open. When open, all streams capture at full FPS (75 FPS).
+/// When closed, primed streams capture at ~2 FPS to keep thumbnails fresh.
 #[derive(Clone)]
 struct StreamVisibility {
     /// Whether the window list popup is currently open.
     window_list_open: Arc<AtomicBool>,
-    /// Index of the currently hovered row in the popup.
+    /// Index of the currently hovered row in the popup (used by get_active_frame).
+    #[allow(dead_code)]
     active_row: Arc<Mutex<usize>>,
-    /// This stream's index in the stream_frames vector.
+    /// This stream's index in the stream_frames vector (used for logging).
+    #[allow(dead_code)]
     stream_idx: usize,
 }
 
@@ -1799,12 +1795,11 @@ fn spawn_stream_thread(
             })
             .process(move |stream, _| {
                 // FIX (v1.5.5): Check visibility before processing frames.
-                // When the popup is closed, capture at a low rate (1 frame per 2 seconds)
+                // When the popup is closed, capture at a low rate (1 frame per 500ms, ~2 FPS)
                 // so thumbnails remain available even for unfocused windows (e.g., Wezterm
                 // terminals that don't receive compositor frames when not focused).
-                // When open, only the active (hovered) stream processes at full FPS.
-                // Inactive streams process at 1 frame per 2 seconds to keep a
-                // recent thumbnail when the user switches to them.
+                // When the popup is open, all streams capture at full FPS (75 FPS) so all
+                // thumbnails update smoothly.
                 //
                 // CRITICAL: Unprimed streams (no valid frame yet) always capture regardless
                 // of popup state. Wayland compositors don't send frames for unfocused windows
@@ -1814,7 +1809,7 @@ fn spawn_stream_thread(
                 let popup_open = visibility.window_list_open.load(Ordering::Acquire);
                 if !popup_open && primed {
                     // Popup closed and stream already has a frame — capture at a low rate
-                    // so the thumbnail stays fresh when the user switches to this row.
+                    // so the thumbnail stays fresh when the user opens the popup.
                     if last_inactive_frame_time.elapsed()
                         < std::time::Duration::from_millis(500)
                     {
@@ -1825,25 +1820,12 @@ fn spawn_stream_thread(
                 }
                 // If popup is closed and not yet primed, fall through to capture the frame.
                 // The primed flag is set only after a valid frame is stored below.
-
-                // Check if this stream is the active (hovered) row
-                let is_active = {
-                    if let Some(active) = visibility.active_row.try_lock() {
-                        *active == visibility.stream_idx
-                    } else {
-                        true // If we can't read active_row, assume active to be safe
-                    }
-                };
-
-                if !is_active {
-                    // Inactive stream — only process 1 frame per 500ms so thumbnails
-                    // stay reasonably fresh when the user switches to this row.
-                    if last_inactive_frame_time.elapsed() < std::time::Duration::from_millis(500) {
-                        let _ = stream.dequeue_buffer();
-                        return;
-                    }
-                    last_inactive_frame_time = Instant::now();
-                }
+                //
+                // FIX: When the popup is open, do NOT throttle based on active_row.
+                // The previous code throttled non-hovered streams to 500ms even when the
+                // popup was open, causing all streams except the hovered one to drop to ~2 FPS.
+                // This happened because active_row retained a stale value when the user
+                // hovered over items without valid PipeWire streams.
 
                 match stream.dequeue_buffer() {
                     None => {}
@@ -1899,20 +1881,12 @@ fn spawn_stream_thread(
                                     if let Some(mut cache) = cached_rgba_for_process.try_lock() {
                                         *cache = None;
                                     }
-                                    // FIX (v1.5.5): Increment generation counter so the render thread
+                                    // FIX: Increment generation counter atomically so the render thread
                                     // can detect that a new frame has arrived and skip redundant work
-                                    // when the generation hasn't changed.
-                                    // Use a blocking lock here — the increment is a fast u64 write
-                                    // that completes instantly. If we used try_lock and failed,
-                                    // the frame would update but the generation would stay the same,
-                                    // causing the content hash to match and the render to skip forever.
-                                    // This was the root cause of the "frames don't update" bug:
-                                    // try_lock() could fail when the render thread held the mutex,
-                                    // so the generation never incremented, and the popup froze.
-                                    {
-                                        let mut gen = generation_for_process.lock();
-                                        *gen += 1;
-                                    }
+                                    // when the generation hasn't changed. AtomicU64 eliminates the
+                                    // blocking lock that could starve the stream thread and cause
+                                    // FPS to drop to 2-3fps over time.
+                                    generation_for_process.fetch_add(1, std::sync::atomic::Ordering::Release);
                                     frames_in_fps_window += 1;
                                     let elapsed = fps_window_start.elapsed();
                                     if elapsed >= std::time::Duration::from_secs(2) {
@@ -1981,9 +1955,9 @@ fn spawn_stream_thread(
                 Choice,
                 Range,
                 Fraction,
-                pw::spa::utils::Fraction { num: 60, denom: 1 },
+                pw::spa::utils::Fraction { num: 75, denom: 1 },
                 pw::spa::utils::Fraction { num: 0, denom: 1 },
-                pw::spa::utils::Fraction { num: 60, denom: 1 }
+                pw::spa::utils::Fraction { num: 75, denom: 1 }
             ),
         );
         let values: Vec<u8> = pw::spa::pod::serialize::PodSerializer::serialize(
@@ -2009,9 +1983,10 @@ fn spawn_stream_thread(
             return;
         }
 
-        // Run the main loop persistently
+        // Run the main loop persistently.
+        // 13ms timeout supports up to ~75 FPS (1000/75 ≈ 13.3ms per frame).
         loop {
-            let timeout = pw::loop_::Timeout::Finite(std::time::Duration::from_millis(16));
+            let timeout = pw::loop_::Timeout::Finite(std::time::Duration::from_millis(13));
             loop_.iterate(timeout);
         }
     });
@@ -2507,7 +2482,7 @@ pub async fn start_monitor_inner(
                     };
                     let stream_data = Arc::new(StreamFrameData {
                         frame: Arc::new(Mutex::new(None)),
-                        generation: Arc::new(parking_lot::Mutex::new(0)),
+                        generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                         cached_rgba: Arc::new(parking_lot::Mutex::new(None)),
                         format_info: Arc::new(Mutex::new(None)),
                         ready: Arc::new(AtomicBool::new(false)),
