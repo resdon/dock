@@ -251,7 +251,6 @@ impl AppState {
             (app_row_width + 24).max(72) as u32
         };
         let hidden = self.hide_state.is_fully_hidden();
-        let qh = self.qh.clone();
         let compositor_state = &self.compositor_state;
         let mut changed = false;
 
@@ -292,6 +291,8 @@ impl AppState {
             if hidden {
                 // Resizing a hidden layer surface must also resize its 3px
                 // bottom reveal region; Wayland preserves the old region.
+                // Clone qh only when actually needed (width changed and dock is hidden).
+                let qh = self.qh.clone();
                 dock.update_input_region(compositor_state, true, 0, desired_width as i32, &qh);
             } else {
                 dock.surface.wl_surface().commit();
@@ -299,11 +300,10 @@ impl AppState {
             changed = true;
         }
 
-        // Reposition both blocks to follow the dock's new width.
-        self.sync_dashed_block_position();
-        self.sync_date_time_block_position();
-
         if changed {
+            // Reposition both blocks to follow the dock's new width.
+            self.sync_dashed_block_position();
+            self.sync_date_time_block_position();
             self.needs_redraw = true;
         }
         changed

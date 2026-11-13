@@ -298,6 +298,12 @@ pub struct DockInstance {
     pub menu_fade: FadeAnimation,
     pub window_list_fade: FadeAnimation,
     pub active_hovered_app: Option<(usize, String)>,
+    /// Last date/time minute key to skip rendering when unchanged.
+    pub last_date_time_key: Option<(i32, i32, i32, i32, i32)>,
+    /// Last alpha value for date/time block to skip rendering when unchanged.
+    pub last_date_time_alpha: f32,
+    /// Last alpha value for dashed block to skip rendering when unchanged.
+    pub last_dashed_block_alpha: f32,
 }
 
 impl DockInstance {

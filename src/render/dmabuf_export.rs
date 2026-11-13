@@ -47,29 +47,27 @@ pub struct DmabufRenderTarget {
 /// this pool maintains a bounded set of pre-allocated texture slots per dimension.
 /// When the compositor sends `wl_buffer.release`, the slot becomes available again.
 ///
-/// Pool size is capped at 2 slots per dimension (double-buffering), which is
-/// sufficient for the compositor to always have one buffer displayed while the
-/// other is being rendered to. This eliminates the per-frame Vulkan allocation
-/// (~1-2ms) and Wayland protocol round-trip for buffer creation.
+/// Pool size is capped at 3 slots per dimension (triple-buffering), so the
+/// compositor holding 2 buffers doesn't force the fallback path on the third.
 ///
 /// **FIX (v1.5.5)**: Global memory budget prevents unbounded accumulation of
 /// different popup dimensions. When total pooled memory exceeds the budget,
 /// the least-recently-used dimension is evicted.
 ///
+/// **FIX (v1.5.5)**: Fallback textures are bounded to a maximum of 10 entries
+/// with LRU eviction, preventing unbounded RAM growth.
+///
 /// Architecture:
 /// - Each slot holds a `(texture, export_info)` pair from `wgpu_dmabuf::export()`.
-/// - On acquire, the pool returns the texture for rendering and the export_info
-///   for creating a new WlBuffer via `params.create_immed()`.
-/// - The created WlBuffer is tracked by its ID. When `released` fires, the slot
-///   is marked available.
-/// - Since `create_immed()` creates a new WlBuffer proxy each time, the old
-///   buffer is destroyed on release, and a new one is created from the same FDs.
+/// - On acquire, the pool marks the slot unavailable and returns it.
+/// - `set_buffer_id` takes the slot index to target the exact slot.
+/// - When `released` fires, that specific slot is marked available.
 /// - LRU tracking evicts stale dimensions when the global budget is exceeded.
 ///
 /// The pool uses `RefCell` for interior mutability to avoid borrow conflicts
 /// with the renderer's mutable borrow of the backend.
 pub struct DmabufPool {
-    /// Pooled slots keyed by (width, height). Each dimension has up to 2 slots.
+    /// Pooled slots keyed by (width, height). Each dimension has up to 3 slots.
     slots: std::cell::RefCell<HashMap<(u32, u32), DimensionEntry>>,
     /// FIX (v1.5.5): Global memory budget in bytes (default 32 MB).
     /// When total pooled memory exceeds this, the LRU dimension is evicted.
@@ -78,8 +76,11 @@ pub struct DmabufPool {
     current_memory_bytes: std::cell::Cell<u64>,
     /// FIX (v1.5.5): Monotonically increasing access counter for LRU tracking.
     access_counter: std::cell::Cell<u64>,
+    /// FIX (v1.5.5): Bounded fallback queue with LRU eviction.
+    fallback_queue: std::cell::RefCell<std::collections::VecDeque<FallbackEntry>>,
+    /// FIX (v1.5.5): Maximum number of fallback textures allowed.
+    max_fallback_count: u64,
     /// FIX (v1.5.5): Total bytes allocated by fallback (unpooled) textures.
-    /// Tracked separately so the memory budget is a true hard limit.
     fallback_memory_bytes: std::cell::Cell<u64>,
     /// FIX (v1.5.5): Number of active fallback (unpooled) textures.
     fallback_count: std::cell::Cell<u64>,
@@ -100,6 +101,14 @@ struct DmabufSlot {
     memory_bytes: u64,
 }
 
+/// FIX (v1.5.5): Entry in the bounded fallback queue.
+struct FallbackEntry {
+    /// The WlBuffer ID for this fallback texture.
+    buffer_id: wayland_client::backend::ObjectId,
+    /// Memory used by this fallback texture.
+    memory_bytes: u64,
+}
+
 /// FIX (v1.5.5): Dimension entry with LRU tracking for eviction.
 struct DimensionEntry {
     slots: Vec<DmabufSlot>,
@@ -117,6 +126,8 @@ impl DmabufPool {
             max_memory_bytes: 32 * 1024 * 1024,
             current_memory_bytes: std::cell::Cell::new(0),
             access_counter: std::cell::Cell::new(0),
+            fallback_queue: std::cell::RefCell::new(std::collections::VecDeque::new()),
+            max_fallback_count: 10,
             fallback_memory_bytes: std::cell::Cell::new(0),
             fallback_count: std::cell::Cell::new(0),
         }
@@ -128,35 +139,69 @@ impl DmabufPool {
     /// Without this, buffers would never be reused because the pool wouldn't
     /// know when the compositor is done reading them.
     pub fn on_buffer_release(&self, buffer_id: wayland_client::backend::ObjectId) {
-        let mut slots = self.slots.borrow_mut();
-        for (_key, entry) in slots.iter_mut() {
-            for slot in entry.slots.iter_mut() {
-                if slot.last_buffer_id.as_ref() == Some(&buffer_id) {
-                    slot.available = true;
-                    slot.last_buffer_id = None;
-                    return;
+        // First check pooled slots
+        {
+            let mut slots = self.slots.borrow_mut();
+            for (_key, entry) in slots.iter_mut() {
+                for slot in entry.slots.iter_mut() {
+                    if slot.last_buffer_id.as_ref() == Some(&buffer_id) {
+                        slot.available = true;
+                        slot.last_buffer_id = None;
+                        return;
+                    }
                 }
+            }
+        }
+        // Then check fallback queue
+        {
+            let mut queue = self.fallback_queue.borrow_mut();
+            if let Some(pos) = queue.iter().position(|e| e.buffer_id == buffer_id) {
+                let entry = queue.remove(pos).unwrap();
+                self.fallback_memory_bytes.set(
+                    self.fallback_memory_bytes.get().saturating_sub(entry.memory_bytes),
+                );
+                self.fallback_count.set(self.fallback_count.get().saturating_sub(1));
             }
         }
     }
 
-    /// FIX (v1.5.5): Set the buffer ID for the most recently acquired slot.
+    /// FIX (v1.5.5): Set the buffer ID for a specific slot.
     ///
     /// Called after creating a WlBuffer from a pooled slot's export info.
-    /// This enables the pool to track which slot corresponds to which buffer,
+    /// Takes the dimension key and slot index to target the exact slot,
     /// so that `on_buffer_release` can mark the correct slot as available.
-    pub fn set_buffer_id(&self, buffer_id: wayland_client::backend::ObjectId) {
+    pub fn set_buffer_id(
+        &self,
+        key: (u32, u32),
+        slot_index: usize,
+        buffer_id: wayland_client::backend::ObjectId,
+    ) {
         let mut slots = self.slots.borrow_mut();
-        for (_key, entry) in slots.iter_mut() {
+        if let Some(entry) = slots.get_mut(&key) {
             entry.last_access = self.access_counter.get();
             self.access_counter.set(self.access_counter.get() + 1);
-            for slot in entry.slots.iter_mut() {
-                if slot.last_buffer_id.is_none() && !slot.available {
-                    slot.last_buffer_id = Some(buffer_id);
-                    return;
-                }
+            if slot_index < entry.slots.len() {
+                entry.slots[slot_index].last_buffer_id = Some(buffer_id);
             }
         }
+    }
+
+    /// FIX (v1.5.5): Set the buffer ID for a fallback (unpooled) texture.
+    pub fn set_fallback_buffer_id(&self, buffer_id: wayland_client::backend::ObjectId, memory_bytes: u64) {
+        let mut queue = self.fallback_queue.borrow_mut();
+        // Evict oldest if at capacity
+        while queue.len() >= self.max_fallback_count as usize {
+            if let Some(entry) = queue.pop_front() {
+                self.fallback_memory_bytes.set(
+                    self.fallback_memory_bytes.get().saturating_sub(entry.memory_bytes),
+                );
+                self.fallback_count.set(self.fallback_count.get().saturating_sub(1));
+            }
+        }
+        queue.push_back(FallbackEntry {
+            buffer_id,
+            memory_bytes,
+        });
     }
 
     /// FIX (v1.5.5): Evict the least-recently-used dimension until total memory
@@ -194,8 +239,9 @@ impl DmabufPool {
     /// is evicted before creating a new slot.
     ///
     /// # Returns
-    /// A tuple of (texture, export_info) where the texture is for rendering
-    /// and the export_info contains the FDs for creating a WlBuffer.
+    /// A tuple of (texture, export_info, slot_handle) where the texture is for rendering,
+    /// export_info contains the FDs for creating a WlBuffer, and slot_handle identifies
+    /// the pool slot (Some) or fallback (None) for buffer ID tracking.
     pub fn acquire_texture(
         &self,
         adapter: &wgpu::Adapter,
@@ -204,7 +250,7 @@ impl DmabufPool {
         dmabuf_state: &DmabufState,
         width: u32,
         height: u32,
-    ) -> Result<(wgpu::Texture, DmabufExportInfo), Box<dyn std::error::Error>> {
+    ) -> Result<(wgpu::Texture, DmabufExportInfo, Option<((u32, u32), usize)>), Box<dyn std::error::Error>> {
         let key = (width, height);
         let slot_memory = (width as u64) * (height as u64) * 4;
 
@@ -219,18 +265,25 @@ impl DmabufPool {
 
         // Try to find an available slot
         {
-            let slots = self.slots.borrow();
-            if let Some(entry) = slots.get(&key) {
-                for slot in entry.slots.iter() {
+            let mut slots = self.slots.borrow_mut();
+            if let Some(entry) = slots.get_mut(&key) {
+                for (idx, slot) in entry.slots.iter_mut().enumerate() {
                     if slot.available {
-                        return Ok((slot.texture.clone(), slot.export_info.clone()));
+                        slot.available = false;
+                        entry.last_access = self.access_counter.get();
+                        self.access_counter.set(self.access_counter.get() + 1);
+                        return Ok((
+                            slot.texture.clone(),
+                            slot.export_info.clone(),
+                            Some((key, idx)),
+                        ));
                     }
                 }
             }
         }
 
         // FIX (v1.5.5): Evict LRU dimensions if needed to make room
-        self.evict_lru(slot_memory * 2); // 2 slots per dimension
+        self.evict_lru(slot_memory * 3); // 3 slots per dimension
 
         // No available slot — create a new one if under the limit
         let mut slots = self.slots.borrow_mut();
@@ -241,14 +294,15 @@ impl DmabufPool {
         entry.last_access = self.access_counter.get();
         self.access_counter.set(self.access_counter.get() + 1);
 
-        // Pool size limit: 2 slots per dimension (double-buffering)
-        if entry.slots.len() < 2 {
+        // Pool size limit: 3 slots per dimension (triple-buffering)
+        if entry.slots.len() < 3 {
             let target = create_dmabuf_slot(adapter, device, qh, dmabuf_state, width, height, slot_memory)?;
             let texture = target.texture.clone();
             let info = target.export_info.clone();
+            let idx = entry.slots.len();
             self.current_memory_bytes.set(self.current_memory_bytes.get() + slot_memory);
             entry.slots.push(target);
-            return Ok((texture, info));
+            return Ok((texture, info, Some((key, idx))));
         }
 
         // All slots in-use — fall back to creating a new texture
@@ -267,7 +321,7 @@ impl DmabufPool {
                 self.fallback_memory_bytes.get() / (1024 * 1024),
             );
         }
-        Ok((texture, info))
+        Ok((texture, info, None))
     }
 
     /// Clear the pool, dropping all cached textures and buffers.

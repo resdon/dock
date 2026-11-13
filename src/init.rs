@@ -608,6 +608,9 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
             menu_fade: FadeAnimation::new_hidden(0.0, 1.0, 1.0),
             window_list_fade: FadeAnimation::new_hidden(0.0, 1.0, 1.0),
             active_hovered_app: None,
+            last_date_time_key: None,
+            last_date_time_alpha: 0.0,
+            last_dashed_block_alpha: 0.0,
         });
     }
 

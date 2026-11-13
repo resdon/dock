@@ -209,7 +209,7 @@ pub fn draw_main_dock(
         for pin in &dock_state.pins {
             if let Some((pixels, size)) = icon_cache.get(&pin.app_id) {
                 let icon_size = *size;
-                tracing::debug!(
+                tracing::trace!(
                     "GPU upload {}: {}x{} pixels",
                     pin.app_id,
                     icon_size,
@@ -220,15 +220,15 @@ pub fn draw_main_dock(
                     .upload_texture_from_pixels_cached(&cache_key, pixels, icon_size, icon_size)
                 {
                     icon_textures.insert(pin.app_id.clone(), texture_id);
-                    tracing::debug!("  -> TextureId {}", texture_id.as_u64());
+                    tracing::trace!("  -> TextureId {}", texture_id.as_u64());
                 } else {
                     tracing::warn!("  -> FAILED to upload texture for {}", pin.app_id);
                 }
             } else {
-                tracing::debug!("GPU cache miss for {}", pin.app_id);
+                tracing::trace!("GPU cache miss for {}", pin.app_id);
             }
         }
-        tracing::info!(
+        tracing::trace!(
             "GPU: {} textures uploaded, {} draw commands",
             icon_textures.len(),
             draw_commands.len()
@@ -701,7 +701,7 @@ pub fn draw_main_dock(
             }
         }
 
-        tracing::info!(
+        tracing::trace!(
             "GPU render_to_dmabuf: {}x{} {} commands",
             phys_width,
             phys_height,
@@ -713,7 +713,7 @@ pub fn draw_main_dock(
             (gpu_renderer.adapter(), gpu_renderer.device())
         {
             match dmabuf_pool.acquire_texture(adapter, device, qh, dmabuf_state, phys_width, phys_height) {
-                Ok((texture, export_info)) => {
+                Ok((texture, export_info, slot_handle)) => {
                     // Track the buffer ID for release tracking
                     if gpu_renderer.render_to_texture(&texture, phys_width, phys_height, 1.0, &draw_commands).is_err() {
                         tracing::warn!("GPU render_to_texture (pooled) failed");
@@ -722,7 +722,13 @@ pub fn draw_main_dock(
                         match crate::render::dmabuf_export::create_buffer_from_export(dmabuf_state, qh, &export_info) {
                             Ok(wl_buffer) => {
                                 // FIX (v1.5.5): Track buffer ID so the pool knows which slot to release
-                                dmabuf_pool.set_buffer_id(wl_buffer.id());
+                                match slot_handle {
+                                    Some((k, idx)) => dmabuf_pool.set_buffer_id(k, idx, wl_buffer.id()),
+                                    None => dmabuf_pool.set_fallback_buffer_id(
+                                        wl_buffer.id(),
+                                        (phys_width as u64) * (phys_height as u64) * 4,
+                                    ),
+                                }
                                 // **FIX (v1.5.5)**: Mark that the first GPU buffer was committed
                                 // so initial_dock_frame_due becomes false. Without this flag,
                                 // current_buffer stays None (GPU path uses WlBuffer, not SHM Buffer),

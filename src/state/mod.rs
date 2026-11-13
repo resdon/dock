@@ -297,6 +297,34 @@ impl AppState {
         self.cached_running_by_app.clone().unwrap_or_default()
     }
 
+    /// Returns the cached dock app list by taking ownership, avoiding a clone.
+    /// The caller must return the value via `put_apps_in_dock_back()` when done.
+    pub fn take_apps_in_dock_cache(&mut self) -> Vec<String> {
+        if self.cached_apps_in_dock.is_none() || self.cached_running_by_app.is_none() {
+            self.refresh_dock_app_cache();
+        }
+        self.cached_apps_in_dock.take().unwrap_or_default()
+    }
+
+    /// Returns the cached running-by-app map by taking ownership, avoiding a clone.
+    /// The caller must return the value via `put_running_by_app_back()` when done.
+    pub fn take_running_by_app_cache(&mut self) -> HashMap<String, Vec<ObjectId>> {
+        if self.cached_running_by_app.is_none() || self.cached_apps_in_dock.is_none() {
+            self.refresh_dock_app_cache();
+        }
+        self.cached_running_by_app.take().unwrap_or_default()
+    }
+
+    /// Returns a previously taken apps-in-dock cache back to its slot.
+    pub fn put_apps_in_dock_back(&mut self, apps: Vec<String>) {
+        self.cached_apps_in_dock = Some(apps);
+    }
+
+    /// Returns a previously taken running-by-app cache back to its slot.
+    pub fn put_running_by_app_back(&mut self, map: HashMap<String, Vec<ObjectId>>) {
+        self.cached_running_by_app = Some(map);
+    }
+
     pub fn apply_tray_snapshot(&mut self, snapshot: crate::models::TraySnapshot) -> bool {
         let changed = self.tray_items.len() != snapshot.items.len()
             || self

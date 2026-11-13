@@ -220,7 +220,7 @@ pub fn draw_rclone_popup(
                 adapter, device, qh, dmabuf_state,
                 phys_width as u32, phys_height as u32,
             ) {
-                Ok((texture, export_info)) => {
+                Ok((texture, export_info, slot_handle)) => {
                     if renderer.render_to_texture(
                         &texture, phys_width as u32, phys_height as u32,
                         1.0, &draw_commands,
@@ -231,7 +231,13 @@ pub fn draw_rclone_popup(
                             dmabuf_state, qh, &export_info,
                         ) {
                             Ok(wl_buffer) => {
-                                dmabuf_pool.set_buffer_id(wl_buffer.id());
+                                match slot_handle {
+                                    Some((k, idx)) => dmabuf_pool.set_buffer_id(k, idx, wl_buffer.id()),
+                                    None => dmabuf_pool.set_fallback_buffer_id(
+                                        wl_buffer.id(),
+                                        (phys_width as u64) * (phys_height as u64) * 4,
+                                    ),
+                                }
                                 popup.surface.set_buffer_scale(scale.round().max(1.0) as i32);
                                 popup.surface.attach(Some(&wl_buffer), 0, 0);
                                 popup.surface.damage_buffer(0, 0, phys_width, phys_height);

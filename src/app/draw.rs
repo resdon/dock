@@ -40,7 +40,7 @@ impl AppState {
         let box_size = self.config.icon_size as i32;
         let spacing = self.config.spacing as i32;
 
-        let apps_in_dock = self.get_apps_in_dock();
+        let apps_in_dock = self.take_apps_in_dock_cache();
         for app_id in &apps_in_dock {
             if !self.icon_cache.contains_key(app_id) {
                 self.request_icon_load(app_id.to_string());
@@ -85,13 +85,7 @@ impl AppState {
             }
         }
 
-        let computed_running_by_app;
-        let running_by_app = if let Some(cached) = self.cached_running_by_app.as_ref() {
-            cached
-        } else {
-            computed_running_by_app = self.compute_running_by_app_uncached();
-            &computed_running_by_app
-        };
+        let running_by_app = self.take_running_by_app_cache();
 
         for dock_instance in &mut self.docks {
             if !dock_instance.configured {
@@ -127,7 +121,7 @@ impl AppState {
 
             let frame = DrawFrameData {
                 apps_in_dock: &apps_in_dock,
-                running_by_app,
+                running_by_app: &running_by_app,
                 windows: &self.windows,
                 phys_width,
                 phys_height,
@@ -288,5 +282,9 @@ impl AppState {
 
         self.hide_state.just_became_visible = false;
         self.hide_state.just_became_hidden = false;
+
+        // Return cached data to avoid rebuilding on next frame
+        self.put_apps_in_dock_back(apps_in_dock);
+        self.put_running_by_app_back(running_by_app);
     }
 }

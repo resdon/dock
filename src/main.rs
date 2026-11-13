@@ -333,11 +333,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // --- HOVER & MENU STATE / TARGET UPDATE --- Re-enabled for clicks
-        let apps_in_dock = state.get_apps_in_dock_cached();
+        let apps_in_dock = state.take_apps_in_dock_cache();
         if state.sync_dock_surface_width(apps_in_dock.len()) {
             status_sidebars_only = false;
         }
-        let running_by_app = state.get_running_by_app_cached();
+        let running_by_app = state.take_running_by_app_cache();
 
         // Advance hide/show and popup lifecycle state transitions.
         state.update_animations(&qh);
@@ -505,6 +505,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             library::services::resource_monitor::increment_frame_counter();
             let _ = state.connection.flush();
         }
+
+        // Return cached data to avoid rebuilding on next frame
+        state.put_apps_in_dock_back(apps_in_dock);
+        state.put_running_by_app_back(running_by_app);
 
         // 6. POLL: sleep until Wayland input, a timer, or the next actual
         // animation frame.  When idle, sleep longer to reduce CPU usage.

@@ -60,6 +60,12 @@ pub fn draw_dashed_block(
     let phys_height = (block_height as f64 * scale).round().max(1.0) as i32;
     let a = alpha.clamp(0.0, 1.0);
 
+    // Skip rendering if alpha hasn't changed — the dashed block content is static.
+    if a == dock.last_dashed_block_alpha {
+        return;
+    }
+    dock.last_dashed_block_alpha = a;
+
     // Try GPU rendering via DMA-BUF first
     // FIX (v1.5.5): Use pooled DMABUF texture instead of allocating a new one.
     // The pool reuses textures across frames, eliminating per-frame Vulkan allocations.
@@ -214,7 +220,7 @@ pub fn draw_dashed_block(
         });
 
         if let (Some(adapter), Some(device)) = (renderer.adapter(), renderer.device()) {
-            if let Ok((texture, export_info)) = dmabuf_pool.acquire_texture(
+            if let Ok((texture, export_info, slot_handle)) = dmabuf_pool.acquire_texture(
                 adapter, device, qh, dmabuf_state, phys_width as u32, phys_height as u32,
             ) {
                 if renderer.render_to_texture(
@@ -224,7 +230,13 @@ pub fn draw_dashed_block(
                     if let Ok(wl_buffer) = crate::render::dmabuf_export::create_buffer_from_export(
                         dmabuf_state, qh, &export_info,
                     ) {
-                        dmabuf_pool.set_buffer_id(wl_buffer.id());
+                        match slot_handle {
+                            Some((k, idx)) => dmabuf_pool.set_buffer_id(k, idx, wl_buffer.id()),
+                            None => dmabuf_pool.set_fallback_buffer_id(
+                                wl_buffer.id(),
+                                (phys_width as u64) * (phys_height as u64) * 4,
+                            ),
+                        }
                         block
                             .surface
                             .wl_surface()
