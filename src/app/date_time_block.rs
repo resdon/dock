@@ -137,7 +137,7 @@ pub fn draw_date_time_block(
 
     // Try GPU rendering via DMA-BUF first
     if let Some(ref mut renderer) = gpu_context {
-        let mut draw_commands = Vec::new();
+        let mut draw_commands = Vec::with_capacity(4);
 
         // Text: time, day+month, year
         let text_color = DockConfig::parse_hex_color(&config.date_time_block_text_color);

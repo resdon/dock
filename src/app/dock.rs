@@ -173,7 +173,9 @@ pub fn draw_main_dock(
     // - Icons: 48px base size, y=6px, 12px left padding, 8px spacing between items
     // - Running dashes: 32px span centered under each icon, y=58px, 2px height
     // - Hover highlight: colored outline behind icon when hovered
-    let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::new();
+    // Pre-allocate capacity: 1 background + N*(icon + hover + dashes + badge)
+    let mut draw_commands: Vec<wgpu_api::DrawCommand> =
+        Vec::with_capacity(dock_state.pins.len() * 6 + 1);
 
     // GPU rendering: upload icon textures, build draw commands, and render
     let gpu_rendered = if let Some(gpu_renderer) = render_gpu {
@@ -205,7 +207,8 @@ pub fn draw_main_dock(
         }
 
         // Upload icon textures from cache
-        let mut icon_textures: HashMap<String, wgpu_api::TextureId> = HashMap::new();
+        let mut icon_textures: HashMap<String, wgpu_api::TextureId> =
+            HashMap::with_capacity(dock_state.pins.len());
         for pin in &dock_state.pins {
             if let Some((pixels, size)) = icon_cache.get(&pin.app_id) {
                 let icon_size = *size;

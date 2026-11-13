@@ -61,11 +61,10 @@ fn query_pss_mb() -> Option<u64> {
     for line in contents.lines() {
         if line.starts_with("Pss:") {
             // Format: "Pss:         152345 kB"
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 2 {
-                if let Ok(kb) = parts[1].parse::<u64>() {
-                    return Some(kb / 1024);
-                }
+            // Avoid Vec allocation — use iterator instead of collect()
+            let kb = line.split_whitespace().nth(1)?;
+            if let Ok(val) = kb.parse::<u64>() {
+                return Some(val / 1024);
             }
         }
     }
@@ -102,8 +101,8 @@ fn query_vram_mb(pid: u32) -> Option<u64> {
         }
 
         // Parse the used memory value — typically appears as a number followed by "MiB" or "MB"
-        let parts: Vec<&str> = trimmed.split_whitespace().collect();
-        for part in &parts {
+        // Avoid Vec allocation — use iterator instead of collect()
+        for part in trimmed.split_whitespace() {
             if let Ok(val) = part
                 .trim_end_matches('M')
                 .trim_end_matches("iB")

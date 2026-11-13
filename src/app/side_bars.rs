@@ -184,7 +184,7 @@ pub fn draw_left_tray_bar(
 
     // GPU rendering path via wgpu-api DMA-BUF
     let gpu_success = if !items.is_empty() {
-        let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::new();
+        let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::with_capacity(16);
         let scale_f32 = scale as f32;
         let width = phys_width as f32;
         let height = phys_height as f32;
@@ -358,7 +358,7 @@ pub fn draw_bottom_system_bar(
     let gpu_success = if !visible {
         false
     } else {
-        let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::new();
+        let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::with_capacity(16);
         let scale_f32 = scale as f32;
         let width = phys_width as f32;
         let height = phys_height as f32;

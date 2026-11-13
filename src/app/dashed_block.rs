@@ -70,7 +70,7 @@ pub fn draw_dashed_block(
     // FIX (v1.5.5): Use pooled DMABUF texture instead of allocating a new one.
     // The pool reuses textures across frames, eliminating per-frame Vulkan allocations.
     if let Some(ref mut renderer) = gpu_context {
-        let mut draw_commands = Vec::new();
+        let mut draw_commands = Vec::with_capacity(4);
 
         // Render SVG icons as textures and add them as DrawCommand::Image
         let w = block_width as usize;

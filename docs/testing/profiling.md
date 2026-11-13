@@ -167,6 +167,56 @@ ms_print massif.out.* | gnuplot -e "set terminal svg; set output 'massif.svg'; p
 - Memory growth over time → leak indicator
 - Allocation hotspots — which functions allocate most
 
+### cargo flamegraph — Visual CPU Profiling
+
+Generate SVG flamegraphs from `perf` data for visual CPU hotspot identification. Requires `perf` to work correctly on the system.
+
+**Installation:**
+```bash
+cargo install flamegraph
+```
+
+**Build & Run:**
+```bash
+cargo build --release
+sudo cargo flamegraph --bin dock
+# Generates flamegraph.svg in the current directory
+```
+
+**Alternative (if perf hangs):** Use `samply` instead, which doesn't depend on `perf`:
+```bash
+cargo build --profile profiling
+samply record ./target/profiling/dock
+```
+
+**What to look for:**
+- Widest functions at the bottom → highest CPU consumers
+- Render loop functions → per-frame allocations or redundant work
+- Text shaping or icon loading → unexpected CPU cost
+
+### cargo bloat — Binary Size Analysis
+
+Identify which functions and dependencies contribute most to binary size. Useful for understanding release build size and dependency overhead.
+
+**Installation:**
+```bash
+cargo install cargo-bloat
+```
+
+**Run:**
+```bash
+cargo bloat --release --crates
+# Shows top crates by size contribution
+
+cargo bloat --release --functions
+# Shows top functions by size
+```
+
+**What to look for:**
+- Large dependencies that could be replaced or feature-trimmed
+- Unnecessary crate features inflating binary size
+- Functions with unexpectedly large code size
+
 ### Linux perf — CPU Hotspots
 
 Find CPU hotspots, unnecessary event processing, excessive wakeups, and expensive functions.
@@ -326,6 +376,8 @@ After profiling, fill in this template:
 |------|---------|---------|--------|
 | Tracy | `--features tracy` | CPU/GPU timeline, frame timing | Live capture |
 | Samply | `cargo install samply` | CPU flamegraphs | Interactive SVG |
+| cargo flamegraph | `cargo install flamegraph` | Visual CPU profiling (perf-based) | SVG flamegraph |
+| cargo bloat | `cargo install cargo-bloat` | Binary size analysis | Text report |
 | wgpu-profiler | `--features wgpu-api/profiler` | GPU pass timing | Timestamp queries |
 | nvtop | `sudo pacman -S nvtop` | GPU/VRAM monitoring | Real-time TUI |
 | DHAT | `--features dhat-heap` | Heap allocation patterns | JSON report |

@@ -66,7 +66,7 @@ impl PointerHandler for AppState {
 
         // Step 3: Hover & Proximity Checks
         layer_changed |=
-            interaction::update(self, &apps_in_dock, &running_by_app, scale_factor, layout);
+            interaction::update(self, scale_factor, layout);
 
         // Step 4: Scroll Events
         layer_changed |= scroll::handle_scroll_events(

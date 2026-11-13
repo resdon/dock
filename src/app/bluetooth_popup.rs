@@ -175,7 +175,7 @@ pub fn draw_bluetooth_popup(
     let scale_f32 = scale as f32;
     let width = phys_width as f32;
     let height = phys_height as f32;
-    let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::new();
+    let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::with_capacity(16);
 
     // Parse colors from config
     let popup_bg = DockConfig::parse_hex_color(&config.background_color);

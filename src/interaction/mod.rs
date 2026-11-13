@@ -9,9 +9,7 @@ pub mod timers;
 
 pub use timers::{reset_all, update_timers};
 
-use std::collections::HashMap;
 use std::time::Duration;
-use wayland_client::backend::ObjectId;
 
 use crate::AppState;
 
@@ -30,8 +28,6 @@ use crate::AppState;
 /// 6. Handle dock auto-hide/show transitions
 pub fn update(
     state: &mut AppState,
-    _apps_in_dock: &[String],
-    _running_by_app: &HashMap<String, Vec<ObjectId>>,
     _scale_factor: f32,
     _layout: (i32, i32, i32, i32),
 ) -> bool {

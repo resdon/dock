@@ -79,7 +79,7 @@ pub fn draw_audio_player_bar(
     bar.width = PLAYER_WIDTH as u32;
     bar.height = PLAYER_HEIGHT as u32;
     // GPU rendering via wgpu-api using DrawCommands
-    let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::new();
+    let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::with_capacity(8);
     let scale_f32 = scale as f32;
 
     // Background panel

@@ -103,7 +103,7 @@ pub fn draw_status_widget_bar(
 
     // GPU rendering path via wgpu-api DMA-BUF
     let gpu_success = {
-        let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::new();
+        let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::with_capacity(8);
         let scale_f32 = scale as f32;
         let width = phys_width as f32;
         let height = phys_height as f32;

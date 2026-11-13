@@ -91,8 +91,15 @@ dhat = { version = "0.3", optional = true }
 tracy = ["dep:tracy-client"]
 dhat-heap = ["dep:dhat"]
 
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+
 [profile.profiling]
 inherits = "release"
 debug = true
+strip = false
 
 

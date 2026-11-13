@@ -179,7 +179,7 @@ pub fn draw_context_menu_popup(
             }
 
             // Build draw commands for the context menu
-            let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::new();
+            let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::with_capacity(16);
             let config = frame.config;
             let scale = frame.dock_scale as f32;
             let width = geom.phys_width as f32;

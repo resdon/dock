@@ -113,7 +113,7 @@ pub fn draw_process_popup(
     popup.height = PROCESS_POPUP_HEIGHT as u32;
 
     // GPU rendering via wgpu-api using DrawCommands
-    let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::new();
+    let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::with_capacity(16);
     let scale_f32 = scale as f32;
     let width = phys_width as f32;
     let height = phys_height as f32;

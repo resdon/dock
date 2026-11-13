@@ -18,10 +18,8 @@ all: build
 # Precompiled release archives contain no Cargo.toml, so this is a no-op.
 build:
 	@if [ -f Cargo.toml ]; then \
-		if [ ! -f target/release/$(BINARY_NAME) ] && [ ! -f target/debug/$(BINARY_NAME) ]; then \
-			echo "Compiling $(BINARY_NAME)..."; \
-			cargo build --release; \
-		fi \
+		echo "Compiling $(BINARY_NAME) (release)..."; \
+		cargo build --release; \
 	fi
 
 install: build
@@ -31,10 +29,8 @@ install: build
 		install -m 755 $(BINARY_NAME) $(FINAL_BINDIR)/$(BINARY_NAME); \
 	elif [ -f target/release/$(BINARY_NAME) ]; then \
 		install -m 755 target/release/$(BINARY_NAME) $(FINAL_BINDIR)/$(BINARY_NAME); \
-	elif [ -f target/debug/$(BINARY_NAME) ]; then \
-		install -m 755 target/debug/$(BINARY_NAME) $(FINAL_BINDIR)/$(BINARY_NAME); \
 	else \
-		echo "Build artifact not found for $(BINARY_NAME)" >&2; \
+		echo "Release build artifact not found for $(BINARY_NAME). Run 'make build' first." >&2; \
 		exit 1; \
 	fi
 	

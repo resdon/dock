@@ -94,10 +94,16 @@ pub fn read_proc_environment(pid: ProcessId) -> HashMap<String, String> {
     result
 }
 
+/// Normalize a token for comparison: lowercase, ASCII alphanumeric only.
+///
+/// Single-pass implementation avoiding the intermediate String allocation
+/// from `to_lowercase()`. Pre-allocates capacity to avoid reallocations.
 pub fn normalize_token(value: &str) -> String {
-    value
-        .to_lowercase()
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric())
-        .collect()
+    let mut output = String::with_capacity(value.len());
+    for c in value.chars().flat_map(char::to_lowercase) {
+        if c.is_ascii_alphanumeric() {
+            output.push(c);
+        }
+    }
+    output
 }

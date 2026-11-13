@@ -513,7 +513,7 @@ pub fn draw_window_list_popup(
                     let _expected_len = geom.phys_width as usize * geom.phys_height as usize * 4;
 
                     // Build draw commands for the window list popup
-                    let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::new();
+                    let mut draw_commands: Vec<wgpu_api::DrawCommand> = Vec::with_capacity(32);
                     let config = frame.config;
                     let scale = frame.dock_scale as f32;
                     let width = geom.phys_width as f32;

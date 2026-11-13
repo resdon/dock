@@ -379,8 +379,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let proximity_changed = library::interaction::update(
             &mut state,
-            &apps_in_dock,
-            &running_by_app,
             scale_factor,
             (dock_height, box_size, spacing, start_offset_x),
         );
