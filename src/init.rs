@@ -347,7 +347,6 @@ pub fn initialize_app() -> Result<AppContext, Box<dyn std::error::Error>> {
         pipewire_capture: None,
         cached_apps_in_dock: None,
         cached_running_by_app: None,
-        cached_pipewire_window_ids: None,
     };
 
     // FIX (v1.5.5): Slint has been removed. All rendering is via wgpu GPU.

@@ -58,31 +58,33 @@ impl AppState {
         // below may set it again to schedule a follow-up frame.
         self.needs_redraw = false;
 
-        // Refresh PipeWire's title-to-ID lookup only after window state changes.
+        // Refresh PipeWire's title-to-ID lookup every frame.
+        // Previously this was cached, but the cache would go stale when windows
+        // opened/closed between draw cycles and the event_compat.rs update ran
+        // before the window was registered in self.windows. Rebuilding every
+        // frame is cheap (just a HashMap clear + repopulate) and ensures the
+        // map always reflects the current window list.
         if let Some(pw) = self.pipewire_capture.as_ref() {
-            if self.cached_pipewire_window_ids.is_none() {
-                // Build the window-to-ID map sorted by title so that when multiple windows
-                // share the same title, they are bound to PipeWire streams in a deterministic
-                // order that matches the popup's title-sorted display order. Without this sort,
-                // HashMap iteration order is arbitrary, causing stream 0 to bind to a random
-                // window among those with the same title, breaking the popup grid mapping.
-                let mut window_ids: Vec<(String, u32)> = self
-                    .windows
-                    .iter()
-                    .filter_map(|(id, win)| {
-                        if win.title.is_empty() {
-                            None
-                        } else {
-                            Some((win.title.clone(), id.0.protocol_id()))
-                        }
-                    })
-                    .collect();
-                window_ids.sort_by(|(a_title, a_id), (b_title, b_id)| {
-                    a_title.cmp(b_title).then(a_id.cmp(b_id))
-                });
-                pw.update_window_ids(&window_ids);
-                self.cached_pipewire_window_ids = Some(window_ids);
-            }
+            // Build the window-to-ID map sorted by title so that when multiple windows
+            // share the same title, they are bound to PipeWire streams in a deterministic
+            // order that matches the popup's title-sorted display order. Without this sort,
+            // HashMap iteration order is arbitrary, causing stream 0 to bind to a random
+            // window among those with the same title, breaking the popup grid mapping.
+            let mut window_ids: Vec<(String, u32)> = self
+                .windows
+                .iter()
+                .filter_map(|(id, win)| {
+                    if win.title.is_empty() {
+                        None
+                    } else {
+                        Some((win.title.clone(), id.0.protocol_id()))
+                    }
+                })
+                .collect();
+            window_ids.sort_by(|(a_title, a_id), (b_title, b_id)| {
+                a_title.cmp(b_title).then(a_id.cmp(b_id))
+            });
+            pw.update_window_ids(&window_ids);
         }
 
         let running_by_app = self.take_running_by_app_cache();

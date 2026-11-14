@@ -258,12 +258,59 @@ impl AppState {
             self.request_icon_load(app_id.to_string());
         }
 
-        // Signal PipeWire to probe for new windows when a window is created.
+        // Signal PipeWire to probe for new windows when a window is created,
+        // and to clean up stale streams when a window is closed.
         // The monitor task reacts to this signal and incrementally adds streams
         // for newly opened windows without disrupting existing capture streams.
-        if matches!(&event, WindowEvent::Created { .. }) {
+        // On close, Phase 1 removes the stale stream and Phase 3 can retry capture
+        // for the reopened window if it appears in the portal.
+        if matches!(&event, WindowEvent::Created { .. } | WindowEvent::Closed { .. }) {
             if let Some(pw) = &self.pipewire_capture {
-                pw.request_probe();
+                // On close, unbind the window from its PipeWire stream so the
+                // binding doesn't point to a stale stream after the window closes.
+                if let WindowEvent::Closed { window_id } = &event {
+                    pw.unbind_window(window_id.0.protocol_id());
+                    // Bypass debounce on close so the monitor runs immediately to
+                    // clean up the stale stream. If the window reopens quickly,
+                    // the monitor must have already removed the old stream before
+                    // the new window ID appears, otherwise Phase 1 may not remove
+                    // it (title still matches the chooser) and Phase 2 won't add
+                    // a new one (count already matches).
+                    pw.request_probe_immediate();
+                } else {
+                    pw.request_probe();
+                }
+            }
+        }
+
+        // Update the PipeWire window_ids map immediately when windows are created,
+        // closed, or renamed. This ensures the async monitor task always sees the
+        // current window-to-ID mapping, even if it runs before the next draw cycle.
+        // Previously, only the cache was invalidated and the map was rebuilt on the
+        // next draw — but the monitor could run first with a stale map, causing new
+        // streams to bind to the wrong window or not at all.
+        if matches!(&event, WindowEvent::Created { .. }
+            | WindowEvent::Closed { .. }
+            | WindowEvent::TitleChanged { .. })
+        {
+            // Update the PipeWire window_ids map immediately so the async monitor
+            // sees the current state without waiting for the next draw cycle.
+            if let Some(pw) = &self.pipewire_capture {
+                let mut window_ids: Vec<(String, u32)> = self
+                    .windows
+                    .iter()
+                    .filter_map(|(id, win)| {
+                        if win.title.is_empty() {
+                            None
+                        } else {
+                            Some((win.title.clone(), id.0.protocol_id()))
+                        }
+                    })
+                    .collect();
+                window_ids.sort_by(|(a_title, a_id), (b_title, b_id)| {
+                    a_title.cmp(b_title).then(a_id.cmp(b_id))
+                });
+                pw.update_window_ids(&window_ids);
             }
         }
 

@@ -27,7 +27,7 @@ use smithay_client_toolkit::{
 use wayland_client::QueueHandle;
 
 use crate::config::DockConfig;
-use crate::models::system::WindowId;
+use crate::models::system::{AppId, WindowId};
 use crate::services::pipewire_capture::PipewireCaptureService;
 use crate::state::AppState;
 
@@ -128,13 +128,18 @@ pub fn draw_window_list_popup(
                                     if !used_streams.contains(&b) {
                                         Some(b)
                                     } else {
-                                        // Bound stream already used by another window,
-                                        // fall back to title match
-                                        service.find_stream_by_title(&w.title, &used_streams)
+                                        // Bound stream already used by another window —
+                                        // do NOT fall back to title match. Showing another
+                                        // stream's frame is worse than showing no frame.
+                                        None
                                     }
                                 } else {
-                                    // No binding yet, fall back to title match
-                                    service.find_stream_by_title(&w.title, &used_streams)
+                                    // No binding yet — try title match only as a last resort.
+                                    // Title matching is fragile when multiple windows share
+                                    // similar titles, so we only use it when there's no binding.
+                                    // Pass window_id so bound streams belonging to other windows
+                                    // are not stolen by title matching.
+                                    service.find_stream_by_title(&w.title, &used_streams, Some(window_id))
                                 }
                             };
 
@@ -146,13 +151,14 @@ pub fn draw_window_list_popup(
                         }
 
                         // Third pass: if multiple windows share the same title and one has
-                        // a stream, the others can share it (e.g., 3 pcmanfm "dock" windows
-                        // but only 2 PipeWire streams because portal can't distinguish them).
-                        let title_to_stream: Vec<(String, usize)> = matched
+                        // a stream, the others can share it ONLY if they belong to the same
+                        // app (same app_id). This prevents pcmanfm from showing dock's frame
+                        // just because both happen to have title "dock".
+                        let title_to_stream: Vec<(String, Option<AppId>, usize)> = matched
                             .iter()
                             .filter_map(|e| {
                                 if e.1.is_some() && !e.0.title.is_empty() {
-                                    e.1.map(|idx| (e.0.title.clone(), idx))
+                                    e.1.map(|idx| (e.0.title.clone(), e.0.app_id.clone(), idx))
                                 } else {
                                     None
                                 }
@@ -162,8 +168,8 @@ pub fn draw_window_list_popup(
                             if entry.1.is_none() && !entry.0.title.is_empty() {
                                 if let Some(idx) = title_to_stream
                                     .iter()
-                                    .find(|(t, _)| *t == entry.0.title)
-                                    .map(|(_, i)| *i)
+                                    .find(|(t, app_id, _)| *t == entry.0.title && *app_id == entry.0.app_id)
+                                    .map(|(_, _, i)| *i)
                                 {
                                     entry.1 = Some(idx);
                                 }
@@ -394,25 +400,17 @@ pub fn draw_window_list_popup(
                         false
                     };
 
-                    // Set the active row based on hovered item for PipeWire capture switching.
-                    // Only set active row if we have a valid PipeWire stream match.
-                    // Validate hovered_item is within bounds before accessing matched_windows.
-                    let has_valid_stream =
+                    // Determine the hovered window's stream index for PipeWire frame fetching.
+                    // Use the stream index from matched_windows directly — do NOT use the
+                    // shared active_row, which can be changed by the monitor between setting
+                    // and fetching, causing the wrong stream's frame to be returned.
+                    let hovered_stream_idx: Option<usize> =
                         if use_matched && (hovered_item as usize) < matched_windows.len() {
-                            matched_windows[hovered_item as usize].1.is_some()
+                            matched_windows[hovered_item as usize].1
                         } else {
-                            false
+                            None
                         };
-                    if let Some(service) = pipewire_capture {
-                        if has_valid_stream
-                            && use_matched
-                            && (hovered_item as usize) < matched_windows.len()
-                        {
-                            if let Some(stream_idx) = matched_windows[hovered_item as usize].1 {
-                                service.set_active_row(stream_idx);
-                            }
-                        }
-                    }
+                    let has_valid_stream = hovered_stream_idx.is_some();
 
                     // Calculate the target frame display dimensions (inner area, excluding border).
                     // These are passed to get_active_frame() so it can downscale the capture
@@ -474,21 +472,14 @@ pub fn draw_window_list_popup(
                     // the root cause of the "popup freezes" bug: when try_lock() failed, the
                     // generation read returned None, and without this fallback the popup would
                     // skip rendering on a stale hash indefinitely.
-                    let (capture_generation, gen_available) = if has_valid_stream
-                        && use_matched
-                        && (hovered_item as usize) < matched_windows.len()
-                    {
-                        if let Some(stream_idx) = matched_windows[hovered_item as usize].1 {
-                            if let Some(gen) = pipewire_capture
-                                .and_then(|service| service.get_stream_generation(stream_idx))
-                            {
-                                (gen, true)
-                            } else {
-                                // Generation unavailable — force re-render
-                                (0, false)
-                            }
+                    let (capture_generation, gen_available) = if let Some(stream_idx) = hovered_stream_idx {
+                        if let Some(gen) = pipewire_capture
+                            .and_then(|service| service.get_stream_generation(stream_idx))
+                        {
+                            (gen, true)
                         } else {
-                            (0, true)
+                            // Generation unavailable — force re-render
+                            (0, false)
                         }
                     } else {
                         (0, true)
@@ -721,81 +712,76 @@ pub fn draw_window_list_popup(
                     // redraw, even when only the pointer position changed. This wasted GPU bandwidth
                     // uploading the same frame data repeatedly.
                     if let Some(ref mut renderer) = gpu_context {
-                        let active_stream_idx = pipewire_capture
-                            .map(|service| *service.active_row.lock())
-                            .unwrap_or(0);
+                        // Use the hovered window's stream index for the cache key.
+                        // The cache key is tied to the actual stream being displayed,
+                        // so index shifts don't cause mismatches.
                         let cache_key = format!(
-                            "window-list-capture:{:?}:{}",
+                            "window-list-capture:{:?}:{:?}",
                             dock.output.id(),
-                            active_stream_idx
+                            hovered_stream_idx
                         );
 
                         // Check if the PipeWire frame has actually changed since the last texture
                         // upload. If the generation is the same, skip the expensive frame fetch,
                         // RGBA conversion, and GPU texture upload — just reuse the cached texture.
-                        let generation_changed = if has_valid_stream
-                            && use_matched
-                            && (hovered_item as usize) < matched_windows.len()
-                        {
-                            if let Some(stream_idx) = matched_windows[hovered_item as usize].1 {
-                                if let Some(gen) = pipewire_capture
-                                    .and_then(|service| service.get_stream_generation(stream_idx))
-                                {
-                                    gen != popup.last_texture_generation
-                                } else {
-                                    // Generation unavailable — assume changed to avoid stale texture
-                                    true
-                                }
+                        let generation_changed = if let Some(stream_idx) = hovered_stream_idx {
+                            if let Some(gen) = pipewire_capture
+                                .and_then(|service| service.get_stream_generation(stream_idx))
+                            {
+                                gen != popup.last_texture_generation
                             } else {
-                                false
+                                // Generation unavailable — assume changed to avoid stale texture
+                                true
                             }
                         } else {
                             false
                         };
 
-                        let texture_id = if generation_changed {
+                        let texture_id = if !has_valid_stream {
+                            // The hovered window has no PipeWire stream — remove any cached
+                            // texture so we don't show another window's frame.
+                            renderer.remove_cached_texture(&cache_key);
+                            None
+                        } else if generation_changed {
                             // Fetch the latest frame data and upload it, replacing any cached texture.
-                            // FIX (v1.5.5): Try BGRx direct upload first to eliminate two CPU
-                            // conversions per frame (BGRx→RGBA and RGBA→BGRA). The GPU downscales
-                            // via linear sampling by adjusting UV coordinates. Falls back to the
-                            // RGBA conversion path for non-BGRx formats.
+                            // Use the stream index from matched_windows directly — do NOT use
+                            // active_row, which can be changed by the monitor between setting
+                            // and fetching, causing the wrong stream's frame to be returned.
                             let mut bgfx_uploaded = false;
-                            if has_valid_stream {
-                                if let Some(service) = pipewire_capture.as_ref() {
-                                    let row = *service.active_row.lock();
-                                    let (orig_w, orig_h) =
-                                        service.get_stream_dimensions(row).unwrap_or((0, 0));
-                                    // Try raw BGRx upload — no CPU conversion needed
-                                    if let Some((w, h, bgrx)) = service.get_active_frame_bgfx() {
-                                        capture_frame_data = Some(CaptureFrameData {
+                            if let Some(service) = pipewire_capture.as_ref() {
+                                let stream_idx = hovered_stream_idx.unwrap();
+                                let (orig_w, orig_h) =
+                                    service.get_stream_dimensions(stream_idx).unwrap_or((0, 0));
+                                // Try raw BGRx upload — no CPU conversion needed
+                                if let Some((w, h, bgrx)) = service.get_stream_frame_bgfx(stream_idx) {
+                                    capture_frame_data = Some(CaptureFrameData {
+                                        width: w,
+                                        height: h,
+                                        rgba: bgrx.clone(),
+                                        original_width: w,
+                                        original_height: h,
+                                    });
+                                    // Upload BGRx bytes directly — no CPU conversion
+                                    if renderer.replace_cached_texture_from_bgfx(
+                                        &cache_key,
+                                        &bgrx,
+                                        w,
+                                        h,
+                                    ).is_some() {
+                                        bgfx_uploaded = true;
+                                    }
+                                } else {
+                                    // Fall back to RGBA conversion for non-BGRx formats
+                                    let frame_data = service
+                                        .get_stream_frame(stream_idx, Some(target_frame_w), Some(target_frame_h))
+                                        .map(|(w, h, rgba)| CaptureFrameData {
                                             width: w,
                                             height: h,
-                                            rgba: bgrx.clone(),
-                                            original_width: w,
-                                            original_height: h,
+                                            rgba,
+                                            original_width: orig_w,
+                                            original_height: orig_h,
                                         });
-                                        // FIX (v1.5.5): Upload BGRx bytes directly — no CPU conversion
-                                        if renderer.replace_cached_texture_from_bgfx(
-                                            &cache_key,
-                                            &bgrx,
-                                            w,
-                                            h,
-                                        ).is_some() {
-                                            bgfx_uploaded = true;
-                                        }
-                                    } else {
-                                        // Fall back to RGBA conversion for non-BGRx formats
-                                        let frame_data = service
-                                            .get_active_frame(Some(target_frame_w), Some(target_frame_h))
-                                            .map(|(w, h, rgba)| CaptureFrameData {
-                                                width: w,
-                                                height: h,
-                                                rgba,
-                                                original_width: orig_w,
-                                                original_height: orig_h,
-                                            });
-                                        capture_frame_data = frame_data;
-                                    }
+                                    capture_frame_data = frame_data;
                                 }
                             }
                             if !bgfx_uploaded {
@@ -818,9 +804,7 @@ pub fn draw_window_list_popup(
                         };
                         // Update the last texture generation after a successful upload.
                         if generation_changed {
-                            if let Some(stream_idx) = matched_windows.get(hovered_item as usize)
-                                .and_then(|w| w.1)
-                            {
+                            if let Some(stream_idx) = hovered_stream_idx {
                                 if let Some(gen) = pipewire_capture
                                     .and_then(|service| service.get_stream_generation(stream_idx))
                                 {

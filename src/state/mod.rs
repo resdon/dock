@@ -162,8 +162,7 @@ pub struct AppState {
     /// Cached dock app ordering and running-window grouping to avoid per-frame
     /// rebuilds in the main loop. Invalidated on pinned/window state changes.
     pub(crate) cached_apps_in_dock: Option<Vec<String>>,
-    pub(crate) cached_running_by_app: Option<HashMap<String, Vec<ObjectId>>>,
-    pub(crate) cached_pipewire_window_ids: Option<Vec<(String, u32)>>,
+        pub(crate) cached_running_by_app: Option<HashMap<String, Vec<ObjectId>>>,
 
     // Fractional Scaling
     pub fractional_scale_manager: Option<WpFractionalScaleManagerV1>,
@@ -275,7 +274,6 @@ impl AppState {
     pub fn invalidate_dock_app_cache(&mut self) {
         self.cached_apps_in_dock = None;
         self.cached_running_by_app = None;
-        self.cached_pipewire_window_ids = None;
     }
 
     pub fn refresh_dock_app_cache(&mut self) {

@@ -156,6 +156,21 @@ pub struct StreamFrameData {
     /// of title changes. Stored in a Mutex so the monitor task can update it
     /// after stream retention during incremental updates.
     pub window_id: Arc<Mutex<Option<u32>>>,
+    /// Set to `true` when the stream should shut down. Checked each iteration
+    /// of the stream thread's main loop; when `true`, the loop breaks and the
+    /// thread exits cleanly, releasing its PipeWire main loop, stream, and FD.
+    pub shutdown: Arc<AtomicBool>,
+    /// Handle to the dedicated OS thread running this stream's PipeWire main
+    /// loop. Retained so the monitor task can join the thread after signaling
+    /// shutdown, ensuring the thread actually terminates before the stream
+    /// entry is removed from `stream_frames`.
+    pub thread_handle: Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
+    /// Sender used to unblock the PipeWire main loop from `iterate()` so the
+    /// thread can check the shutdown flag and exit promptly. PipeWire's
+    /// `MainLoopRc::run()` blocks on `iterate()` with a timeout; sending on
+    /// this channel wakes the loop so it doesn't wait up to 13 ms before
+    /// noticing the shutdown flag.
+    pub mainloop_quit: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>>,
 }
 
 /// Snapshot of the current capture state: file descriptors, node IDs, and titles.
@@ -282,6 +297,38 @@ impl PipewireCaptureService {
         }
     }
 
+    /// Signal a stream to shut down and wait for its thread to join.
+    ///
+    /// Called during Phase 1 (stale stream removal) before the stream entry
+    /// is removed from `stream_frames`. This method:
+    /// 1. Sets the shutdown flag so the thread's main loop breaks.
+    /// 2. Sends on the mainloop_quit channel to unblock `iterate()`.
+    /// 3. Joins the thread, waiting for it to exit cleanly.
+    ///
+    /// If the thread doesn't join, it is abandoned — the OS will reclaim it
+    /// eventually, but this avoids blocking the monitor indefinitely.
+    fn shutdown_stream(stream: &StreamFrameData) {
+        // Signal the thread to stop
+        stream.shutdown.store(true, Ordering::Release);
+
+        // Unblock the PipeWire main loop so it checks the flag immediately
+        if let Some(sender) = stream.mainloop_quit
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+            .and_then(|mut g| g.take())
+        {
+            let _ = sender.send(());
+        }
+
+        // Join the thread
+        if let Some(handle) = stream.thread_handle
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+            .and_then(|mut g| g.take())
+        {
+            // Join the thread — this blocks until the thread exits
+            let _ = handle.join();
+        }
+    }
+
     /// Set whether the window list popup is currently open.
     ///
     /// When `true`, the active (hovered) stream captures at 75 FPS and
@@ -306,8 +353,11 @@ impl PipewireCaptureService {
     /// Clamps the value to the valid range [0.01, 1.0] to prevent
     /// division by zero or meaningless full-resolution captures.
     pub fn set_scale_factor(&self, factor: f32) {
-        let mut f = self.scale_factor.lock();
-        *f = factor.clamp(0.01, 1.0);
+        if let Some(mut f) = self.scale_factor
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+        {
+            *f = factor.clamp(0.01, 1.0);
+        }
     }
 
     /// Update the shared window title-to-IDs map from the current Wayland window list.
@@ -316,6 +366,9 @@ impl PipewireCaptureService {
     /// new streams to stable Wayland window IDs. Multiple windows can have the
     /// same title (e.g., multiple "New tab" windows), so each title maps to
     /// a `Vec<u32>` of IDs. The IDs are `protocol_id` values from `foreign_toplevel`.
+    ///
+    /// Titles are normalized to handle escaped quotes and Unicode escapes so they
+    /// match portal titles that may use different character encodings.
     ///
     /// Uses a timeout lock so the draw thread never freezes if the monitor task
     /// holds the lock for an extended period.
@@ -329,7 +382,8 @@ impl PipewireCaptureService {
         };
         map.clear();
         for (title, id) in windows {
-            map.entry(title.clone()).or_insert_with(Vec::new).push(*id);
+            let normalized = Self::normalize_title(title);
+            map.entry(normalized).or_insert_with(Vec::new).push(*id);
         }
     }
 
@@ -377,17 +431,59 @@ impl PipewireCaptureService {
         bindings.insert(window_id, stream_idx);
     }
 
-    /// Unbind a Wayland window ID from its PipeWire stream.
+    /// Unbind a Wayland window ID from its PipeWire stream and shut down the stream.
     ///
-    /// Called when a window closes so the binding doesn't point to a stale stream.
+    /// Called when a window closes. This method:
+    /// 1. Removes the binding from the registry
+    /// 2. Finds the stream associated with the window ID
+    /// 3. Signals the stream to shut down immediately
+    ///
+    /// Without shutting down the stream, Phase 1 may not remove it because the
+    /// title still matches the chooser file (e.g., reopening featherpad produces
+    /// the same title). The stream would survive Phase 1 with a cleared window_id,
+    /// and Phase 2 would not create a new one because the count already matches.
     pub fn unbind_window(&self, window_id: u32) {
-        let Some(mut bindings) = self
-            .bindings
-            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
-        else {
-            return;
+        // Remove the binding from the registry
+        let stream_idx = {
+            let Some(mut bindings) = self
+                .bindings
+                .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+            else {
+                return;
+            };
+            bindings.remove(&window_id)
         };
-        let _ = bindings.remove(&window_id);
+
+        // Find and shut down the stream associated with this window ID
+        if stream_idx.is_some() {
+            // The stream was bound — shut it down directly
+            if let Some(idx) = stream_idx {
+                if let Some(stream) = self.stream_frames
+                    .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+                    .and_then(|frames| frames.get(idx).cloned())
+                {
+                    Self::shutdown_stream(&stream);
+                }
+            }
+        } else {
+            // Not in bindings — scan streams by window_id field
+            if let Some(frames) = self.stream_frames
+                .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+            {
+                for stream in frames.iter() {
+                    if let Some(wid) = stream.window_id
+                        .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+                        .map(|g| *g)
+                        .flatten()
+                    {
+                        if wid == window_id {
+                            Self::shutdown_stream(stream);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Unbind all windows bound to a specific stream index, then remap bindings
@@ -504,11 +600,30 @@ impl PipewireCaptureService {
         }
     }
 
+    /// Signal the monitor task to probe immediately, bypassing the debounce.
+    ///
+    /// Used for `WindowEvent::Closed` so the monitor runs promptly to clean up
+    /// the stale stream. Without this, the 1-second debounce delays stream
+    /// cleanup, and if the window reopens within that second, the monitor sees
+    /// both the old and new window IDs simultaneously, causing binding confusion.
+    pub fn request_probe_immediate(&self) {
+        let now = Instant::now();
+        let Some(mut last) = self
+            .last_probe_time
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+        else {
+            self.probe_signal.notify_one();
+            return;
+        };
+        *last = now;
+        self.probe_signal.notify_one();
+    }
+
     /// Check if a window title has a matching PipeWire stream.
     ///
     /// Convenience wrapper around `find_stream_by_title` that returns a boolean.
     pub fn has_stream_for_title(&self, title: &str) -> bool {
-        self.find_stream_by_title(title, &[]).is_some()
+        self.find_stream_by_title(title, &[], None).is_some()
     }
 
     /// Get the number of currently captured windows.
@@ -763,6 +878,143 @@ impl PipewireCaptureService {
         }
     }
 
+    /// Get the raw BGRx frame bytes for a specific stream index, without using
+    /// the shared `active_row`. This avoids the race condition where the monitor
+    /// changes `active_row` between `set_active_row()` and the frame fetch.
+    ///
+    /// # Arguments
+    /// * `idx` - The stream index in `stream_frames`.
+    ///
+    /// # Returns
+    /// `(width, height, raw_bgrx_bytes)` — the original frame dimensions and
+    /// the raw pixel data ready for direct GPU upload, or `None` if the stream
+    /// is out of bounds, has no frame, or uses a non-BGRx/BGRA format.
+    pub fn get_stream_frame_bgfx(&self, idx: usize) -> Option<(u32, u32, Arc<[u8]>)> {
+        // Lock stream_frames briefly to get the stream reference
+        let stream = {
+            let frames = self
+                .stream_frames
+                .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))?;
+            if idx >= frames.len() {
+                return None;
+            }
+            frames[idx].clone()
+        };
+
+        // Use timeout lock — if a stream thread blocks frame, skip it
+        let frame_data = stream
+            .frame
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+            .map(|guard| (*guard).clone())?;
+
+        match frame_data {
+            Some((w, h, fmt, bytes)) => {
+                match fmt {
+                    pw::spa::param::video::VideoFormat::BGRx
+                    | pw::spa::param::video::VideoFormat::BGRA => {
+                        Some((w, h, bytes))
+                    }
+                    _ => None,
+                }
+            }
+            None => None,
+        }
+    }
+
+    /// Get the latest captured frame for a specific stream index, converted to RGBA.
+    /// Unlike `get_active_frame()`, this does not use the shared `active_row`, avoiding
+    /// the race condition where the monitor remaps `active_row` between setting and fetching.
+    ///
+    /// # Arguments
+    /// * `idx` - The stream index in `stream_frames`.
+    /// * `target_w` - Optional target width for downscaling.
+    /// * `target_h` - Optional target height for downscaling.
+    ///
+    /// # Returns
+    /// `(width, height, rgba_bytes)` or `None` if the stream is out of bounds.
+    pub fn get_stream_frame(
+        &self,
+        idx: usize,
+        target_w: Option<u32>,
+        target_h: Option<u32>,
+    ) -> Option<(u32, u32, Arc<[u8]>)> {
+        let max_scale = match self
+            .scale_factor
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+        {
+            Some(g) => *g,
+            None => return None,
+        };
+
+        // Lock stream_frames briefly to get the stream reference
+        let stream = {
+            let Some(frames) = self
+                .stream_frames
+                .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+            else {
+                return None;
+            };
+            if idx >= frames.len() {
+                return None;
+            }
+            frames[idx].clone()
+        };
+
+        // Use timeout lock — if a stream thread blocks frame, skip it
+        let frame_data = match stream
+            .frame
+            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+        {
+            Some(guard) => (*guard).clone(),
+            None => return None,
+        };
+
+        match frame_data {
+            Some((w, h, fmt, bytes)) => {
+                let scale = if let (Some(tw), Some(th)) = (target_w, target_h) {
+                    if w > tw || h > th {
+                        let scale_w = tw as f32 / w as f32;
+                        let scale_h = th as f32 / h as f32;
+                        (scale_w.min(scale_h)).min(max_scale)
+                    } else {
+                        1.0
+                    }
+                } else {
+                    max_scale
+                };
+
+                let current_gen = stream.generation.load(std::sync::atomic::Ordering::Acquire);
+                {
+                    let cache = match stream.cached_rgba.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) {
+                        Some(g) => g,
+                        None => {
+                            let (out_w, out_h, rgba) = convert_to_rgba(w, h, fmt, &bytes, scale);
+                            return Some((out_w, out_h, Arc::from(rgba.as_slice())));
+                        }
+                    };
+                    if let Some((cached_gen, cached_src_w, cached_src_h, cached_scale, cached_out_w, cached_out_h, cached_rgba)) = cache.as_ref() {
+                        if *cached_gen == current_gen
+                            && *cached_src_w == w
+                            && *cached_src_h == h
+                            && (*cached_scale - scale).abs() < f32::EPSILON
+                        {
+                            return Some((*cached_out_w, *cached_out_h, cached_rgba.clone()));
+                        }
+                    }
+                    drop(cache);
+                }
+
+                let (out_w, out_h, rgba) = convert_to_rgba(w, h, fmt, &bytes, scale);
+                let rgba_arc: Arc<[u8]> = Arc::from(rgba.as_slice());
+                if let Some(mut cache) = stream.cached_rgba.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) {
+                    cache.replace((current_gen, w, h, scale, out_w, out_h, rgba_arc.clone()));
+                }
+                Some((out_w, out_h, rgba_arc))
+            }
+            None => None,
+        }
+    }
+
     /// Get the original (pre-downscale) frame dimensions for a stream index.
     ///
     /// Returns `None` if the stream hasn't negotiated its video format yet.
@@ -808,6 +1060,71 @@ impl PipewireCaptureService {
         Some(frames[idx].generation.load(std::sync::atomic::Ordering::Acquire))
     }
 
+    /// Normalize a window title for comparison across sources.
+    ///
+    /// Wayland foreign_toplevel and the XDG Desktop Portal may report the same
+    /// window title with different character encodings:
+    /// - Wayland may escape quotes as `\"` while the portal sends raw `"`
+    /// - Wayland may represent zero-width spaces as `\u{200b}` (Debug format)
+    ///   while the portal sends the actual Unicode character
+    ///
+    /// This function normalizes both so they compare equal.
+    fn normalize_title(title: &str) -> String {
+        let mut result = String::with_capacity(title.len());
+        let chars: Vec<char> = title.chars().collect();
+        let len = chars.len();
+        let mut i = 0;
+        while i < len {
+            if chars[i] == '\\' && i + 1 < len {
+                let next = chars[i + 1];
+                match next {
+                    '"' => {
+                        result.push('"');
+                        i += 2;
+                    }
+                    'n' => {
+                        result.push('\n');
+                        i += 2;
+                    }
+                    't' => {
+                        result.push('\t');
+                        i += 2;
+                    }
+                    '\\' => {
+                        result.push('\\');
+                        i += 2;
+                    }
+                    'u' if i + 6 < len && chars[i + 2] == '{' => {
+                        // Try to parse \u{XXXX} escape sequence
+                        let end = (i + 3..=i + 6).find(|&j| chars[j] == '}');
+                        if let Some(brace_end) = end {
+                            let hex_str: String = chars[i + 3..brace_end].iter().collect();
+                            if let Some(code) = u32::from_str_radix(&hex_str, 16).ok() {
+                                if let Some(ch) = char::from_u32(code) {
+                                    result.push(ch);
+                                    i = brace_end + 1;
+                                    continue;
+                                }
+                            }
+                        }
+                        // Not a valid escape, keep as-is
+                        result.push(chars[i]);
+                        i += 1;
+                    }
+                    _ => {
+                        // Not a recognized escape, keep as-is
+                        result.push(chars[i]);
+                        i += 1;
+                    }
+                }
+            } else {
+                result.push(chars[i]);
+                i += 1;
+            }
+        }
+        result
+    }
+
     /// Strip the XDG Desktop Portal hash suffix from a PipeWire stream title.
     ///
     /// The portal appends a unique 32-character hex ID in parentheses to distinguish
@@ -815,7 +1132,14 @@ impl PipewireCaptureService {
     /// strips this suffix so "dock" matches "dock (hash)".
     ///
     /// Returns the original title if no hash suffix is found.
-    fn strip_portal_hash(title: &str) -> &str {
+    ///
+    /// **FIX**: Returns an owned `String` with trailing whitespace trimmed, so that
+    /// "dock – ``` " (with trailing space) matches the Wayland title "dock – ```"
+    /// exactly. The previous `&str` return type couldn't trim without allocating.
+    ///
+    /// Also normalizes escaped quotes and Unicode escapes so portal titles match
+    /// Wayland titles that may use different character encodings.
+    fn strip_portal_hash(title: &str) -> String {
         // Find the last " (" that starts a hex-only parenthesized suffix
         if let Some(pos) = title.rfind(" (") {
             let suffix = &title[pos + 2..];
@@ -823,11 +1147,15 @@ impl PipewireCaptureService {
                 let inner = &suffix[..suffix.len() - 1];
                 // Check if it looks like a hex hash (32 hex chars = SHA-1 token from portal)
                 if inner.len() == 32 && inner.chars().all(|c| c.is_ascii_hexdigit()) {
-                    return &title[..pos];
+                    // Trim trailing whitespace and normalize so "dock – ``` " matches "dock – ```"
+                    let stripped = title[..pos].trim_end().to_string();
+                    let normalized = Self::normalize_title(&stripped);
+                    return normalized;
                 }
             }
         }
-        title
+        let normalized = Self::normalize_title(title);
+        normalized
     }
 
     /// Find the PipeWire stream index that matches a Wayland window title.
@@ -836,16 +1164,24 @@ impl PipewireCaptureService {
     /// 1. **Exact match**: compare against the title-without-hash
     /// 2. **Case-insensitive partial match**: skip for short single-word titles (≤4 chars)
     ///    to avoid false positives like "dock" matching a file path
-    /// 3. **Prefix matching**: compare first 3 words (only for titles with ≥3 words)
-    /// 4. **Word-based match**: check if any word >4 chars appears in the stream title
+    /// 3. **Startswith match**: check if the stream title starts with the window title
+    ///    (safe for short titles; e.g., "dock" matches "dock – ```")
+    /// 4. **Prefix matching**: compare first 3 words (only for titles with ≥3 words)
+    /// 5. **Word-based match**: check if any word >4 chars appears in the stream title
     ///
     /// Uses `stream_frames` titles (from the chooser file) which are more accurate
     /// than `capture_state.titles`. The `exclude` list prevents two windows from
     /// the same app from matching the same stream.
     ///
+    /// Crucially, streams with a bound `window_id` are never matched by title —
+    /// they belong to another window and should not be stolen. The `window_id`
+    /// parameter allows the caller to specify the querying window's ID so that
+    /// a stream bound to the SAME window can still be matched (e.g., when the
+    /// binding was just created but the caller hasn't seen it yet).
+    ///
     /// Uses a timeout lock so the draw thread never freezes if the monitor task
     /// holds the lock for an extended period.
-    pub fn find_stream_by_title(&self, title: &str, exclude: &[usize]) -> Option<usize> {
+    pub fn find_stream_by_title(&self, title: &str, exclude: &[usize], window_id: Option<u32>) -> Option<usize> {
         if title.is_empty() {
             return None;
         }
@@ -853,15 +1189,49 @@ impl PipewireCaptureService {
         let frames = self
             .stream_frames
             .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))?;
-        let title_lower = title.to_lowercase();
+        // Normalize the Wayland title so escaped quotes and Unicode match portal titles
+        let normalized_title = Self::normalize_title(title);
+        let title_lower = normalized_title.to_lowercase();
+
+        // Helper: skip streams bound to other windows.
+        // A stream with window_id=Some is bound to a specific window.
+        // Title-based matching should not steal it unless it's bound to
+        // the SAME window we're querying for.
+        //
+        // CRITICAL: If the stream's window_id is stale (no longer in the
+        // window_ids map), we skip it entirely. A stale binding means the
+        // original window has closed, and the stream is dead — it's no longer
+        // producing frames. The async monitor will clean it up in Phase 1.
+        // Allowing title matching to use dead streams causes the new window
+        // to display the last frozen frame from the old window.
+        let should_skip_bound = |stream: &StreamFrameData, window_id: Option<u32>| -> bool {
+            let stream_wid = stream.window_id
+                .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+                .map(|g| *g)
+                .flatten();
+            if let Some(sw) = stream_wid {
+                if let Some(query_wid) = window_id {
+                    // Only skip if bound to a DIFFERENT window
+                    sw != query_wid
+                } else {
+                    // No window_id provided — skip all bound streams
+                    true
+                }
+            } else {
+                false
+            }
+        };
 
         // Try exact match first (compare against the title-without-hash)
         for (i, stream) in frames.iter().enumerate() {
             if exclude.contains(&i) {
                 continue;
             }
+            if should_skip_bound(stream, window_id) {
+                continue;
+            }
             let pw_title = Self::strip_portal_hash(&stream.title);
-            if pw_title == title {
+            if pw_title == normalized_title {
                 return Some(i);
             }
         }
@@ -876,14 +1246,39 @@ impl PipewireCaptureService {
                 if exclude.contains(&i) {
                     continue;
                 }
+                if should_skip_bound(stream, window_id) {
+                    continue;
+                }
                 if stream.title.is_empty() {
                     continue;
                 }
                 let pw_title = Self::strip_portal_hash(&stream.title);
                 let pw_lower = pw_title.to_lowercase();
-                if pw_lower.contains(&title_lower) || title_lower.contains(&pw_lower) {
+                let contains = pw_lower.contains(&title_lower) || title_lower.contains(&pw_lower);
+                if contains {
                     return Some(i);
                 }
+            }
+        }
+        // Try startswith match: check if the stream title starts with the window title.
+        // This is safe even for short single-word titles because a prefix match is much
+        // stronger than a substring match — "dock" starting "dock – ```" is a legitimate
+        // match, whereas "dock" inside "/path/to/dock" would not startwith "dock".
+        // Runs for all titles, including short single-word titles that skipped partial match.
+        for (i, stream) in frames.iter().enumerate() {
+            if exclude.contains(&i) {
+                continue;
+            }
+            if should_skip_bound(stream, window_id) {
+                continue;
+            }
+            if stream.title.is_empty() {
+                continue;
+            }
+            let pw_title = Self::strip_portal_hash(&stream.title);
+            let pw_lower = pw_title.to_lowercase();
+            if pw_lower.starts_with(&title_lower) {
+                return Some(i);
             }
         }
         // Try prefix matching: compare first N words to handle truncated titles.
@@ -893,6 +1288,9 @@ impl PipewireCaptureService {
             let prefix_count = title_words.len().min(3);
             for (i, stream) in frames.iter().enumerate() {
                 if exclude.contains(&i) {
+                    continue;
+                }
+                if should_skip_bound(stream, window_id) {
                     continue;
                 }
                 if stream.title.is_empty() {
@@ -930,6 +1328,9 @@ impl PipewireCaptureService {
                 if exclude.contains(&i) {
                     continue;
                 }
+                if should_skip_bound(stream, window_id) {
+                    continue;
+                }
                 if stream.title.is_empty() {
                     continue;
                 }
@@ -941,6 +1342,28 @@ impl PipewireCaptureService {
                     }
                 }
             }
+        }
+        // Last resort: if no title match was found, look for an unbound stream
+        // (window_id=None) that hasn't been excluded. File managers like pcmanfm
+        // change their window title based on the current directory, so the portal
+        // title ("m.2") may differ completely from the Wayland title ("dock").
+        // If there's exactly one unbound stream available, it's likely the right
+        // one — the portal captured this window but under a different title.
+        let unbound_candidates: Vec<usize> = frames
+            .iter()
+            .enumerate()
+            .filter(|(i, stream)| {
+                !exclude.contains(i)
+                    && stream.window_id
+                        .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+                        .map(|g| g.is_none())
+                        .unwrap_or(false)
+            })
+            .map(|(i, _)| i)
+            .collect();
+        if unbound_candidates.len() == 1 {
+            let idx = unbound_candidates[0];
+            return Some(idx);
         }
         None
     }
@@ -967,13 +1390,13 @@ pub async fn init_capture_service(
     pw::init();
 
     // Get the saved restore token to bypass the portal dialog
-    let restore_token = {
-        let token = service.restore_token.lock();
-        token.clone()
-    };
+    let restore_token = service.restore_token
+        .try_lock_for(std::time::Duration::from_millis(50))
+        .map(|g| g.clone())
+        .unwrap_or_default();
     // Capture all windows
     let (results, new_restore_token) =
-        match capture_windows_range(connection, desktop, 0, max_windows, restore_token.clone())
+        match capture_windows_range(connection, desktop, 0, max_windows, restore_token.clone(), None)
             .await
         {
             Ok(r) => r,
@@ -982,16 +1405,18 @@ pub async fn init_capture_service(
 
     // Update the in-memory restore token from the portal response
     if let Some(ref token) = new_restore_token {
+        if let Some(mut saved_token) = service.restore_token
+            .try_lock_for(std::time::Duration::from_millis(50))
         {
-            let mut saved_token = service.restore_token.lock();
             *saved_token = Some(token.clone());
         }
     }
 
     if results.is_empty() {
         // If capture failed, clear the stale restore token
+        if let Some(mut token) = service.restore_token
+            .try_lock_for(std::time::Duration::from_millis(50))
         {
-            let mut token = service.restore_token.lock();
             *token = None;
         }
         return Ok(());
@@ -1006,8 +1431,9 @@ pub async fn init_capture_service(
     let count = results.len();
 
     // Update capture state
+    if let Some(mut state) = service.capture_state
+        .try_lock_for(std::time::Duration::from_millis(50))
     {
-        let mut state = service.capture_state.lock();
         state.pw_fds = pw_fds;
         state.node_ids = node_ids;
         state.titles = titles;
@@ -1040,13 +1466,16 @@ pub async fn init_capture_service(
         // before this index in the chooser file, then pick the corresponding unbound ID.
         let window_id = {
             // Release window_ids before bindings to avoid lock ordering issues
-            let ids = {
-                let map = service.window_ids.lock();
-                let clean_title = PipewireCaptureService::strip_portal_hash(&title);
-                map.get(clean_title).cloned()
-            };
-            ids.and_then(|v| {
-                let bindings = service.bindings.lock();
+            let ids = service.window_ids
+                .try_lock_for(std::time::Duration::from_millis(50))
+                .map(|map| {
+                    let clean_title = PipewireCaptureService::strip_portal_hash(&title);
+                    map.get(&clean_title).cloned()
+                })
+                .flatten();
+            let matched_ids = ids.as_ref().and_then(|v| {
+                let bindings = service.bindings
+                    .try_lock_for(std::time::Duration::from_millis(50))?;
                 if v.len() <= 1 {
                     // Only one window with this title — pick it directly
                     v.iter().find(|id| !bindings.contains_key(id)).copied()
@@ -1056,13 +1485,12 @@ pub async fn init_capture_service(
                     // before this index in the chooser file. That count tells us which
                     // unbound ID to pick from the sorted window_ids vec.
                     let clean_title_for_count =
-                        PipewireCaptureService::strip_portal_hash(&title).to_string();
+                        PipewireCaptureService::strip_portal_hash(&title);
                     let mut same_title_count_before = 0;
                     for ci in 0..idx {
                         if let Some(chooser_title) = chooser_titles.get(ci) {
                             let chooser_clean =
-                                PipewireCaptureService::strip_portal_hash(chooser_title)
-                                    .to_string();
+                                PipewireCaptureService::strip_portal_hash(chooser_title);
                             if chooser_clean == clean_title_for_count {
                                 same_title_count_before += 1;
                             }
@@ -1074,8 +1502,10 @@ pub async fn init_capture_service(
                         .nth(same_title_count_before)
                         .copied()
                 }
-            })
+            });
+            matched_ids
         };
+        let (quit_tx, quit_rx) = std::sync::mpsc::channel();
         let stream_data = Arc::new(StreamFrameData {
             frame: Arc::new(Mutex::new(None)),
             generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
@@ -1084,10 +1514,14 @@ pub async fn init_capture_service(
             ready: Arc::new(AtomicBool::new(false)),
             title: title.clone(),
             window_id: Arc::new(Mutex::new(window_id)),
+            shutdown: Arc::new(AtomicBool::new(false)),
+            thread_handle: Arc::new(Mutex::new(None)),
+            mainloop_quit: Arc::new(Mutex::new(Some(quit_tx))),
         });
 
+        if let Some(mut frames) = service.stream_frames
+            .try_lock_for(std::time::Duration::from_millis(50))
         {
-            let mut frames = service.stream_frames.lock();
             if idx < frames.len() {
                 frames[idx] = stream_data.clone();
             } else {
@@ -1107,7 +1541,13 @@ pub async fn init_capture_service(
             active_row: Arc::clone(&service.active_row),
             stream_idx: idx,
         };
-        spawn_stream_thread(fd, node_id, idx, stream_data.clone(), vis);
+        let handle = spawn_stream_thread(fd, node_id, idx, stream_data.clone(), vis);
+        if let Some(mut g) = stream_data.thread_handle
+            .try_lock_for(std::time::Duration::from_millis(50))
+        {
+            *g = Some(handle);
+        }
+        drop(quit_rx); // Receiver not needed outside the thread
     }
 
     // Wait for streams to negotiate format (up to 5 seconds).
@@ -1579,13 +2019,20 @@ async fn capture_windows_range(
     start_idx: usize,
     end_idx: usize,
     restore_token: Option<String>,
+    known_count: Option<usize>,
 ) -> Result<(Vec<(OwnedFd, u32, String)>, Option<String>), Box<dyn std::error::Error>> {
     let mut results: Vec<(OwnedFd, u32, String)> = Vec::new();
     let mut latest_restore_token: Option<String> = None;
 
-    // Probe the actual window count to avoid trying indices that don't exist.
-    // This prevents failed portal sessions and "wlroots: no output found" errors.
-    let actual_count = probe_window_count(connection, desktop, restore_token.as_deref()).await;
+    // Use the known window count from the chooser file if available, avoiding a
+    // redundant portal session that can return a stale count missing newly opened windows.
+    // When the monitor calls capture_windows_range incrementally (Phase 2), it already
+    // ran a portal session and read the chooser file — probing again can yield a lower
+    // count if the new window opened between the two portal sessions.
+    let actual_count = match known_count {
+        Some(count) => count,
+        None => probe_window_count(connection, desktop, restore_token.as_deref()).await,
+    };
     let end_idx = end_idx.min(actual_count);
 
     for idx in start_idx..end_idx {
@@ -1630,16 +2077,15 @@ async fn capture_windows_range(
 
         for (node_id, props) in &streams {
             // The PipeWire properties rarely contain the actual window title.
-            // Use the chooser file which has the real titles written by chooser-all.sh.
-            // The chooser file is updated after each portal session, so the last line
-            // corresponds to the window we just captured (index idx).
-            let chooser_title = std::fs::read_to_string("/tmp/chooser-windows.txt")
+            // Read the title from the chooser-selected-title.txt file, which is written
+            // by chooser-all.sh for the specific window that was selected. This is more
+            // reliable than indexing into the chooser file, because the chooser file
+            // order can change between portal sessions (probe_window_count, SelectSources,
+            // Start all rewrite it), making the index-based lookup return the wrong title.
+            let chooser_title = std::fs::read_to_string("/tmp/chooser-selected-title.txt")
                 .ok()
-                .and_then(|content| {
-                    let lines: Vec<&str> = content.lines().filter(|l| !l.is_empty()).collect();
-                    // The chooser file lists all windows; the one we selected is at index `idx`
-                    lines.get(idx).map(|s| s.trim().to_string())
-                });
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
 
             let default_title = format!("Window {}", results.len() + 1);
             let title = chooser_title.unwrap_or_else(|| {
@@ -1697,13 +2143,18 @@ struct StreamVisibility {
     stream_idx: usize,
 }
 
+/// Spawn a dedicated thread for a single PipeWire capture stream.
+///
+/// Returns a `JoinHandle` so the caller can join the thread after signaling
+/// shutdown. The thread checks `stream_data.shutdown` each iteration of its
+/// main loop and exits cleanly when the flag is set.
 fn spawn_stream_thread(
     fd: OwnedFd,
     node_id: u32,
     idx: usize,
     stream_data: Arc<StreamFrameData>,
     visibility: StreamVisibility,
-) {
+) -> std::thread::JoinHandle<()> {
     std::thread::spawn(move || {
         let mainloop = match pw::main_loop::MainLoopRc::new(None) {
             Ok(ml) => ml,
@@ -1747,8 +2198,10 @@ fn spawn_stream_thread(
         let format_info_for_process = Arc::clone(&stream_data.format_info);
         let format_info_for_param = Arc::clone(&stream_data.format_info);
         let ready_flag_for_param = Arc::clone(&stream_data.ready);
+        let shutdown_flag = Arc::clone(&stream_data.shutdown);
         let stream_idx_for_log = idx;
         let title_for_log = stream_data.title.clone();
+        let title_for_process = title_for_log.clone();
         let mut fps_window_start = Instant::now();
         let mut frames_in_fps_window = 0u64;
         // FIX (v1.5.5): Track last frame capture time for inactive streams to
@@ -1894,7 +2347,7 @@ fn spawn_stream_thread(
                                             frames_in_fps_window as f64 / elapsed.as_secs_f64();
                                         eprintln!(
                                             "[PIPEWIRE] Stream {} (title={}) fps: {:.1}",
-                                            stream_idx_for_log, title_for_log, fps
+                                            stream_idx_for_log, title_for_process, fps
                                         );
                                         frames_in_fps_window = 0;
                                         fps_window_start = Instant::now();
@@ -1985,11 +2438,21 @@ fn spawn_stream_thread(
 
         // Run the main loop persistently.
         // 13ms timeout supports up to ~75 FPS (1000/75 ≈ 13.3ms per frame).
+        // Check the shutdown flag each iteration so the thread can exit cleanly
+        // when the window closes and the monitor signals shutdown.
         loop {
+            // Check shutdown flag before blocking on iterate()
+            if shutdown_flag.load(Ordering::Acquire) {
+                eprintln!(
+                    "[PIPEWIRE] Stream {} (title={}) shutting down",
+                    stream_idx_for_log, title_for_log
+                );
+                break;
+            }
             let timeout = pw::loop_::Timeout::Finite(std::time::Duration::from_millis(13));
             loop_.iterate(timeout);
         }
-    });
+    })
 }
 
 /// Start a background monitor task that incrementally manages PipeWire streams.
@@ -2022,23 +2485,62 @@ pub async fn start_monitor_inner(
     // FIX (v1.5.5): Clone visibility Arcs for new streams spawned by the monitor.
     let service_window_list_open = service.window_list_open.clone();
     let service_active_row = service.active_row.clone();
-    let initial_count = service.capture_state.lock().count;
+    let initial_count = service.capture_state
+        .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+        .map(|s| s.count)
+        .unwrap_or(0);
 
     let mut _last_count = initial_count;
+    let mut first_iter = true;
     loop {
-        // Wait for a probe signal, but with a timeout on the first iteration.
-        // On startup, no WindowEvent::Created fires because all windows already
-        // exist, so the monitor would block forever. The timeout ensures the
-        // monitor runs at least once after update_window_ids has been called
-        // by the draw loop, allowing stream-to-window binding to work.
+        // Check if there are unbound windows to decide the monitor interval.
+        // When unbound windows exist (e.g., pcmanfm, featherpad on labwc), use a
+        // shorter interval (3s) to retry capture more frequently. When all windows
+        // are bound, use a longer interval (10s) to reduce CPU usage.
+        let has_unbound_windows = {
+            let Some(window_ids_map) = service.window_ids
+                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+            else {
+                return;
+            };
+            let Some(bindings) = service.bindings
+                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+            else {
+                return;
+            };
+            let bound_ids: HashSet<u32> = bindings.keys().copied().collect();
+            drop(bindings);
+            window_ids_map.values()
+                .flatten()
+                .any(|id| !bound_ids.contains(id))
+        };
+
+        // Wait for a probe signal (fired on WindowEvent::Created) OR a periodic
+        // timeout. The periodic timeout ensures the monitor re-checks for unbound
+        // windows even when no new window events fire. This is critical because
+        // xdg-desktop-portal-wlr on labwc has inconsistent toplevel capture — a
+        // window like FeatherPad may be missing from one portal session but appear
+        // in the next. Without periodic re-checks, such windows never get streams.
         {
             let notified = probe_signal.notified();
             tokio::pin!(notified);
-            let first_iter_delay = tokio::time::sleep(std::time::Duration::from_secs(1));
-            tokio::pin!(first_iter_delay);
+            // First iteration uses 1-second timeout to handle pre-existing windows.
+            // When unbound windows exist, use 3-second interval for faster retries.
+            // Otherwise, use 10-second interval to reduce CPU usage.
+            let periodic_delay = tokio::time::sleep(
+                if first_iter {
+                    std::time::Duration::from_secs(1)
+                } else if has_unbound_windows {
+                    std::time::Duration::from_secs(3)
+                } else {
+                    std::time::Duration::from_secs(10)
+                }
+            );
+            tokio::pin!(periodic_delay);
+            first_iter = false;
             tokio::select! {
                 _ = &mut notified => {},
-                _ = &mut first_iter_delay => {},
+                _ = &mut periodic_delay => {},
             }
         }
 
@@ -2056,7 +2558,11 @@ pub async fn start_monitor_inner(
                     Err(_) => return,
                 };
                 let portal_restore_token = {
-                    let token = service.restore_token.lock();
+                    let Some(token) = service.restore_token
+                        .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                    else {
+                        return;
+                    };
                     token.clone()
                 };
                 if select_sources(
@@ -2121,10 +2627,13 @@ pub async fn start_monitor_inner(
         // Minimize lock hold time: extract only what we need, then release locks.
         {
             // Quick snapshot of stream titles and count
-            let (stream_count, stream_titles): (usize, Vec<String>) = {
-                let frames = service_frames.lock();
+            let (stream_count, stream_titles): (usize, Vec<String>) = if let Some(frames) = service_frames
+                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+            {
                 let titles: Vec<String> = frames.iter().map(|s| s.title.clone()).collect();
                 (frames.len(), titles)
+            } else {
+                (0, Vec::new())
             };
 
             if stream_count == chooser_titles.len() && stream_count > 0 {
@@ -2132,14 +2641,14 @@ pub async fn start_monitor_inner(
                 let mut portal_counts: std::collections::HashMap<String, usize> =
                     std::collections::HashMap::new();
                 for ct in &chooser_titles {
-                    let clean = PipewireCaptureService::strip_portal_hash(ct).to_string();
+                    let clean = PipewireCaptureService::strip_portal_hash(ct);
                     *portal_counts.entry(clean).or_insert(0) += 1;
                 }
 
                 let mut stream_title_counts: std::collections::HashMap<String, usize> =
                     std::collections::HashMap::new();
                 for t in &stream_titles {
-                    let clean = PipewireCaptureService::strip_portal_hash(t).to_string();
+                    let clean = PipewireCaptureService::strip_portal_hash(t);
                     *stream_title_counts.entry(clean).or_insert(0) += 1;
                 }
 
@@ -2150,9 +2659,12 @@ pub async fn start_monitor_inner(
                 };
 
                 if counts_match {
-                    let mut state = service_state.lock();
-                    state.titles = chooser_titles.clone();
-                    state.count = stream_count;
+                    if let Some(mut state) = service_state
+                        .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                    {
+                        state.titles = chooser_titles.clone();
+                        state.count = stream_count;
+                    }
                 }
             }
         }
@@ -2167,42 +2679,53 @@ pub async fn start_monitor_inner(
         // After removal, we'll remap active_row to the new index of this window.
         //
         // Minimize lock hold time: extract data quickly, release locks, then compute.
-        let (active_window_id_before_removal, stream_count_before) = {
-            let row = *service.active_row.lock();
-            let frames = service_frames.lock();
-            let wid = frames.get(row).and_then(|s| *s.window_id.lock());
+        let (active_window_id_before_removal, stream_count_before) = if let Some(frames) = service_frames
+            .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+        {
+            let row = service.active_row
+                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                .map(|g| *g)
+                .unwrap_or(0);
+            let wid = frames.get(row).and_then(|s| {
+                s.window_id
+                    .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                    .and_then(|g| *g)
+            });
             (wid, frames.len())
+        } else {
+            (None, 0)
         };
 
         // Collect valid window IDs outside of stream_frames lock
-        let valid_window_ids: HashSet<u32> = {
-            let window_ids_map = service.window_ids.lock();
-            window_ids_map.values().flatten().copied().collect()
-        };
+        let valid_window_ids: HashSet<u32> = service.window_ids
+            .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+            .map(|m| m.values().flatten().copied().collect())
+            .unwrap_or_default();
 
         // Count how many times each portal title appears (hash-stripped)
         let mut portal_counts: std::collections::HashMap<String, usize> =
             std::collections::HashMap::new();
         for ct in &chooser_titles {
-            let clean = PipewireCaptureService::strip_portal_hash(ct).to_string();
+            let clean = PipewireCaptureService::strip_portal_hash(ct);
             *portal_counts.entry(clean).or_insert(0) += 1;
         }
 
         // Phase 1: Remove stale streams
         // First, collect which indices to remove, then remove them in one pass.
-        eprintln!(
-            "[PIPEWIRE] Monitor Phase 1: checking {} streams for stale entries",
-            { service_frames.lock().len() }
-        );
-        let indices_to_remove: Vec<usize> = {
-            let frames = service_frames.lock();
+        let indices_to_remove: Vec<usize> = if let Some(frames) = service_frames
+            .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+        {
             let mut to_remove = Vec::new();
 
             // First pass: mark streams whose window_id is no longer valid
             let mut bound_kept: std::collections::HashSet<usize> = std::collections::HashSet::new();
             for (i, stream) in frames.iter().enumerate() {
-                if let Some(wid) = *stream.window_id.lock() {
-                    if valid_window_ids.contains(&wid) {
+                let wid = stream.window_id
+                    .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                    .map(|g| *g)
+                    .flatten();
+                if let Some(wid_val) = wid {
+                    if valid_window_ids.contains(&wid_val) {
                         bound_kept.insert(i);
                     } else {
                         to_remove.push(i);
@@ -2210,7 +2733,18 @@ pub async fn start_monitor_inner(
                 }
             }
 
-            // Second pass: for unbound streams, use title count matching
+            // Second pass: for unbound streams, use title count matching.
+            // An unbound stream is one whose window_id is either None or was not
+            // validated in the first pass. For these streams, check if the portal
+            // still lists a window with the same title. If the title appears in the
+            // chooser file, keep up to that many streams. If the title does NOT appear
+            // in the chooser file, the stream is stale — remove it.
+            //
+            // Previously, streams with unknown titles were kept unconditionally to
+            // avoid removing newly opened windows. But the window_ids map is now
+            // updated immediately on window events (before the monitor runs), so
+            // Phase 1b can bind new streams correctly. Keeping stale streams only
+            // wastes resources and causes incorrect frame display.
             let mut kept_counts: std::collections::HashMap<String, usize> =
                 std::collections::HashMap::new();
             for (i, stream) in frames.iter().enumerate() {
@@ -2218,8 +2752,14 @@ pub async fn start_monitor_inner(
                     continue;
                 }
                 let clean_title =
-                    PipewireCaptureService::strip_portal_hash(&stream.title).to_string();
+                    PipewireCaptureService::strip_portal_hash(&stream.title);
                 let max_keep = *portal_counts.get(&clean_title).unwrap_or(&0);
+                // If the title is not in the chooser file at all, this stream is stale.
+                // The window it captured has closed and no new window has that title.
+                if max_keep == 0 {
+                    to_remove.push(i);
+                    continue;
+                }
                 let current_kept = *kept_counts.get(&clean_title).unwrap_or(&0);
                 if current_kept < max_keep {
                     *kept_counts.entry(clean_title).or_insert(0) += 1;
@@ -2228,13 +2768,35 @@ pub async fn start_monitor_inner(
                 }
             }
             to_remove
+        } else {
+            Vec::new()
         };
 
-        // Apply removals
+        // Apply removals: shut down each stream's thread before removing it
         let removed = indices_to_remove.len();
         if removed > 0 {
+            // First, signal shutdown on all threads to be removed. We collect
+            // the stream data references before acquiring the write lock so we
+            // can shut down threads without holding the stream_frames lock.
+            let streams_to_shutdown: Vec<Arc<StreamFrameData>> = service_frames
+                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                .map(|frames| {
+                    indices_to_remove
+                        .iter()
+                        .filter_map(|idx| frames.get(*idx).cloned())
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            // Signal shutdown and join each thread outside the lock
+            for stream in &streams_to_shutdown {
+                PipewireCaptureService::shutdown_stream(stream);
+            }
+
+            // Now remove the stream entries from the vector
+            if let Some(mut frames) = service_frames
+                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
             {
-                let mut frames = service_frames.lock();
                 // Remove in reverse order to preserve indices
                 for idx in indices_to_remove.iter().rev() {
                     if *idx < frames.len() {
@@ -2242,55 +2804,145 @@ pub async fn start_monitor_inner(
                     }
                 }
             }
+        }
 
-            // Rebuild bindings from retained streams
-            {
-                let mut bindings = service.bindings.lock();
-                let frames = service_frames.lock();
-                bindings.clear();
-                for (i, stream) in frames.iter().enumerate() {
-                    if let Some(sid) = *stream.window_id.lock() {
-                        bindings.insert(sid, i);
+        // Clear stale window_ids on ALL retained streams so Phase 1b can rebind them.
+        // When a window closes and reopens, it gets a new protocol_id. The stream
+        // still holds the old ID — clearing it lets Phase 1b assign the new ID.
+        // This runs regardless of whether streams were removed, because a stream
+        // with a stale window_id might survive Phase 1 (title matches the chooser).
+        {
+            let Some(frames) = service_frames
+                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+            else {
+                return;
+            };
+            for stream in frames.iter() {
+                let wid = stream.window_id
+                    .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                    .map(|g| *g)
+                    .flatten();
+                if let Some(wid_val) = wid {
+                    if !valid_window_ids.contains(&wid_val) {
+                        if let Some(mut window_id_lock) = stream.window_id
+                            .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                        {
+                            *window_id_lock = None;
+                        }
                     }
+                }
+            }
+        }
+
+        // Rebuild bindings from retained streams (always, not just after removals)
+        {
+            let Some(mut bindings) = service.bindings
+                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+            else {
+                return;
+            };
+            let Some(frames) = service_frames
+                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+            else {
+                return;
+            };
+            bindings.clear();
+            for (i, stream) in frames.iter().enumerate() {
+                let sid = stream.window_id
+                    .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                    .map(|g| *g)
+                    .flatten();
+                if let Some(sid_val) = sid {
+                    bindings.insert(sid_val, i);
                 }
             }
         }
 
         // Phase 1b: For retained streams without a window_id, try to bind them now.
         {
-            let window_ids_map = service.window_ids.lock();
-            let bindings = service.bindings.lock();
+            let Some(window_ids_map) = service.window_ids
+                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+            else {
+                return;
+            };
+            let Some(bindings) = service.bindings
+                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+            else {
+                return;
+            };
             let _bound_window_ids: HashSet<u32> = bindings.keys().copied().collect();
             drop(bindings);
 
             // Collect unbound streams info
-            let unbound_streams: Vec<(usize, String)> = {
-                let frames = service_frames.lock();
-                frames
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, stream)| {
-                        let current_id = *stream.window_id.lock();
-                        if current_id.is_none() {
-                            Some((i, stream.title.clone()))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect()
-            };
+            let unbound_streams: Vec<(usize, String)> = service_frames
+                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                .map(|frames| {
+                    frames
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, stream)| {
+                            let current_id = stream.window_id
+                                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                                .map(|g| *g);
+                            if current_id.flatten().is_none() {
+                                Some((i, stream.title.clone()))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
             drop(window_ids_map);
 
-            // Assign window IDs to unbound streams.
+            // Assign window IDs to unbound streams using fuzzy title matching.
             // For same-title windows, use the chooser file order to determine which
             // window gets which stream, matching the portal's stream index order.
-            for (i, title) in unbound_streams {
-                let clean_title = PipewireCaptureService::strip_portal_hash(&title).to_string();
-                let window_ids_map = service.window_ids.lock();
-                let bindings = service.bindings.lock();
+            for (i, title) in &unbound_streams {
+                let clean_title = PipewireCaptureService::strip_portal_hash(title);
+                let normalized = PipewireCaptureService::normalize_title(&clean_title);
+                let Some(window_ids_map) = service.window_ids
+                    .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                else {
+                    continue;
+                };
+                let Some(bindings) = service.bindings
+                    .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                else {
+                    continue;
+                };
                 let bound_window_ids: HashSet<u32> = bindings.keys().copied().collect();
                 drop(bindings);
-                if let Some(ids) = window_ids_map.get(&clean_title) {
+
+                // Try fuzzy matching against window_ids map keys.
+                // First try exact match, then startswith, then partial match.
+                let matched_ids: Option<Vec<u32>> = {
+                    // Exact match
+                    if let Some(ids) = window_ids_map.get(&clean_title) {
+                        Some(ids.clone())
+                    } else if let Some(ids) = window_ids_map.get(&normalized) {
+                        Some(ids.clone())
+                    } else {
+                        // Fuzzy: try startswith against each key
+                        let mut found = None;
+                        for (map_key, ids) in window_ids_map.iter() {
+                            let map_clean = PipewireCaptureService::strip_portal_hash(map_key);
+                            let map_norm = PipewireCaptureService::normalize_title(&map_clean);
+                            let map_lower = map_norm.to_lowercase();
+                            let title_lower = normalized.to_lowercase();
+                            if map_lower == title_lower
+                                || map_lower.starts_with(&title_lower)
+                                || title_lower.starts_with(&map_lower)
+                            {
+                                found = Some(ids.clone());
+                                break;
+                            }
+                        }
+                        found
+                    }
+                };
+
+                if let Some(ids) = matched_ids {
                     let id_to_use = if ids.len() <= 1 {
                         ids.iter()
                             .find(|id| !bound_window_ids.contains(id))
@@ -2300,12 +2952,12 @@ pub async fn start_monitor_inner(
                         // Count how many chooser entries with this title appear before
                         // this stream index, then pick the corresponding unbound ID.
                         let mut same_title_count_before = 0;
-                        for ci in 0..i {
+                        for ci in 0..*i {
                             if let Some(chooser_title) = chooser_titles.get(ci) {
                                 let chooser_clean =
-                                    PipewireCaptureService::strip_portal_hash(chooser_title)
-                                        .to_string();
-                                if chooser_clean == clean_title {
+                                    PipewireCaptureService::strip_portal_hash(chooser_title);
+                                let chooser_norm = PipewireCaptureService::normalize_title(&chooser_clean);
+                                if chooser_norm == normalized {
                                     same_title_count_before += 1;
                                 }
                             }
@@ -2316,12 +2968,56 @@ pub async fn start_monitor_inner(
                             .copied()
                     };
                     if let Some(id) = id_to_use {
-                        let frames = service_frames.lock();
-                        if let Some(stream) = frames.get(i) {
-                            *stream.window_id.lock() = Some(id);
+                        let Some(frames) = service_frames
+                            .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                        else {
+                            continue;
+                        };
+                        if let Some(stream) = frames.get(*i) {
+                            if let Some(mut wid_lock) = stream.window_id
+                                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                            {
+                                *wid_lock = Some(id);
+                            }
                             let t = stream.title.clone();
                             drop(frames);
-                            service.bind_window_to_stream(id, i, &t);
+                            service.bind_window_to_stream(id, *i, &t);
+                        }
+                    }
+                } else {
+                    // Last resort: if title matching failed, try to bind this unbound stream
+                    // to an unbound window (a window with no stream). File managers like
+                    // pcmanfm change their title based on the current directory, so the
+                    // portal title may differ completely from the Wayland title.
+                    let unbound_window_id = {
+                        let Some(bindings) = service.bindings
+                            .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                        else {
+                            continue;
+                        };
+                        let bound_ids: HashSet<u32> = bindings.keys().copied().collect();
+                        drop(bindings);
+                        // Find a window that's not yet bound to any stream
+                        window_ids_map.values()
+                            .flatten()
+                            .find(|id| !bound_ids.contains(id))
+                            .copied()
+                    };
+                    if let Some(id) = unbound_window_id {
+                        let Some(frames) = service_frames
+                            .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                        else {
+                            continue;
+                        };
+                        if let Some(stream) = frames.get(*i) {
+                            if let Some(mut wid_lock) = stream.window_id
+                                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                            {
+                                *wid_lock = Some(id);
+                            }
+                            let t = stream.title.clone();
+                            drop(frames);
+                            service.bind_window_to_stream(id, *i, &t);
                         }
                     }
                 }
@@ -2331,10 +3027,10 @@ pub async fn start_monitor_inner(
 
         // Remap active_row after Phase 1 removal: if the previously active window
         // still has a stream, point active_row to its new index.
-        let stream_count_after = {
-            let frames = service_frames.lock();
-            frames.len()
-        };
+        let stream_count_after = service_frames
+            .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+            .map(|f| f.len())
+            .unwrap_or(0);
         let streams_removed = stream_count_before > stream_count_after;
 
         if let Some(wid) = active_window_id_before_removal {
@@ -2349,20 +3045,27 @@ pub async fn start_monitor_inner(
         }
         // Always clamp active_row to the valid range after removal
         {
-            let frames = service_frames.lock();
-            let mut row = service.active_row.lock();
-            if frames.is_empty() {
-                *row = 0;
-            } else if *row >= frames.len() {
-                *row = frames.len() - 1;
+            let Some(frames) = service_frames
+                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+            else {
+                return;
+            };
+            if let Some(mut row) = service.active_row
+                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+            {
+                if frames.is_empty() {
+                    *row = 0;
+                } else if *row >= frames.len() {
+                    *row = frames.len() - 1;
+                }
             }
         }
 
         // Re-read existing titles after removal (collect before any .await)
-        let existing_titles: Vec<String> = {
-            let frames = service_frames.lock();
-            frames.iter().map(|f| f.title.clone()).collect()
-        };
+        let existing_titles: Vec<String> = service_frames
+            .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+            .map(|frames| frames.iter().map(|f| f.title.clone()).collect())
+            .unwrap_or_default();
         let current_stream_count = existing_titles.len();
 
         // --- Phase 2: Add new streams for windows that don't have one yet ---
@@ -2375,7 +3078,7 @@ pub async fn start_monitor_inner(
             let mut stream_title_counts: std::collections::HashMap<String, usize> =
                 std::collections::HashMap::new();
             for t in &existing_titles {
-                let clean = PipewireCaptureService::strip_portal_hash(t).to_string();
+                let clean = PipewireCaptureService::strip_portal_hash(t);
                 *stream_title_counts.entry(clean).or_insert(0) += 1;
             }
 
@@ -2383,7 +3086,7 @@ pub async fn start_monitor_inner(
             let mut portal_title_counts: std::collections::HashMap<String, usize> =
                 std::collections::HashMap::new();
             for ct in &chooser_titles {
-                let clean = PipewireCaptureService::strip_portal_hash(ct).to_string();
+                let clean = PipewireCaptureService::strip_portal_hash(ct);
                 *portal_title_counts.entry(clean).or_insert(0) += 1;
             }
 
@@ -2392,7 +3095,7 @@ pub async fn start_monitor_inner(
                 std::collections::HashMap::new();
 
             for (i, title) in chooser_titles.iter().enumerate() {
-                let clean_title = PipewireCaptureService::strip_portal_hash(title).to_string();
+                let clean_title = PipewireCaptureService::strip_portal_hash(title);
                 let streams_with_title = *stream_title_counts.get(&clean_title).unwrap_or(&0);
                 let portal_with_title = *portal_title_counts.get(&clean_title).unwrap_or(&0);
                 let already_matched = *matched_so_far.get(&clean_title).unwrap_or(&0);
@@ -2411,115 +3114,456 @@ pub async fn start_monitor_inner(
             }
         }
 
+        // Capture each new window
+        let mut added_count = 0;
         if to_capture.is_empty() {
             // Update titles in capture state even if nothing changed structurally
             {
-                let mut state = service_state.lock();
-                state.titles = chooser_titles.clone();
-                state.count = current_stream_count;
+                if let Some(mut state) = service_state
+                    .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                {
+                    state.titles = chooser_titles.clone();
+                    state.count = current_stream_count;
+                }
             }
             _last_count = current_stream_count;
-            continue;
-        }
-
-        // Capture each new window
-        let mut added_count = 0;
-        let current_restore_token = {
-            let token = service.restore_token.lock();
-            token.clone()
-        };
-        for (idx, portal_idx) in to_capture.into_iter().enumerate() {
-            if let Ok((new_streams, _new_token)) = capture_windows_range(
-                &connection,
-                &desktop,
-                portal_idx,
-                portal_idx + 1,
-                current_restore_token.clone(),
-            )
-            .await {
-                for (fd, node_id, captured_title) in new_streams {
-                    let stream_idx = current_stream_count + idx + added_count;
-                    // Look up the stable Wayland window ID for this title.
-                    // Strip the portal hash suffix so "dock (hash)" matches Wayland title "dock".
-                    // For same-title windows, use the chooser file order (portal_idx)
-                    // to determine which window gets which stream.
-                    let window_id = {
-                        // Release window_ids before bindings to avoid lock ordering issues
-                        let ids = {
-                            let map = service.window_ids.lock();
+            // Do NOT continue here — Phase 3 below must still run to retry
+            // capture for windows that the portal may have missed (e.g., pcmanfm,
+            // featherpad on labwc with partial toplevel capture support).
+        } else {
+            let current_restore_token = {
+                let Some(token) = service.restore_token
+                    .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                else {
+                    return;
+                };
+                token.clone()
+            };
+            for (idx, portal_idx) in to_capture.into_iter().enumerate() {
+                if let Ok((new_streams, _new_token)) = capture_windows_range(
+                    &connection,
+                    &desktop,
+                    portal_idx,
+                    portal_idx + 1,
+                    current_restore_token.clone(),
+                    Some(chooser_titles.len()),
+                )
+                .await {
+                    for (fd, node_id, captured_title) in new_streams {
+                        let stream_idx = current_stream_count + idx + added_count;
+                        // Look up the stable Wayland window ID for this title.
+                        // Strip the portal hash suffix so "dock (hash)" matches Wayland title "dock".
+                        // For same-title windows, use the chooser file order (portal_idx)
+                        // to determine which window gets which stream.
+                        let window_id = {
+                            // Release window_ids before bindings to avoid lock ordering issues
+                            let Some(map) = service.window_ids
+                                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                            else {
+                                continue;
+                            };
                             let clean_title =
                                 PipewireCaptureService::strip_portal_hash(&captured_title);
-                            map.get(clean_title).cloned()
-                        };
-                        ids.and_then(|v| {
-                            let bindings = service.bindings.lock();
-                            if v.len() <= 1 {
-                                v.iter().find(|id| !bindings.contains_key(id)).copied()
+                            let Some(ids) = map.get(&clean_title).cloned() else {
+                                continue;
+                            };
+                            let Some(bindings) = service.bindings
+                                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                            else {
+                                continue;
+                            };
+                            if ids.len() <= 1 {
+                                ids.iter().find(|id| !bindings.contains_key(id)).copied()
                             } else {
                                 // Multiple windows with the same title — use chooser file order.
-                                let clean_title_for_count =
-                                    PipewireCaptureService::strip_portal_hash(&captured_title)
-                                        .to_string();
+                                let clean_title_for_count = clean_title;
                                 let mut same_title_count_before = 0;
                                 for ci in 0..portal_idx {
                                     if let Some(chooser_title) = chooser_titles.get(ci) {
                                         let chooser_clean =
-                                            PipewireCaptureService::strip_portal_hash(
-                                                chooser_title,
-                                            )
-                                            .to_string();
+                                            PipewireCaptureService::strip_portal_hash(chooser_title);
                                         if chooser_clean == clean_title_for_count {
                                             same_title_count_before += 1;
                                         }
                                     }
                                 }
-                                v.iter()
+                                ids.iter()
                                     .filter(|id| !bindings.contains_key(id))
                                     .nth(same_title_count_before)
                                     .copied()
                             }
-                        })
-                    };
-                    let stream_data = Arc::new(StreamFrameData {
-                        frame: Arc::new(Mutex::new(None)),
-                        generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
-                        cached_rgba: Arc::new(parking_lot::Mutex::new(None)),
-                        format_info: Arc::new(Mutex::new(None)),
-                        ready: Arc::new(AtomicBool::new(false)),
-                        title: captured_title.clone(),
-                        window_id: Arc::new(Mutex::new(window_id)),
-                    });
+                        };
+                        let (quit_tx, quit_rx) = std::sync::mpsc::channel();
+                        let stream_data = Arc::new(StreamFrameData {
+                            frame: Arc::new(Mutex::new(None)),
+                            generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                            cached_rgba: Arc::new(parking_lot::Mutex::new(None)),
+                            format_info: Arc::new(Mutex::new(None)),
+                            ready: Arc::new(AtomicBool::new(false)),
+                            title: captured_title.clone(),
+                            window_id: Arc::new(Mutex::new(window_id)),
+                            shutdown: Arc::new(AtomicBool::new(false)),
+                            thread_handle: Arc::new(Mutex::new(None)),
+                            mainloop_quit: Arc::new(Mutex::new(Some(quit_tx))),
+                        });
 
-                    // Add to shared stream_frames vector (lock guard dropped before next .await)
-                    {
-                        let mut frames = service_frames.lock();
-                        frames.push(stream_data.clone());
+                        // Add to shared stream_frames vector (lock guard dropped before next .await)
+                        {
+                            if let Some(mut frames) = service_frames
+                                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                            {
+                                frames.push(stream_data.clone());
+                            }
+                        }
+
+                        // Bind the new stream to the window in the persistent registry
+                        if let Some(wid) = window_id {
+                            service.bind_window_to_stream(wid, stream_idx, &captured_title);
+                        }
+
+                        // FIX (v1.5.5): Pass visibility info for streams spawned by the monitor.
+                        let vis = StreamVisibility {
+                            window_list_open: service_window_list_open.clone(),
+                            active_row: service_active_row.clone(),
+                            stream_idx,
+                        };
+                        let handle = spawn_stream_thread(fd, node_id, stream_idx, stream_data.clone(), vis);
+                        if let Some(mut th) = stream_data.thread_handle
+                            .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                        {
+                            *th = Some(handle);
+                        }
+                        drop(quit_rx); // Receiver not needed outside the thread
+                        added_count += 1;
                     }
-
-                    // Bind the new stream to the window in the persistent registry
-                    if let Some(wid) = window_id {
-                        service.bind_window_to_stream(wid, stream_idx, &captured_title);
-                    }
-
-                    // FIX (v1.5.5): Pass visibility info for streams spawned by the monitor.
-                    let vis = StreamVisibility {
-                        window_list_open: service_window_list_open.clone(),
-                        active_row: service_active_row.clone(),
-                        stream_idx,
-                    };
-                    spawn_stream_thread(fd, node_id, stream_idx, stream_data.clone(), vis);
-                    added_count += 1;
                 }
             }
+
+            // Update capture state
+            {
+                if let Some(mut state) = service_state
+                    .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                {
+                    state.count = current_stream_count + added_count;
+                    state.titles = chooser_titles.clone();
+                }
+            }
+            _last_count = current_stream_count + added_count;
         }
 
-        // Update capture state
+        // --- Phase 3: Retry capture for windows without streams ---
+        // The xdg-desktop-portal-wlr on labwc has partial toplevel capture support,
+        // meaning some windows (e.g., pcmanfm-qt, featherpad) may not appear in the
+        // portal's window list on the first session. However, the portal's list is
+        // inconsistent between sessions — a window missing in one session may appear
+        // in the next. Retry the portal session for windows tracked by foreign_toplevel
+        // that still have no PipeWire stream.
         {
-            let mut state = service_state.lock();
-            state.count = current_stream_count + added_count;
-            state.titles = chooser_titles.clone();
+            // Find windows tracked by foreign_toplevel that have no stream binding
+            let mut unbound_window_ids: Vec<u32> = service.window_ids
+                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                .and_then(|window_ids_map| {
+                    service.bindings
+                        .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                        .map(|bindings| {
+                            let bound_ids: HashSet<u32> = bindings.keys().copied().collect();
+                            window_ids_map
+                                .values()
+                                .flatten()
+                                .filter(|id| !bound_ids.contains(id))
+                                .copied()
+                                .collect()
+                        })
+                })
+                .unwrap_or_default();
+
+            if unbound_window_ids.is_empty() {
+                // No unbound windows — nothing to retry
+            } else {
+                eprintln!("[PIPEWIRE] Phase 3: {} unbound windows need streams", unbound_window_ids.len());
+
+                // Retry the portal session up to 5 times to try to capture missing windows.
+                // labwc's toplevel capture is inconsistent — a window may appear in one
+                // portal session but not the next. More retries increase the chance of
+                // catching the window when it's listed.
+                for retry in 0..5 {
+                if unbound_window_ids.is_empty() {
+                    break;
+                }
+
+                // Small delay before retry to let the portal register new windows
+                tokio::time::sleep(std::time::Duration::from_millis(100 * (retry as u64 + 1))).await;
+
+                // Re-run a portal session to refresh the chooser file
+                let _ = std::fs::write("/tmp/chooser-index.txt", "0");
+                let _portal_result = tokio::time::timeout(
+                    std::time::Duration::from_secs(10),
+                    async {
+                        let session = match create_session(&connection, &desktop).await {
+                            Ok(s) => s,
+                            Err(_) => return,
+                        };
+                        let portal_restore_token = {
+                            let Some(token) = service.restore_token
+                                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                            else {
+                                return;
+                            };
+                            token.clone()
+                        };
+                        if select_sources(
+                            &connection,
+                            &desktop,
+                            &session,
+                            portal_restore_token.as_deref(),
+                        )
+                        .await
+                        .is_ok()
+                        {
+                            let _ = start_capture(&connection, &desktop, &session).await;
+                        }
+                    },
+                )
+                .await;
+
+                tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+                // Re-read the chooser file after the retry
+                let retry_chooser_titles: Vec<String> =
+                    if let Ok(content) = std::fs::read_to_string("/tmp/chooser-windows.txt") {
+                        content
+                            .lines()
+                            .filter(|l| !l.is_empty())
+                            .map(|l| l.trim().to_string())
+                            .collect()
+                    } else {
+                        continue;
+                    };
+
+                if retry_chooser_titles.is_empty() {
+                    continue;
+                }
+
+                // Check which unbound windows now appear in the portal list
+                let current_stream_count_before = service_frames
+                    .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                    .map(|f| f.len())
+                    .unwrap_or(0);
+
+                // Count existing streams per title (hash-stripped)
+                let mut stream_title_counts: std::collections::HashMap<String, usize> =
+                    std::collections::HashMap::new();
+                if let Some(frames) = service_frames
+                    .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                {
+                    for s in frames.iter() {
+                        let clean = PipewireCaptureService::strip_portal_hash(&s.title);
+                        *stream_title_counts.entry(clean).or_insert(0) += 1;
+                    }
+                }
+
+                // Count portal windows per title (hash-stripped)
+                let mut portal_title_counts: std::collections::HashMap<String, usize> =
+                    std::collections::HashMap::new();
+                for ct in &retry_chooser_titles {
+                    let clean = PipewireCaptureService::strip_portal_hash(ct);
+                    *portal_title_counts.entry(clean).or_insert(0) += 1;
+                }
+
+                // Find titles that need more streams
+                let mut retry_to_capture: Vec<usize> = Vec::new();
+                let mut matched_so_far: std::collections::HashMap<String, usize> =
+                    std::collections::HashMap::new();
+
+                for (i, title) in retry_chooser_titles.iter().enumerate() {
+                    let clean_title = PipewireCaptureService::strip_portal_hash(title);
+                    let streams_with_title = *stream_title_counts.get(&clean_title).unwrap_or(&0);
+                    let portal_with_title = *portal_title_counts.get(&clean_title).unwrap_or(&0);
+                    let already_matched = *matched_so_far.get(&clean_title).unwrap_or(&0);
+                    let total_have = streams_with_title + already_matched;
+                    if total_have < portal_with_title {
+                        if retry_to_capture.len() >= max_windows - current_stream_count_before {
+                            break;
+                        }
+                        retry_to_capture.push(i);
+                        *matched_so_far.entry(clean_title).or_insert(0) += 1;
+                    }
+                }
+
+                if retry_to_capture.is_empty() {
+                    continue;
+                }
+
+                // Capture the newly discovered windows
+                let retry_restore_token = {
+                    let Some(token) = service.restore_token
+                        .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                    else {
+                        continue;
+                    };
+                    token.clone()
+                };
+                let mut retry_added = 0;
+                for (idx, portal_idx) in retry_to_capture.into_iter().enumerate() {
+                    if let Ok((new_streams, _new_token)) = capture_windows_range(
+                        &connection,
+                        &desktop,
+                        portal_idx,
+                        portal_idx + 1,
+                        retry_restore_token.clone(),
+                        Some(retry_chooser_titles.len()),
+                    )
+                    .await
+                    {
+                        for (fd, node_id, captured_title) in new_streams {
+                            let stream_idx = current_stream_count_before + idx + retry_added;
+
+                            // Use fuzzy matching + last-resort binding, same as Phase 1b.
+                            // The portal title may differ from the Wayland title (e.g., pcmanfm
+                            // changes its title based on the current directory), so exact match
+                            // is unreliable. Try exact, then fuzzy, then bind to any unbound window.
+                            let window_id = {
+                                let Some(window_ids_map) = service.window_ids
+                                    .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                                else {
+                                    continue;
+                                };
+                                let Some(bindings) = service.bindings
+                                    .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                                else {
+                                    continue;
+                                };
+                                let bound_ids: HashSet<u32> = bindings.keys().copied().collect();
+                                drop(bindings);
+
+                                let clean_title = PipewireCaptureService::strip_portal_hash(&captured_title);
+                                let normalized = PipewireCaptureService::normalize_title(&clean_title);
+
+                                // Try exact match first
+                                let matched_ids: Option<Vec<u32>> = {
+                                    if let Some(ids) = window_ids_map.get(&clean_title) {
+                                        Some(ids.clone())
+                                    } else if let Some(ids) = window_ids_map.get(&normalized) {
+                                        Some(ids.clone())
+                                    } else {
+                                        // Fuzzy: try startswith against each key
+                                        let mut found = None;
+                                        for (map_key, ids) in window_ids_map.iter() {
+                                            let map_clean = PipewireCaptureService::strip_portal_hash(map_key);
+                                            let map_norm = PipewireCaptureService::normalize_title(&map_clean);
+                                            let map_lower = map_norm.to_lowercase();
+                                            let title_lower = normalized.to_lowercase();
+                                            if map_lower == title_lower
+                                                || map_lower.starts_with(&title_lower)
+                                                || title_lower.starts_with(&map_lower)
+                                            {
+                                                found = Some(ids.clone());
+                                                break;
+                                            }
+                                        }
+                                        found
+                                    }
+                                };
+
+                                if let Some(ids) = matched_ids {
+                                    if ids.len() <= 1 {
+                                        ids.iter().find(|id| !bound_ids.contains(id)).copied()
+                                    } else {
+                                        ids.iter()
+                                            .filter(|id| !bound_ids.contains(id))
+                                            .next()
+                                            .copied()
+                                    }
+                                } else {
+                                    // Last resort: bind to any unbound window
+                                    window_ids_map.values()
+                                        .flatten()
+                                        .find(|id| !bound_ids.contains(id))
+                                        .copied()
+                                }
+                            };
+
+                            let (quit_tx, quit_rx) = std::sync::mpsc::channel();
+                            let stream_data = Arc::new(StreamFrameData {
+                                frame: Arc::new(Mutex::new(None)),
+                                generation: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                                cached_rgba: Arc::new(parking_lot::Mutex::new(None)),
+                                format_info: Arc::new(Mutex::new(None)),
+                                ready: Arc::new(AtomicBool::new(false)),
+                                title: captured_title.clone(),
+                                window_id: Arc::new(Mutex::new(window_id)),
+                                shutdown: Arc::new(AtomicBool::new(false)),
+                                thread_handle: Arc::new(Mutex::new(None)),
+                                mainloop_quit: Arc::new(Mutex::new(Some(quit_tx))),
+                            });
+
+                            {
+                                if let Some(mut frames) = service_frames
+                                    .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                                {
+                                    frames.push(stream_data.clone());
+                                }
+                            }
+
+                            if let Some(wid) = window_id {
+                                service.bind_window_to_stream(wid, stream_idx, &captured_title);
+                            }
+
+                            let vis = StreamVisibility {
+                                window_list_open: service_window_list_open.clone(),
+                                active_row: service_active_row.clone(),
+                                stream_idx,
+                            };
+                            let handle = spawn_stream_thread(fd, node_id, stream_idx, stream_data.clone(), vis);
+                            if let Some(mut th) = stream_data.thread_handle
+                                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                            {
+                                *th = Some(handle);
+                            }
+                            drop(quit_rx);
+                            retry_added += 1;
+                        }
+                    }
+                }
+
+                // Update capture state with retry results
+                {
+                    if let Some(mut state) = service_state
+                        .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                    {
+                        state.count = current_stream_count_before + retry_added;
+                        state.titles = retry_chooser_titles.clone();
+                    }
+                }
+
+                // Re-check which windows are still unbound after this retry
+                let still_unbound: Vec<u32> = service.window_ids
+                    .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                    .and_then(|window_ids_map| {
+                        service.bindings
+                            .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                            .map(|bindings| {
+                                let bound_ids: HashSet<u32> = bindings.keys().copied().collect();
+                                window_ids_map
+                                    .values()
+                                    .flatten()
+                                    .filter(|id| !bound_ids.contains(id))
+                                    .copied()
+                                    .collect()
+                            })
+                    })
+                    .unwrap_or_default();
+                if retry_added > 0 {
+                    eprintln!("[PIPEWIRE] Phase 3 retry {}: captured {} streams, {} still unbound", retry, retry_added, still_unbound.len());
+                }
+                unbound_window_ids = still_unbound;
+                }
+            }
+            // After all retries, report remaining unbound windows
+            if !unbound_window_ids.is_empty() {
+                eprintln!("[PIPEWIRE] Phase 3: {} windows still unbound after all retries — portal may not list them", unbound_window_ids.len());
+            }
         }
-        _last_count = current_stream_count + added_count;
     }
 }
 

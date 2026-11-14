@@ -121,6 +121,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Store the service in AppState so the render thread can access frames.
     state.pipewire_capture = Some(pipewire_service.clone());
 
+    // Populate the window_ids map BEFORE starting PipeWire capture.
+    // init_capture_service reads from this map to bind streams to stable
+    // Wayland window IDs. If the map is empty, all streams get window_id=None,
+    // forcing fragile title-based matching and causing frames to show for
+    // the wrong app.
+    {
+        let pw = pipewire_service.clone();
+        let mut window_ids: Vec<(String, u32)> = state
+            .windows
+            .iter()
+            .filter_map(|(id, win)| {
+                if win.title.is_empty() {
+                    None
+                } else {
+                    Some((win.title.clone(), id.0.protocol_id()))
+                }
+            })
+            .collect();
+        window_ids.sort_by(|(a_title, a_id), (b_title, b_id)| {
+            a_title.cmp(b_title).then(a_id.cmp(b_id))
+        });
+        pw.update_window_ids(&window_ids);
+    }
+
     // Start PipeWire capture and monitor in the background.
     // `init_capture_service` captures all windows once on startup.
     // `start_monitor_inner` runs indefinitely, reacting to window create/destroy events.

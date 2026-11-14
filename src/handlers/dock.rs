@@ -118,7 +118,10 @@ pub fn handle_dock_release(
                         // whose stream is currently displayed (active_row). This ensures
                         // clicking the dock icon focuses the same window whose capture is shown.
                         let target_window = if let Some(service) = &state.pipewire_capture {
-                            let active_row = *service.active_row.lock();
+                            let active_row = service.active_row
+                                .try_lock_for(std::time::Duration::from_millis(50))
+                                .map(|g| *g)
+                                .unwrap_or(0);
                             // Build a list of (window_id, stream_idx) pairs, matching
                             // windows to streams the same way window_list.rs does.
                             let matched: Vec<(&ObjectId, usize)> = windows
@@ -132,7 +135,9 @@ pub fn handle_dock_release(
                                             // Primary: check persistent binding registry
                                             service.get_bound_stream(window_id).or_else(|| {
                                                 // Secondary: fall back to title match
-                                                service.find_stream_by_title(&ws.title, &[])
+                                                // Pass window_id so bound streams belonging to other
+                                                // windows are not stolen by title matching.
+                                                service.find_stream_by_title(&ws.title, &[], Some(window_id))
                                             })
                                         }
                                     } else {
