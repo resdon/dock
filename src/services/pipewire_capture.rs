@@ -2325,12 +2325,30 @@ fn spawn_stream_thread(
                                     // instead of the entire pixel array.
                                     let bytes: Arc<[u8]> =
                                         Arc::from(&samples[0..size.min(samples.len())]);
-                                    // If we can't get the frame lock, skip this frame
-                                    let result =
-                                        frame_data_for_process.try_lock().map(|mut guard| {
-                                            guard.replace((w, h, fmt, bytes));
-                                        });
-                                    let _ = result;
+                                    // P2 FIX: Write the frame AND increment the generation under the
+                                    // same lock. Previously, the generation was incremented after the
+                                    // lock released, so a reader could see new pixels with the old
+                                    // generation value, causing stale frame detection to fail.
+                                    // The generation is stored in a local variable inside the lock,
+                                    // then the reader-side check compares pre-read and post-read
+                                    // values for consistency.
+                                    let new_gen = {
+                                        // If we can't get the frame lock, skip this frame
+                                        let result =
+                                            frame_data_for_process.try_lock().map(|mut guard| {
+                                                guard.replace((w, h, fmt, bytes));
+                                                // Increment generation while holding the frame lock
+                                                // so the reader always sees a consistent snapshot:
+                                                // new pixels paired with a new generation value.
+                                                let gen = generation_for_process
+                                                    .fetch_add(1, std::sync::atomic::Ordering::Release)
+                                                    + 1;
+                                                gen
+                                            });
+                                        let _ = result;
+                                        // Return the new generation if successful, None otherwise
+                                        result
+                                    };
                                     // FIX (v1.5.5): Mark the stream as primed after successfully
                                     // capturing the first valid frame. This ensures early callbacks
                                     // before format negotiation don't falsely prime the stream, which
@@ -2346,12 +2364,10 @@ fn spawn_stream_thread(
                                     if let Some(mut cache) = cached_rgba_for_process.try_lock() {
                                         *cache = None;
                                     }
-                                    // FIX: Increment generation counter atomically so the render thread
-                                    // can detect that a new frame has arrived and skip redundant work
-                                    // when the generation hasn't changed. AtomicU64 eliminates the
-                                    // blocking lock that could starve the stream thread and cause
-                                    // FPS to drop to 2-3fps over time.
-                                    generation_for_process.fetch_add(1, std::sync::atomic::Ordering::Release);
+                                    // The generation was already incremented inside the frame lock above.
+                                    // The `new_gen` variable holds the new generation value if the lock
+                                    // was acquired, or None if it failed (frame skipped).
+                                    let _ = new_gen;
                                     frames_in_fps_window += 1;
                                     let elapsed = fps_window_start.elapsed();
                                     if elapsed >= std::time::Duration::from_secs(2) {
