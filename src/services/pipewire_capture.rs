@@ -2985,41 +2985,11 @@ pub async fn start_monitor_inner(
                         }
                     }
                 } else {
-                    // Last resort: if title matching failed, try to bind this unbound stream
-                    // to an unbound window (a window with no stream). File managers like
-                    // pcmanfm change their title based on the current directory, so the
-                    // portal title may differ completely from the Wayland title.
-                    let unbound_window_id = {
-                        let Some(bindings) = service.bindings
-                            .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
-                        else {
-                            continue;
-                        };
-                        let bound_ids: HashSet<u32> = bindings.keys().copied().collect();
-                        drop(bindings);
-                        // Find a window that's not yet bound to any stream
-                        window_ids_map.values()
-                            .flatten()
-                            .find(|id| !bound_ids.contains(id))
-                            .copied()
-                    };
-                    if let Some(id) = unbound_window_id {
-                        let Some(frames) = service_frames
-                            .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
-                        else {
-                            continue;
-                        };
-                        if let Some(stream) = frames.get(*i) {
-                            if let Some(mut wid_lock) = stream.window_id
-                                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
-                            {
-                                *wid_lock = Some(id);
-                            }
-                            let t = stream.title.clone();
-                            drop(frames);
-                            service.bind_window_to_stream(id, *i, &t);
-                        }
-                    }
+                    // Title matching failed — leave the stream unbound.
+                    // Binding to any unbound window caused cross-app frame mixing
+                    // (e.g., Edge's stream bound to featherpad's window).
+                    // The popup's draw-time title matching in window_list.rs handles
+                    // unbound streams correctly by matching within the same app.
                 }
                 drop(window_ids_map);
             }
@@ -3475,11 +3445,9 @@ pub async fn start_monitor_inner(
                                             .copied()
                                     }
                                 } else {
-                                    // Last resort: bind to any unbound window
-                                    window_ids_map.values()
-                                        .flatten()
-                                        .find(|id| !bound_ids.contains(id))
-                                        .copied()
+                                    // Title matching failed — leave unbound.
+                                    // Binding to any unbound window caused cross-app frame mixing.
+                                    None
                                 }
                             };
 

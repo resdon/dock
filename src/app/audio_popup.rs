@@ -107,7 +107,7 @@ pub fn draw_audio_popup(
             input_region_key: 0,
             // FIX (v1.5.5): Initialize last_content_hash to 0 for content-hash caching.
             last_content_hash: 0,
-            last_texture_generation: 0,
+            last_texture_generation: std::collections::HashMap::new(),
         });
     }
     let Some(popup) = dock.audio_popup.as_mut() else {

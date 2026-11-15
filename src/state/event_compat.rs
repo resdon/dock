@@ -278,7 +278,11 @@ impl AppState {
                     // a new one (count already matches).
                     pw.request_probe_immediate();
                 } else {
-                    pw.request_probe();
+                    // Bypass debounce on create so the monitor runs immediately to
+                    // capture the new window's frame. Without this, the 1-second
+                    // debounce plus portal session time (~1-2s) means thumbnails
+                    // can take 2-3 seconds to appear after opening an app.
+                    pw.request_probe_immediate();
                 }
             }
         }

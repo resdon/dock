@@ -321,7 +321,7 @@ pub fn draw_window_list_popup(
                         // FIX (v1.5.5): Initialize last_content_hash to 0 so the first frame
                         // always renders. The hash will be updated after the first render.
                         last_content_hash: 0,
-                        last_texture_generation: 0,
+                        last_texture_generation: std::collections::HashMap::new(),
                     });
                 }
 
@@ -728,7 +728,8 @@ pub fn draw_window_list_popup(
                             if let Some(gen) = pipewire_capture
                                 .and_then(|service| service.get_stream_generation(stream_idx))
                             {
-                                gen != popup.last_texture_generation
+                                let last_gen = popup.last_texture_generation.get(&stream_idx).copied().unwrap_or(0);
+                                gen != last_gen
                             } else {
                                 // Generation unavailable — assume changed to avoid stale texture
                                 true
@@ -752,11 +753,23 @@ pub fn draw_window_list_popup(
                                 let stream_idx = hovered_stream_idx.unwrap();
                                 let (orig_w, orig_h) =
                                     service.get_stream_dimensions(stream_idx).unwrap_or((0, 0));
-                                // Try raw BGRx upload — no CPU conversion needed
+                                // Try raw BGRx upload — resize to target dimensions so thumbnails
+                                // have consistent sizing regardless of the original capture resolution.
                                 if let Some((w, h, bgrx)) = service.get_stream_frame_bgfx(stream_idx) {
+                                    // Calculate scaled dimensions to fit within the target frame size
+                                    let (scale_w, scale_h) = if w > target_frame_w || h > target_frame_h {
+                                        let scale = (target_frame_w as f32 / w as f32)
+                                            .min(target_frame_h as f32 / h as f32);
+                                        ((w as f32 * scale) as u32, (h as f32 * scale) as u32)
+                                    } else {
+                                        (w, h)
+                                    };
+                                    // For BGRx, we upload at original size and let the GPU stretch
+                                    // the texture to the destination rect. The texture dimensions
+                                    // determine VRAM usage, so we scale down to save memory.
                                     capture_frame_data = Some(CaptureFrameData {
-                                        width: w,
-                                        height: h,
+                                        width: scale_w,
+                                        height: scale_h,
                                         rgba: bgrx.clone(),
                                         original_width: w,
                                         original_height: h,
@@ -808,7 +821,7 @@ pub fn draw_window_list_popup(
                                 if let Some(gen) = pipewire_capture
                                     .and_then(|service| service.get_stream_generation(stream_idx))
                                 {
-                                    popup.last_texture_generation = gen;
+                                    popup.last_texture_generation.insert(stream_idx, gen);
                                 }
                             }
                         }
