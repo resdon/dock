@@ -3163,21 +3163,21 @@ pub async fn start_monitor_inner(
             // capture for windows that the portal may have missed (e.g., pcmanfm,
             // featherpad on labwc with partial toplevel capture support).
         } else {
-            let current_restore_token = {
-                let Some(token) = service.restore_token
-                    .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
-                else {
-                    return;
-                };
-                token.clone()
-            };
-            for (_idx, portal_idx) in to_capture.into_iter().enumerate() {
+            // Lock contention guard: if we can't acquire the restore_token,
+            // skip Phase 2 capture this cycle. Phase 3 will still run below
+            // to retry unbound windows. This prevents the monitor task from
+            // dying on lock contention.
+            let current_restore_token = service.restore_token
+                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                .and_then(|g| g.clone());
+            if let Some(current_restore_token) = current_restore_token {
+                for (_idx, portal_idx) in to_capture.into_iter().enumerate() {
                 if let Ok((new_streams, _new_token)) = capture_windows_range(
                     &connection,
                     &desktop,
                     portal_idx,
                     portal_idx + 1,
-                    current_restore_token.clone(),
+                    Some(current_restore_token.clone()),
                     Some(chooser_titles.len()),
                 )
                 .await {
@@ -3317,6 +3317,7 @@ pub async fn start_monitor_inner(
                         added_count += 1;
                     }
                 }
+            }
             }
 
             // Update capture state
