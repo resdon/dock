@@ -138,8 +138,10 @@ pub fn draw_window_list_popup(
                                     // Title matching is fragile when multiple windows share
                                     // similar titles, so we only use it when there's no binding.
                                     // Pass window_id so bound streams belonging to other windows
-                                    // are not stolen by title matching.
-                                    service.find_stream_by_title(&w.title, &used_streams, Some(window_id))
+                                    // are not stolen by title matching. Pass app_id so title
+                                    // matching never assigns a stream from a different app.
+                                    let app_id_str = w.app_id.as_ref().map(|a| a.0.clone());
+                                    service.find_stream_by_title(&w.title, &used_streams, Some(window_id), &app_id_str)
                                 }
                             };
 
@@ -840,29 +842,30 @@ pub fn draw_window_list_popup(
                             // Reuse the existing cached texture — frame hasn't changed.
                             cache_key.as_ref().and_then(|ck| renderer.cached_texture(ck))
                         };
-                        // P0 + P2 FIX: Only acknowledge the generation after a successful upload
-                        // AND when the generation hasn't advanced between our pre-read and post-read.
-                        // If PipeWire wrote a new frame between our fetch and acknowledgment,
-                        // don't consume the generation — the next frame will retry with the
-                        // newer frame. Also, don't commit last_content_hash when capture is pending.
+                        // FIX: Only acknowledge the generation after a successful upload.
+                        // Don't require gen_before == gen_after — for active streams, PipeWire
+                        // constantly advances the generation between our pre-read and post-read,
+                        // so that check would almost always fail, preventing any acknowledgment.
+                        // This causes last_texture_generation to never update, making
+                        // generation_changed always true, which means the draw loop always tries
+                        // to fetch a new frame. When try_lock() fails briefly, the fetch returns
+                        // None and the frame freezes on a stale texture.
+                        //
+                        // The generation sync check was meant to prevent stale frame caching,
+                        // but it causes the opposite problem: preventing ANY frame acknowledgment.
+                        // Instead, acknowledge the current generation after a successful upload.
+                        // The content hash (which includes the generation) ensures we don't skip
+                        // rendering when new frames arrive.
                         if generation_changed {
                             let uploaded = texture_id.is_some();
                             if uploaded {
                                 texture_uploaded = true;
                                 if let Some(nid) = node_id {
-                                    if let Some(stream_idx) = hovered_stream_idx {
-                                        // P2 FIX (generation sync): Read generation after upload.
-                                        // Only acknowledge if it matches gen_before — otherwise
-                                        // PipeWire advanced and we'd skip the newer frame.
-                                        let gen_after = pipewire_capture
-                                            .and_then(|service| service.get_stream_generation(stream_idx));
-                                        if gen_before == gen_after {
-                                            if let Some(gen) = gen_after {
-                                                popup.last_texture_generation.insert(nid, gen);
-                                            }
-                                        }
-                                        // If gen_before != gen_after, leave unacknowledged so
-                                        // the next frame retries with the newer generation.
+                                    // Acknowledge the generation we read before the fetch.
+                                    // Even if PipeWire advanced, we uploaded a valid frame
+                                    // and should acknowledge it so the next comparison works.
+                                    if let Some(gen) = gen_before {
+                                        popup.last_texture_generation.insert(nid, gen);
                                     }
                                 }
                             }

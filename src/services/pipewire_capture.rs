@@ -156,6 +156,11 @@ pub struct StreamFrameData {
     /// of title changes. Stored in a Mutex so the monitor task can update it
     /// after stream retention during incremental updates.
     pub window_id: Arc<Mutex<Option<u32>>>,
+    /// Application ID (e.g., "microsoft-edge", "org.pcsx2.PCmanFM-Qt") extracted
+    /// from the portal title or set at capture time. Used by `find_stream_by_title`
+    /// to filter matches so that title-based fallback never assigns a stream from
+    /// a different app. Prevents cross-app frame mixing when titles are similar.
+    pub app_id: Option<String>,
     /// Set to `true` when the stream should shut down. Checked each iteration
     /// of the stream thread's main loop; when `true`, the loop breaks and the
     /// thread exits cleanly, releasing its PipeWire main loop, stream, and FD.
@@ -441,17 +446,16 @@ impl PipewireCaptureService {
         bindings.insert(window_id, stream_idx);
     }
 
-    /// Unbind a Wayland window ID from its PipeWire stream and shut down the stream.
+    /// Unbind a Wayland window ID from its PipeWire stream.
     ///
     /// Called when a window closes. This method:
     /// 1. Removes the binding from the registry
-    /// 2. Finds the stream associated with the window ID
-    /// 3. Signals the stream to shut down immediately
+    /// 2. Clears the stream's window_id field so Phase 1b can rebind it
     ///
-    /// Without shutting down the stream, Phase 1 may not remove it because the
-    /// title still matches the chooser file (e.g., reopening featherpad produces
-    /// the same title). The stream would survive Phase 1 with a cleared window_id,
-    /// and Phase 2 would not create a new one because the count already matches.
+    /// We do NOT shut down the stream anymore. Keeping the stream alive allows
+    /// Phase 1b to rebind it to a reopened window with the same title, which is
+    /// critical for apps like featherpad and pcmanfm that the portal may not list
+    /// consistently. The stream continues producing frames and can be reused.
     pub fn unbind_window(&self, window_id: u32) {
         // Remove the binding from the registry
         let stream_idx = {
@@ -464,19 +468,21 @@ impl PipewireCaptureService {
             bindings.remove(&window_id)
         };
 
-        // Find and shut down the stream associated with this window ID
-        if stream_idx.is_some() {
-            // The stream was bound — shut it down directly
-            if let Some(idx) = stream_idx {
-                if let Some(stream) = self.stream_frames
+        // Clear the stream's window_id field so Phase 1b can rebind it.
+        // Do NOT shut down the stream — keeping it alive allows rebinding.
+        if let Some(idx) = stream_idx {
+            if let Some(stream) = self.stream_frames
+                .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+                .and_then(|frames| frames.get(idx).cloned())
+            {
+                if let Some(mut wid_lock) = stream.window_id
                     .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
-                    .and_then(|frames| frames.get(idx).cloned())
                 {
-                    Self::shutdown_stream(&stream);
+                    *wid_lock = None;
                 }
             }
         } else {
-            // Not in bindings — scan streams by window_id field
+            // Not in bindings — scan streams by window_id field and clear
             if let Some(frames) = self.stream_frames
                 .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
             {
@@ -487,7 +493,11 @@ impl PipewireCaptureService {
                         .flatten()
                     {
                         if wid == window_id {
-                            Self::shutdown_stream(stream);
+                            if let Some(mut wid_lock) = stream.window_id
+                                .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+                            {
+                                *wid_lock = None;
+                            }
                             break;
                         }
                     }
@@ -633,7 +643,7 @@ impl PipewireCaptureService {
     ///
     /// Convenience wrapper around `find_stream_by_title` that returns a boolean.
     pub fn has_stream_for_title(&self, title: &str) -> bool {
-        self.find_stream_by_title(title, &[], None).is_some()
+        self.find_stream_by_title(title, &[], None, &None).is_some()
     }
 
     /// Get the number of currently captured windows.
@@ -1190,9 +1200,13 @@ impl PipewireCaptureService {
     /// a stream bound to the SAME window can still be matched (e.g., when the
     /// binding was just created but the caller hasn't seen it yet).
     ///
+    /// The `app_id` parameter filters matches to only streams from the same app,
+    /// preventing cross-app frame mixing when titles are similar (e.g., "dock"
+    /// matching both the dock itself and a file named "dock").
+    ///
     /// Uses a timeout lock so the draw thread never freezes if the monitor task
     /// holds the lock for an extended period.
-    pub fn find_stream_by_title(&self, title: &str, exclude: &[usize], window_id: Option<u32>) -> Option<usize> {
+    pub fn find_stream_by_title(&self, title: &str, exclude: &[usize], window_id: Option<u32>, app_id: &Option<String>) -> Option<usize> {
         if title.is_empty() {
             return None;
         }
@@ -1209,12 +1223,10 @@ impl PipewireCaptureService {
         // Title-based matching should not steal it unless it's bound to
         // the SAME window we're querying for.
         //
-        // CRITICAL: If the stream's window_id is stale (no longer in the
-        // window_ids map), we skip it entirely. A stale binding means the
-        // original window has closed, and the stream is dead — it's no longer
-        // producing frames. The async monitor will clean it up in Phase 1.
-        // Allowing title matching to use dead streams causes the new window
-        // to display the last frozen frame from the old window.
+        // If the stream's window_id is stale (no longer in the window_ids
+        // map), the stream is still alive and producing frames — the window
+        // just closed and reopened with a new ID. Allow title matching to
+        // use such streams so thumbnails reappear for reopened windows.
         let should_skip_bound = |stream: &StreamFrameData, window_id: Option<u32>| -> bool {
             let stream_wid = stream.window_id
                 .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
@@ -1229,7 +1241,19 @@ impl PipewireCaptureService {
                     true
                 }
             } else {
+                // No window_id on this stream — available for title matching
                 false
+            }
+        };
+        // Helper: skip streams from a different app. Title matching should never
+        // assign a stream from one app to a window from another app, even if the
+        // titles happen to match. This prevents cross-app frame mixing.
+        let should_skip_different_app = |stream: &StreamFrameData| -> bool {
+            match (app_id, &stream.app_id) {
+                (Some(query_app), Some(stream_app)) => query_app != stream_app,
+                (Some(_), None) => false, // Stream has no app_id — allow match
+                (None, Some(_)) => false, // Query has no app_id — allow match
+                (None, None) => false,
             }
         };
 
@@ -1239,6 +1263,9 @@ impl PipewireCaptureService {
                 continue;
             }
             if should_skip_bound(stream, window_id) {
+                continue;
+            }
+            if should_skip_different_app(stream) {
                 continue;
             }
             let pw_title = Self::strip_portal_hash(&stream.title);
@@ -1258,6 +1285,9 @@ impl PipewireCaptureService {
                     continue;
                 }
                 if should_skip_bound(stream, window_id) {
+                    continue;
+                }
+                if should_skip_different_app(stream) {
                     continue;
                 }
                 if stream.title.is_empty() {
@@ -1283,6 +1313,9 @@ impl PipewireCaptureService {
             if should_skip_bound(stream, window_id) {
                 continue;
             }
+            if should_skip_different_app(stream) {
+                continue;
+            }
             if stream.title.is_empty() {
                 continue;
             }
@@ -1302,6 +1335,9 @@ impl PipewireCaptureService {
                     continue;
                 }
                 if should_skip_bound(stream, window_id) {
+                    continue;
+                }
+                if should_skip_different_app(stream) {
                     continue;
                 }
                 if stream.title.is_empty() {
@@ -1342,6 +1378,9 @@ impl PipewireCaptureService {
                 if should_skip_bound(stream, window_id) {
                     continue;
                 }
+                if should_skip_different_app(stream) {
+                    continue;
+                }
                 if stream.title.is_empty() {
                     continue;
                 }
@@ -1354,28 +1393,11 @@ impl PipewireCaptureService {
                 }
             }
         }
-        // Last resort: if no title match was found, look for an unbound stream
-        // (window_id=None) that hasn't been excluded. File managers like pcmanfm
-        // change their window title based on the current directory, so the portal
-        // title ("m.2") may differ completely from the Wayland title ("dock").
-        // If there's exactly one unbound stream available, it's likely the right
-        // one — the portal captured this window but under a different title.
-        let unbound_candidates: Vec<usize> = frames
-            .iter()
-            .enumerate()
-            .filter(|(i, stream)| {
-                !exclude.contains(i)
-                    && stream.window_id
-                        .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
-                        .map(|g| g.is_none())
-                        .unwrap_or(false)
-            })
-            .map(|(i, _)| i)
-            .collect();
-        if unbound_candidates.len() == 1 {
-            let idx = unbound_candidates[0];
-            return Some(idx);
-        }
+        // No last resort fallback: if no title match was found, return None.
+        // Previously, we would match any unbound stream when there was exactly
+        // one available. This caused cross-app frame mixing — e.g., pcmanfm
+        // would get Edge's stream just because it was the only unbound one.
+        // It is better to show no frame than the wrong frame.
         None
     }
 }
@@ -1525,6 +1547,7 @@ pub async fn init_capture_service(
             ready: Arc::new(AtomicBool::new(false)),
             title: title.clone(),
             window_id: Arc::new(Mutex::new(window_id)),
+            app_id: None,
             shutdown: Arc::new(AtomicBool::new(false)),
             thread_handle: Arc::new(Mutex::new(None)),
             mainloop_quit: Arc::new(Mutex::new(Some(quit_tx))),
@@ -3250,6 +3273,7 @@ pub async fn start_monitor_inner(
                             ready: Arc::new(AtomicBool::new(false)),
                             title: captured_title.clone(),
                             window_id: Arc::new(Mutex::new(window_id)),
+                            app_id: None,
                             shutdown: Arc::new(AtomicBool::new(false)),
                             thread_handle: Arc::new(Mutex::new(None)),
                             mainloop_quit: Arc::new(Mutex::new(Some(quit_tx))),
@@ -3543,6 +3567,7 @@ pub async fn start_monitor_inner(
                                 ready: Arc::new(AtomicBool::new(false)),
                                 title: captured_title.clone(),
                                 window_id: Arc::new(Mutex::new(window_id)),
+                                app_id: None,
                                 shutdown: Arc::new(AtomicBool::new(false)),
                                 thread_handle: Arc::new(Mutex::new(None)),
                                 mainloop_quit: Arc::new(Mutex::new(Some(quit_tx))),

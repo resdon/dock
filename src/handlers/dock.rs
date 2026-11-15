@@ -137,7 +137,8 @@ pub fn handle_dock_release(
                                                 // Secondary: fall back to title match
                                                 // Pass window_id so bound streams belonging to other
                                                 // windows are not stolen by title matching.
-                                                service.find_stream_by_title(&ws.title, &[], Some(window_id))
+                                                let app_id_str = ws.app_id.as_ref().map(|a| a.0.clone());
+                                                service.find_stream_by_title(&ws.title, &[], Some(window_id), &app_id_str)
                                             })
                                         }
                                     } else {
