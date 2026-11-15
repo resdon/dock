@@ -2349,25 +2349,23 @@ fn spawn_stream_thread(
                                         // Return the new generation if successful, None otherwise
                                         result
                                     };
-                                    // FIX (v1.5.5): Mark the stream as primed after successfully
-                                    // capturing the first valid frame. This ensures early callbacks
-                                    // before format negotiation don't falsely prime the stream, which
-                                    // would cause the first displayed frame to be invalid.
-                                    // The primed flag is set regardless of popup state — unprimed
-                                    // streams always capture, so this only fires once per stream.
-                                    primed = true;
+                                    // FIX: Only mark the stream as primed when the frame lock was
+                                    // actually acquired and the frame was written. If new_gen is None,
+                                    // the lock failed — marking primed would incorrectly suppress
+                                    // future captures due to inactive stream throttling.
+                                    if new_gen.is_some() {
+                                        primed = true;
+                                    }
                                     // FIX (v1.5.5): Invalidate the cached RGBA when a new raw
                                     // frame arrives. The raw frame and cached RGBA both exist
                                     // simultaneously (~16MB for 1080p). By clearing the cache,
                                     // the next get_active_frame() call will rebuild it from
                                     // the new raw frame. This avoids holding both copies at once.
-                                    if let Some(mut cache) = cached_rgba_for_process.try_lock() {
-                                        *cache = None;
+                                    if new_gen.is_some() {
+                                        if let Some(mut cache) = cached_rgba_for_process.try_lock() {
+                                            *cache = None;
+                                        }
                                     }
-                                    // The generation was already incremented inside the frame lock above.
-                                    // The `new_gen` variable holds the new generation value if the lock
-                                    // was acquired, or None if it failed (frame skipped).
-                                    let _ = new_gen;
                                     frames_in_fps_window += 1;
                                     let elapsed = fps_window_start.elapsed();
                                     if elapsed >= std::time::Duration::from_secs(2) {
