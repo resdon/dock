@@ -3110,7 +3110,7 @@ pub async fn start_monitor_inner(
                 };
                 token.clone()
             };
-            for (idx, portal_idx) in to_capture.into_iter().enumerate() {
+            for (_idx, portal_idx) in to_capture.into_iter().enumerate() {
                 if let Ok((new_streams, _new_token)) = capture_windows_range(
                     &connection,
                     &desktop,
@@ -3121,49 +3121,91 @@ pub async fn start_monitor_inner(
                 )
                 .await {
                     for (fd, node_id, captured_title) in new_streams {
-                        let stream_idx = current_stream_count + idx + added_count;
-                        // Look up the stable Wayland window ID for this title.
-                        // Strip the portal hash suffix so "dock (hash)" matches Wayland title "dock".
-                        // For same-title windows, use the chooser file order (portal_idx)
-                        // to determine which window gets which stream.
+                        // P1 FIX: Determine stream_idx from actual vector insertion, not
+                        // from a formula that double-counts `added_count`. The formula
+                        // `current_stream_count + idx + added_count` was wrong because
+                        // both `idx` and `added_count` increase as streams are added,
+                        // so the second stream's index was off by 1.
+let stream_idx = {
+                            service_frames
+                                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                                .map(|frames| frames.len())
+                                .unwrap_or(0)
+                        };
+
+                        // P1 FIX: Use fuzzy matching instead of exact-only title match.
+                        // The portal title may differ from the Wayland title (e.g., pcmanfm
+                        // changes its title based on the current directory), so exact match
+                        // is unreliable. Try exact, then normalized, then startswith.
+                        // If matching fails, register the stream with window_id = None
+                        // and let Phase 1b/Phase 3 bind it later.
                         let window_id = {
-                            // Release window_ids before bindings to avoid lock ordering issues
-                            let Some(map) = service.window_ids
-                                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
-                            else {
-                                continue;
-                            };
-                            let clean_title =
-                                PipewireCaptureService::strip_portal_hash(&captured_title);
-                            let Some(ids) = map.get(&clean_title).cloned() else {
-                                continue;
-                            };
-                            let Some(bindings) = service.bindings
-                                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
-                            else {
-                                continue;
-                            };
-                            if ids.len() <= 1 {
-                                ids.iter().find(|id| !bindings.contains_key(id)).copied()
-                            } else {
-                                // Multiple windows with the same title — use chooser file order.
-                                let clean_title_for_count = clean_title;
-                                let mut same_title_count_before = 0;
-                                for ci in 0..portal_idx {
-                                    if let Some(chooser_title) = chooser_titles.get(ci) {
-                                        let chooser_clean =
-                                            PipewireCaptureService::strip_portal_hash(chooser_title);
-                                        if chooser_clean == clean_title_for_count {
-                                            same_title_count_before += 1;
+                            let map = service.window_ids
+                                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS));
+                            let bindings = service.bindings
+                                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS));
+                            
+                            match (map, bindings) {
+                                (Some(map), Some(bindings)) => {
+                                    let bound_ids: std::collections::HashSet<u32> = bindings.keys().copied().collect();
+                                    drop(bindings);
+
+                                    let clean_title = PipewireCaptureService::strip_portal_hash(&captured_title);
+                                    let normalized = PipewireCaptureService::normalize_title(&clean_title);
+
+                                    // Try exact match first
+                                    let matched_ids: Option<Vec<u32>> = {
+                                        if let Some(ids) = map.get(&clean_title) {
+                                            Some(ids.clone())
+                                        } else if let Some(ids) = map.get(&normalized) {
+                                            Some(ids.clone())
+                                        } else {
+                                            // Fuzzy: try startswith against each key
+                                            let mut found = None;
+                                            for (map_key, ids) in map.iter() {
+                                                let map_clean = PipewireCaptureService::strip_portal_hash(map_key);
+                                                let map_norm = PipewireCaptureService::normalize_title(&map_clean);
+                                                let map_lower = map_norm.to_lowercase();
+                                                let title_lower = normalized.to_lowercase();
+                                                if map_lower == title_lower
+                                                    || map_lower.starts_with(&title_lower)
+                                                    || title_lower.starts_with(&map_lower)
+                                                {
+                                                    found = Some(ids.clone());
+                                                    break;
+                                                }
+                                            }
+                                            found
                                         }
-                                    }
+                                    };
+
+                                    matched_ids.and_then(|ids| {
+                                        if ids.len() <= 1 {
+                                            ids.iter().find(|id| !bound_ids.contains(id)).copied()
+                                        } else {
+                                            // Multiple windows with the same title — use chooser file order.
+                                            let clean_title_for_count = clean_title;
+                                            let mut same_title_count_before = 0;
+                                            for ci in 0..portal_idx {
+                                                if let Some(chooser_title) = chooser_titles.get(ci) {
+                                                    let chooser_clean =
+                                                        PipewireCaptureService::strip_portal_hash(chooser_title);
+                                                    if chooser_clean == clean_title_for_count {
+                                                        same_title_count_before += 1;
+                                                    }
+                                                }
+                                            }
+                                            ids.iter()
+                                                .filter(|id| !bound_ids.contains(id))
+                                                .nth(same_title_count_before)
+                                                .copied()
+                                        }
+                                    })
                                 }
-                                ids.iter()
-                                    .filter(|id| !bindings.contains_key(id))
-                                    .nth(same_title_count_before)
-                                    .copied()
+                                _ => None,
                             }
                         };
+
                         let (quit_tx, quit_rx) = std::sync::mpsc::channel();
                         let stream_data = Arc::new(StreamFrameData {
                             frame: Arc::new(Mutex::new(None)),
@@ -3376,7 +3418,7 @@ pub async fn start_monitor_inner(
                     token.clone()
                 };
                 let mut retry_added = 0;
-                for (idx, portal_idx) in retry_to_capture.into_iter().enumerate() {
+                for (_idx, portal_idx) in retry_to_capture.into_iter().enumerate() {
                     if let Ok((new_streams, _new_token)) = capture_windows_range(
                         &connection,
                         &desktop,
@@ -3388,7 +3430,14 @@ pub async fn start_monitor_inner(
                     .await
                     {
                         for (fd, node_id, captured_title) in new_streams {
-                            let stream_idx = current_stream_count_before + idx + retry_added;
+                            // P1 FIX: Determine stream_idx from actual vector insertion,
+                            // not from a formula that double-counts `retry_added`.
+let stream_idx = {
+                                service_frames
+                                    .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                                    .map(|frames| frames.len())
+                                    .unwrap_or(0)
+                            };
 
                             // Use fuzzy matching + last-resort binding, same as Phase 1b.
                             // The portal title may differ from the Wayland title (e.g., pcmanfm

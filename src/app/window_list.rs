@@ -702,6 +702,12 @@ pub fn draw_window_list_popup(
                         }
                     }
 
+                    // P0 FIX: Track whether texture upload actually succeeded.
+                    // These variables are declared outside the renderer block so they're
+                    // accessible at the content hash commit point below.
+                    let mut generation_changed = false;
+                    let mut texture_uploaded = false;
+
                     // FIX (v1.5.5): Draw PipeWire capture frame as a textured quad if available.
                     // Only fetch and upload a new GPU texture when the PipeWire generation counter
                     // has actually changed. The content hash includes the pointer position, so any
@@ -712,29 +718,35 @@ pub fn draw_window_list_popup(
                     // redraw, even when only the pointer position changed. This wasted GPU bandwidth
                     // uploading the same frame data repeatedly.
                     if let Some(ref mut renderer) = gpu_context {
-                        // Use the stable PipeWire node_id for the cache key instead of the
-                        // stream index. When streams are removed, vector indices shift,
-                        // causing cache collisions. The node_id is stable for the lifetime
-                        // of a stream, so it never shifts.
+                        // P2 FIX: Don't use `0` as a fallback cache identity. When `get_stream_node_id()`
+                        // fails due to lock contention, different streams could share the same
+                        // cache key (`window-list-capture:<output>:None`), causing cross-window
+                        // texture reuse. Skip the cached texture path entirely when node_id
+                        // is unavailable — the next frame will retry.
                         let node_id = hovered_stream_idx
                             .and_then(|idx| pipewire_capture.and_then(|s| s.get_stream_node_id(idx)));
-                        let cache_key = format!(
-                            "window-list-capture:{:?}:{:?}",
+                        let cache_key = node_id.map(|nid| format!(
+                            "window-list-capture:{:?}:{}",
                             dock.output.id(),
-                            node_id
-                        );
+                            nid
+                        ));
 
                         // Check if the PipeWire frame has actually changed since the last texture
                         // upload. If the generation is the same, skip the expensive frame fetch,
                         // RGBA conversion, and GPU texture upload — just reuse the cached texture.
-                        let generation_changed = if let Some(stream_idx) = hovered_stream_idx {
+                        generation_changed = if let Some(stream_idx) = hovered_stream_idx {
                             if let Some(gen) = pipewire_capture
                                 .and_then(|service| service.get_stream_generation(stream_idx))
                             {
-                                // Use node_id as the key for generation tracking
-                                let nid = node_id.unwrap_or(0);
-                                let last_gen = popup.last_texture_generation.get(&nid).copied().unwrap_or(0);
-                                gen != last_gen
+                                // P2 FIX: Only use generation tracking when node_id is available.
+                                // Without a valid node_id, we can't safely track generations.
+                                if let Some(nid) = node_id {
+                                    let last_gen = popup.last_texture_generation.get(&nid).copied().unwrap_or(0);
+                                    gen != last_gen
+                                } else {
+                                    // node_id unavailable — assume changed to avoid stale texture
+                                    true
+                                }
                             } else {
                                 // Generation unavailable — assume changed to avoid stale texture
                                 true
@@ -746,7 +758,9 @@ pub fn draw_window_list_popup(
                         let texture_id = if !has_valid_stream {
                             // The hovered window has no PipeWire stream — remove any cached
                             // texture so we don't show another window's frame.
-                            renderer.remove_cached_texture(&cache_key);
+                            if let Some(ref ck) = cache_key {
+                                renderer.remove_cached_texture(ck);
+                            }
                             None
                         } else if generation_changed {
                             // Fetch the latest frame data and upload it, replacing any cached texture.
@@ -771,13 +785,15 @@ pub fn draw_window_list_popup(
                                         original_height: h,
                                     });
                                     // Upload BGRx bytes directly — no CPU conversion
-                                    if renderer.replace_cached_texture_from_bgfx(
-                                        &cache_key,
-                                        &bgrx,
-                                        w,
-                                        h,
-                                    ).is_some() {
-                                        bgfx_uploaded = true;
+                                    if let Some(ref ck) = cache_key {
+                                        if renderer.replace_cached_texture_from_bgfx(
+                                            ck,
+                                            &bgrx,
+                                            w,
+                                            h,
+                                        ).is_some() {
+                                            bgfx_uploaded = true;
+                                        }
                                     }
                                 } else {
                                     // Fall back to RGBA conversion for non-BGRx formats
@@ -795,33 +811,48 @@ pub fn draw_window_list_popup(
                             }
                             if !bgfx_uploaded {
                                 // Fall back to RGBA upload path if BGRx upload didn't happen
-                                capture_frame_data.as_ref().and_then(|fd| {
-                                    renderer.replace_cached_texture_from_pixels(
-                                        &cache_key,
-                                        &fd.rgba,
-                                        fd.width,
-                                        fd.height,
-                                    )
-                                })
+                                if let Some(ref ck) = cache_key {
+                                    capture_frame_data.as_ref().and_then(|fd| {
+                                        renderer.replace_cached_texture_from_pixels(
+                                            ck,
+                                            &fd.rgba,
+                                            fd.width,
+                                            fd.height,
+                                        )
+                                    })
+                                } else {
+                                    None
+                                }
                             } else {
                                 // BGRx was uploaded — get the cached texture
-                                renderer.cached_texture(&cache_key)
+                                cache_key.as_ref().and_then(|ck| renderer.cached_texture(ck))
                             }
                         } else {
                             // Reuse the existing cached texture — frame hasn't changed.
-                            renderer.cached_texture(&cache_key)
+                            cache_key.as_ref().and_then(|ck| renderer.cached_texture(ck))
                         };
-                        // Update the last texture generation after a successful upload.
+                        // P0 FIX: Only acknowledge the generation after a successful upload.
+                        // If the texture upload failed (e.g., lock contention), don't consume
+                        // the generation — the next frame will retry. Also, don't commit
+                        // last_content_hash when capture is pending, so the next render
+                        // doesn't skip due to matching content hash.
                         if generation_changed {
-                            if let Some(stream_idx) = hovered_stream_idx {
-                                if let Some(gen) = pipewire_capture
-                                    .and_then(|service| service.get_stream_generation(stream_idx))
-                                {
-                                    // Use node_id as the key for generation tracking
-                                    let nid = node_id.unwrap_or(0);
-                                    popup.last_texture_generation.insert(nid, gen);
+                            let uploaded = texture_id.is_some();
+                            if uploaded {
+                                texture_uploaded = true;
+                                if let Some(nid) = node_id {
+                                    if let Some(stream_idx) = hovered_stream_idx {
+                                        if let Some(gen) = pipewire_capture
+                                            .and_then(|service| service.get_stream_generation(stream_idx))
+                                        {
+                                            popup.last_texture_generation.insert(nid, gen);
+                                        }
+                                    }
                                 }
                             }
+                            // If not uploaded, leave generation unacknowledged so the next
+                            // frame retries. The content hash check below will also skip
+                            // committing last_content_hash when capture_pending is true.
                         }
                         if let Some(texture_id) = texture_id {
                             let frame_inner_w = width - frame_border * 2.0;
@@ -885,9 +916,15 @@ pub fn draw_window_list_popup(
                                                 region.add(0, 0, geom.logical_width, geom.logical_height);
                                                 popup.surface.set_input_region(Some(&region));
                                                 region.destroy();
+// P0 FIX: Don't commit last_content_hash when capture is pending.
+                                                // If the PipeWire texture upload failed, the next render should
+                                                // retry — but if we commit the content hash, the early-return
+                                                // check (line 496) will skip the next render entirely.
+                                                let capture_pending = generation_changed && !texture_uploaded;
                                                 popup.surface.commit();
-                                                // Commit hash only after successful GPU surface commit
-                                                popup.last_content_hash = content_hash;
+                                                if !capture_pending {
+                                                    popup.last_content_hash = content_hash;
+                                                }
                                                 true
                                             }
                                             Err(_) => false,
