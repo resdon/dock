@@ -171,6 +171,12 @@ pub struct StreamFrameData {
     /// this channel wakes the loop so it doesn't wait up to 13 ms before
     /// noticing the shutdown flag.
     pub mainloop_quit: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>>,
+    /// PipeWire node ID for this stream, returned by the portal's `Start` method.
+    /// Used as a stable identity that doesn't change when streams are added or
+    /// removed from `stream_frames`. Unlike the vector index, which shifts when
+    /// earlier streams are removed, the node_id remains constant for the lifetime
+    /// of the stream, making it safe for GPU cache keys and generation tracking.
+    pub node_id: u32,
 }
 
 /// Snapshot of the current capture state: file descriptors, node IDs, and titles.
@@ -297,16 +303,20 @@ impl PipewireCaptureService {
         }
     }
 
-    /// Signal a stream to shut down and wait for its thread to join.
+    /// Signal a stream to shut down without blocking the caller.
     ///
-    /// Called during Phase 1 (stale stream removal) before the stream entry
-    /// is removed from `stream_frames`. This method:
+    /// Called during Phase 1 (stale stream removal) and when a window closes.
+    /// This method:
     /// 1. Sets the shutdown flag so the thread's main loop breaks.
     /// 2. Sends on the mainloop_quit channel to unblock `iterate()`.
-    /// 3. Joins the thread, waiting for it to exit cleanly.
+    /// 3. Drops the thread handle — the thread will exit on its own and the
+    ///    OS will reclaim its resources.
     ///
-    /// If the thread doesn't join, it is abandoned — the OS will reclaim it
-    /// eventually, but this avoids blocking the monitor indefinitely.
+    /// **FIX**: Removed synchronous `handle.join()` which blocked the caller
+    /// indefinitely if the PipeWire thread failed to exit. Since this is called
+    /// from the event-handling path (window close), blocking here froze the
+    /// entire dock. The thread exits cleanly via the shutdown flag and mainloop
+    /// quit signal — joining is not required for correctness.
     fn shutdown_stream(stream: &StreamFrameData) {
         // Signal the thread to stop
         stream.shutdown.store(true, Ordering::Release);
@@ -319,13 +329,13 @@ impl PipewireCaptureService {
             let _ = sender.send(());
         }
 
-        // Join the thread
-        if let Some(handle) = stream.thread_handle
+        // Drop the thread handle — the thread will exit on its own.
+        // Do NOT join() here: blocking on thread exit from the event-handling
+        // path can freeze the dock if the PipeWire thread is stuck.
+        if let Some(mut handle_lock) = stream.thread_handle
             .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
-            .and_then(|mut g| g.take())
         {
-            // Join the thread — this blocks until the thread exits
-            let _ = handle.join();
+            *handle_lock = None;
         }
     }
 
@@ -890,22 +900,18 @@ impl PipewireCaptureService {
     /// the raw pixel data ready for direct GPU upload, or `None` if the stream
     /// is out of bounds, has no frame, or uses a non-BGRx/BGRA format.
     pub fn get_stream_frame_bgfx(&self, idx: usize) -> Option<(u32, u32, Arc<[u8]>)> {
-        // Lock stream_frames briefly to get the stream reference
+        // Non-blocking lock on render path — if contended, skip this frame.
+        // At 60 FPS, a 50ms wait consumes three frame budgets.
         let stream = {
-            let frames = self
-                .stream_frames
-                .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))?;
+            let frames = self.stream_frames.try_lock()?;
             if idx >= frames.len() {
                 return None;
             }
             frames[idx].clone()
         };
 
-        // Use timeout lock — if a stream thread blocks frame, skip it
-        let frame_data = stream
-            .frame
-            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
-            .map(|guard| (*guard).clone())?;
+        // Non-blocking lock — if a stream thread holds it, skip this frame
+        let frame_data = stream.frame.try_lock().and_then(|guard| (*guard).clone());
 
         match frame_data {
             Some((w, h, fmt, bytes)) => {
@@ -938,36 +944,18 @@ impl PipewireCaptureService {
         target_w: Option<u32>,
         target_h: Option<u32>,
     ) -> Option<(u32, u32, Arc<[u8]>)> {
-        let max_scale = match self
-            .scale_factor
-            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
-        {
-            Some(g) => *g,
-            None => return None,
-        };
+        // Non-blocking locks on render path — if contended, skip this frame.
+        let max_scale = self.scale_factor.try_lock().map(|g| *g).unwrap_or(1.0);
 
-        // Lock stream_frames briefly to get the stream reference
         let stream = {
-            let Some(frames) = self
-                .stream_frames
-                .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
-            else {
-                return None;
-            };
+            let frames = self.stream_frames.try_lock()?;
             if idx >= frames.len() {
                 return None;
             }
             frames[idx].clone()
         };
 
-        // Use timeout lock — if a stream thread blocks frame, skip it
-        let frame_data = match stream
-            .frame
-            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
-        {
-            Some(guard) => (*guard).clone(),
-            None => return None,
-        };
+        let frame_data = stream.frame.try_lock().map(|guard| (*guard).clone())?;
 
         match frame_data {
             Some((w, h, fmt, bytes)) => {
@@ -985,7 +973,7 @@ impl PipewireCaptureService {
 
                 let current_gen = stream.generation.load(std::sync::atomic::Ordering::Acquire);
                 {
-                    let cache = match stream.cached_rgba.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) {
+                    let cache = match stream.cached_rgba.try_lock() {
                         Some(g) => g,
                         None => {
                             let (out_w, out_h, rgba) = convert_to_rgba(w, h, fmt, &bytes, scale);
@@ -1006,7 +994,7 @@ impl PipewireCaptureService {
 
                 let (out_w, out_h, rgba) = convert_to_rgba(w, h, fmt, &bytes, scale);
                 let rgba_arc: Arc<[u8]> = Arc::from(rgba.as_slice());
-                if let Some(mut cache) = stream.cached_rgba.try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS)) {
+                if let Some(mut cache) = stream.cached_rgba.try_lock() {
                     cache.replace((current_gen, w, h, scale, out_w, out_h, rgba_arc.clone()));
                 }
                 Some((out_w, out_h, rgba_arc))
@@ -1020,20 +1008,17 @@ impl PipewireCaptureService {
     /// Returns `None` if the stream hasn't negotiated its video format yet.
     /// Used by the popup renderer to calculate aspect-ratio-correct thumbnails.
     pub fn get_stream_dimensions(&self, idx: usize) -> Option<(u32, u32)> {
-        // Get the format_info Arc without holding stream_frames lock
+        // Non-blocking lock on render path
         let format_info = {
-            let frames = self
-                .stream_frames
-                .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))?;
+            let frames = self.stream_frames.try_lock()?;
             if idx >= frames.len() {
                 return None;
             }
             frames[idx].format_info.clone()
         };
 
-        // Use timeout lock — if a stream thread blocks format_info, skip it
         format_info
-            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))
+            .try_lock()
             .map(|guard| *guard)
             .and_then(|fmt| fmt.map(|(w, h, _)| (w, h)))
     }
@@ -1051,13 +1036,28 @@ impl PipewireCaptureService {
     ///
     /// Returns `None` if the stream index is out of bounds or the mutex times out.
     pub fn get_stream_generation(&self, idx: usize) -> Option<u64> {
-        let frames = self
-            .stream_frames
-            .try_lock_for(std::time::Duration::from_millis(Self::LOCK_TIMEOUT_MS))?;
+        // Non-blocking lock on render path
+        let frames = self.stream_frames.try_lock()?;
         if idx >= frames.len() {
             return None;
         }
         Some(frames[idx].generation.load(std::sync::atomic::Ordering::Acquire))
+    }
+
+    /// Get the stable PipeWire node ID for a stream index.
+    ///
+    /// The node_id is stable for the lifetime of a stream and doesn't change
+    /// when other streams are added or removed. Use this for GPU cache keys
+    /// and generation tracking instead of the vector index.
+    ///
+    /// Returns `None` if the stream index is out of bounds or the mutex is contended.
+    pub fn get_stream_node_id(&self, idx: usize) -> Option<u32> {
+        // Non-blocking lock on render path
+        let frames = self.stream_frames.try_lock()?;
+        if idx >= frames.len() {
+            return None;
+        }
+        Some(frames[idx].node_id)
     }
 
     /// Normalize a window title for comparison across sources.
@@ -1517,6 +1517,7 @@ pub async fn init_capture_service(
             shutdown: Arc::new(AtomicBool::new(false)),
             thread_handle: Arc::new(Mutex::new(None)),
             mainloop_quit: Arc::new(Mutex::new(Some(quit_tx))),
+            node_id,
         });
 
         if let Some(mut frames) = service.stream_frames
@@ -3175,6 +3176,7 @@ pub async fn start_monitor_inner(
                             shutdown: Arc::new(AtomicBool::new(false)),
                             thread_handle: Arc::new(Mutex::new(None)),
                             mainloop_quit: Arc::new(Mutex::new(Some(quit_tx))),
+                            node_id,
                         });
 
                         // Add to shared stream_frames vector (lock guard dropped before next .await)
@@ -3463,6 +3465,7 @@ pub async fn start_monitor_inner(
                                 shutdown: Arc::new(AtomicBool::new(false)),
                                 thread_handle: Arc::new(Mutex::new(None)),
                                 mainloop_quit: Arc::new(Mutex::new(Some(quit_tx))),
+                                node_id,
                             });
 
                             {

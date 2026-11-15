@@ -201,13 +201,15 @@ pub struct PopupSurface {
     /// rendered every frame (wasting GPU work) or couldn't implement caching at all.
     pub last_content_hash: u64,
     /// Last PipeWire capture generation counter value used for the GPU texture upload,
-    /// keyed by stream index. When the current generation matches this value for a given
+    /// keyed by PipeWire node ID. When the current generation matches this value for a given
     /// stream, the texture upload is skipped because the underlying frame hasn't changed.
     ///
-    /// Using a HashMap instead of a single u64 fixes the frozen frames bug: when switching
-    /// between windows, the generation comparison now uses the correct per-stream baseline
-    /// instead of a shared global value that could match by coincidence.
-    pub last_texture_generation: std::collections::HashMap<usize, u64>,
+    /// Using a HashMap keyed by node_id (instead of stream index) fixes two bugs:
+    /// 1. Frozen frames: switching between windows used the wrong baseline
+    /// 2. Stale cache: stream indices shift when earlier streams are removed,
+    ///    causing cache collisions when a new stream inherits an old index.
+    /// The node_id is stable for the lifetime of a stream, so it never shifts.
+    pub last_texture_generation: std::collections::HashMap<u32, u64>,
 }
 
 impl PopupSurface {

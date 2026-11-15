@@ -712,13 +712,16 @@ pub fn draw_window_list_popup(
                     // redraw, even when only the pointer position changed. This wasted GPU bandwidth
                     // uploading the same frame data repeatedly.
                     if let Some(ref mut renderer) = gpu_context {
-                        // Use the hovered window's stream index for the cache key.
-                        // The cache key is tied to the actual stream being displayed,
-                        // so index shifts don't cause mismatches.
+                        // Use the stable PipeWire node_id for the cache key instead of the
+                        // stream index. When streams are removed, vector indices shift,
+                        // causing cache collisions. The node_id is stable for the lifetime
+                        // of a stream, so it never shifts.
+                        let node_id = hovered_stream_idx
+                            .and_then(|idx| pipewire_capture.and_then(|s| s.get_stream_node_id(idx)));
                         let cache_key = format!(
                             "window-list-capture:{:?}:{:?}",
                             dock.output.id(),
-                            hovered_stream_idx
+                            node_id
                         );
 
                         // Check if the PipeWire frame has actually changed since the last texture
@@ -728,7 +731,9 @@ pub fn draw_window_list_popup(
                             if let Some(gen) = pipewire_capture
                                 .and_then(|service| service.get_stream_generation(stream_idx))
                             {
-                                let last_gen = popup.last_texture_generation.get(&stream_idx).copied().unwrap_or(0);
+                                // Use node_id as the key for generation tracking
+                                let nid = node_id.unwrap_or(0);
+                                let last_gen = popup.last_texture_generation.get(&nid).copied().unwrap_or(0);
                                 gen != last_gen
                             } else {
                                 // Generation unavailable — assume changed to avoid stale texture
@@ -753,23 +758,14 @@ pub fn draw_window_list_popup(
                                 let stream_idx = hovered_stream_idx.unwrap();
                                 let (orig_w, orig_h) =
                                     service.get_stream_dimensions(stream_idx).unwrap_or((0, 0));
-                                // Try raw BGRx upload — resize to target dimensions so thumbnails
-                                // have consistent sizing regardless of the original capture resolution.
+                                // Try raw BGRx upload — no CPU conversion needed.
+                                // Upload at original resolution; the GPU stretches the texture
+                                // to the destination rect. The BGRx path avoids CPU conversion
+                                // entirely, which is the correct pattern for performance.
                                 if let Some((w, h, bgrx)) = service.get_stream_frame_bgfx(stream_idx) {
-                                    // Calculate scaled dimensions to fit within the target frame size
-                                    let (scale_w, scale_h) = if w > target_frame_w || h > target_frame_h {
-                                        let scale = (target_frame_w as f32 / w as f32)
-                                            .min(target_frame_h as f32 / h as f32);
-                                        ((w as f32 * scale) as u32, (h as f32 * scale) as u32)
-                                    } else {
-                                        (w, h)
-                                    };
-                                    // For BGRx, we upload at original size and let the GPU stretch
-                                    // the texture to the destination rect. The texture dimensions
-                                    // determine VRAM usage, so we scale down to save memory.
                                     capture_frame_data = Some(CaptureFrameData {
-                                        width: scale_w,
-                                        height: scale_h,
+                                        width: w,
+                                        height: h,
                                         rgba: bgrx.clone(),
                                         original_width: w,
                                         original_height: h,
@@ -821,7 +817,9 @@ pub fn draw_window_list_popup(
                                 if let Some(gen) = pipewire_capture
                                     .and_then(|service| service.get_stream_generation(stream_idx))
                                 {
-                                    popup.last_texture_generation.insert(stream_idx, gen);
+                                    // Use node_id as the key for generation tracking
+                                    let nid = node_id.unwrap_or(0);
+                                    popup.last_texture_generation.insert(nid, gen);
                                 }
                             }
                         }
