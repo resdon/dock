@@ -2524,21 +2524,27 @@ pub async fn start_monitor_inner(
         // shorter interval (3s) to retry capture more frequently. When all windows
         // are bound, use a longer interval (10s) to reduce CPU usage.
         let has_unbound_windows = {
-            let Some(window_ids_map) = service.window_ids
+            // Use if let instead of let...else to avoid divergence requirement.
+            // If locks are contended, default to true (shorter interval) to be safe.
+            if let Some(window_ids_map) = service.window_ids
                 .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
-            else {
-                return;
-            };
-            let Some(bindings) = service.bindings
-                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
-            else {
-                return;
-            };
-            let bound_ids: HashSet<u32> = bindings.keys().copied().collect();
-            drop(bindings);
-            window_ids_map.values()
-                .flatten()
-                .any(|id| !bound_ids.contains(id))
+            {
+                if let Some(bindings) = service.bindings
+                    .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
+                {
+                    let bound_ids: HashSet<u32> = bindings.keys().copied().collect();
+                    drop(bindings);
+                    window_ids_map.values()
+                        .flatten()
+                        .any(|id| !bound_ids.contains(id))
+                } else {
+                    // Bindings lock contended — assume unbound to use shorter interval
+                    true
+                }
+            } else {
+                // Window IDs lock contended — assume unbound to use shorter interval
+                true
+            }
         };
 
         // Wait for a probe signal (fired on WindowEvent::Created) OR a periodic
@@ -2722,11 +2728,20 @@ pub async fn start_monitor_inner(
             (None, 0)
         };
 
-        // Collect valid window IDs outside of stream_frames lock
-        let valid_window_ids: HashSet<u32> = service.window_ids
+        // Collect valid window IDs outside of stream_frames lock.
+        // If we can't get the lock, skip this entire monitor cycle rather than
+        // proceeding with an empty valid_window_ids set, which would cause ALL
+        // streams to be marked as stale and removed.
+        let valid_window_ids: HashSet<u32> = match service.window_ids
             .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
-            .map(|m| m.values().flatten().copied().collect())
-            .unwrap_or_default();
+        {
+            Some(m) => m.values().flatten().copied().collect(),
+            None => {
+                // Can't determine valid window IDs — skip this cycle entirely.
+                // Proceeding with an empty set would remove all streams.
+                continue;
+            }
+        };
 
         // Count how many times each portal title appears (hash-stripped)
         let mut portal_counts: std::collections::HashMap<String, usize> =
@@ -2841,7 +2856,7 @@ pub async fn start_monitor_inner(
             let Some(frames) = service_frames
                 .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
             else {
-                return;
+                continue;
             };
             for stream in frames.iter() {
                 let wid = stream.window_id
@@ -2865,12 +2880,12 @@ pub async fn start_monitor_inner(
             let Some(mut bindings) = service.bindings
                 .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
             else {
-                return;
+                continue;
             };
             let Some(frames) = service_frames
                 .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
             else {
-                return;
+                continue;
             };
             bindings.clear();
             for (i, stream) in frames.iter().enumerate() {
@@ -2889,12 +2904,12 @@ pub async fn start_monitor_inner(
             let Some(window_ids_map) = service.window_ids
                 .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
             else {
-                return;
+                continue;
             };
             let Some(bindings) = service.bindings
                 .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
             else {
-                return;
+                continue;
             };
             let _bound_window_ids: HashSet<u32> = bindings.keys().copied().collect();
             drop(bindings);
@@ -3044,7 +3059,7 @@ pub async fn start_monitor_inner(
             let Some(frames) = service_frames
                 .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
             else {
-                return;
+                continue;
             };
             if let Some(mut row) = service.active_row
                 .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
