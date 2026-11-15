@@ -739,10 +739,22 @@ pub fn draw_window_list_popup(
                             .and_then(|idx| pipewire_capture
                                 .and_then(|service| service.get_stream_generation(idx)));
 
+                        // FIX: Check if this is the first time we've seen this node_id.
+                        // New streams start with generation=0, and unwrap_or(0) would make
+                        // 0 != 0 false, causing the draw loop to skip the frame fetch entirely.
+                        // When the node_id has no prior entry, always treat as changed so the
+                        // first frame (even generation=0) gets fetched and uploaded.
                         generation_changed = if let Some(gen) = gen_before {
                             if let Some(nid) = node_id {
-                                let last_gen = popup.last_texture_generation.get(&nid).copied().unwrap_or(0);
-                                gen != last_gen
+                                match popup.last_texture_generation.get(&nid) {
+                                    Some(&last_gen) => gen != last_gen,
+                                    None => {
+                                        // First time seeing this node_id — always fetch.
+                                        // This is critical for new streams where generation=0
+                                        // would otherwise match the default and be skipped.
+                                        true
+                                    }
+                                }
                             } else {
                                 // node_id unavailable — assume changed to avoid stale texture
                                 true
