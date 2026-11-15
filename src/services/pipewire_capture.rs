@@ -3121,30 +3121,16 @@ pub async fn start_monitor_inner(
                 )
                 .await {
                     for (fd, node_id, captured_title) in new_streams {
-                        // P1 FIX: Determine stream_idx from actual vector insertion, not
-                        // from a formula that double-counts `added_count`. The formula
-                        // `current_stream_count + idx + added_count` was wrong because
-                        // both `idx` and `added_count` increase as streams are added,
-                        // so the second stream's index was off by 1.
-let stream_idx = {
-                            service_frames
-                                .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
-                                .map(|frames| frames.len())
-                                .unwrap_or(0)
-                        };
-
-                        // P1 FIX: Use fuzzy matching instead of exact-only title match.
-                        // The portal title may differ from the Wayland title (e.g., pcmanfm
-                        // changes its title based on the current directory), so exact match
-                        // is unreliable. Try exact, then normalized, then startswith.
-                        // If matching fails, register the stream with window_id = None
-                        // and let Phase 1b/Phase 3 bind it later.
+                        // P1 FIX (atomic): Use fuzzy matching to find the window_id BEFORE
+                        // constructing stream_data, so we can do index lookup + insertion
+                        // under a single lock. If insertion fails, skip the stream entirely
+                        // rather than binding or spawning a thread for a non-existent stream.
                         let window_id = {
                             let map = service.window_ids
                                 .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS));
                             let bindings = service.bindings
                                 .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS));
-                            
+
                             match (map, bindings) {
                                 (Some(map), Some(bindings)) => {
                                     let bound_ids: std::collections::HashSet<u32> = bindings.keys().copied().collect();
@@ -3183,21 +3169,32 @@ let stream_idx = {
                                         if ids.len() <= 1 {
                                             ids.iter().find(|id| !bound_ids.contains(id)).copied()
                                         } else {
-                                            // Multiple windows with the same title — use chooser file order.
+                                            // P2 FIX: Count how many same-title IDs are already bound,
+                                            // then pick the Nth unbound ID where N is the count of
+                                            // unbound same-title windows seen so far in the chooser.
+                                            // This avoids the distortion where already-bound windows
+                                            // shift the ordinal index for unbound windows.
                                             let clean_title_for_count = clean_title;
-                                            let mut same_title_count_before = 0;
+                                            let bound_same_title = ids.iter()
+                                                .filter(|id| bound_ids.contains(id))
+                                                .count();
+                                            // Count unbound same-title windows in the chooser before this one
+                                            let mut unbound_same_before = 0;
                                             for ci in 0..portal_idx {
                                                 if let Some(chooser_title) = chooser_titles.get(ci) {
                                                     let chooser_clean =
                                                         PipewireCaptureService::strip_portal_hash(chooser_title);
                                                     if chooser_clean == clean_title_for_count {
-                                                        same_title_count_before += 1;
+                                                        unbound_same_before += 1;
                                                     }
                                                 }
                                             }
+                                            // The effective index among unbound IDs is:
+                                            // unbound_same_before - bound_same_title (clamped to 0)
+                                            let effective_idx = (unbound_same_before as i32 - bound_same_title as i32).max(0) as usize;
                                             ids.iter()
                                                 .filter(|id| !bound_ids.contains(id))
-                                                .nth(same_title_count_before)
+                                                .nth(effective_idx)
                                                 .copied()
                                         }
                                     })
@@ -3221,14 +3218,21 @@ let stream_idx = {
                             node_id,
                         });
 
-                        // Add to shared stream_frames vector (lock guard dropped before next .await)
-                        {
-                            if let Some(mut frames) = service_frames
+                        // P1 FIX (atomic): Calculate index and insert under a single lock.
+                        // If the lock fails, skip this stream entirely — don't bind or spawn.
+                        let stream_idx = {
+                            let Some(mut frames) = service_frames
                                 .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
-                            {
-                                frames.push(stream_data.clone());
-                            }
-                        }
+                            else {
+                                // Can't acquire lock — skip this stream to avoid
+                                // binding or spawning a thread for an unregistered stream.
+                                drop(quit_rx);
+                                continue;
+                            };
+                            let idx = frames.len();
+                            frames.push(stream_data.clone());
+                            idx
+                        };
 
                         // Bind the new stream to the window in the persistent registry
                         if let Some(wid) = window_id {
@@ -3430,19 +3434,9 @@ let stream_idx = {
                     .await
                     {
                         for (fd, node_id, captured_title) in new_streams {
-                            // P1 FIX: Determine stream_idx from actual vector insertion,
-                            // not from a formula that double-counts `retry_added`.
-let stream_idx = {
-                                service_frames
-                                    .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
-                                    .map(|frames| frames.len())
-                                    .unwrap_or(0)
-                            };
-
-                            // Use fuzzy matching + last-resort binding, same as Phase 1b.
-                            // The portal title may differ from the Wayland title (e.g., pcmanfm
-                            // changes its title based on the current directory), so exact match
-                            // is unreliable. Try exact, then fuzzy, then bind to any unbound window.
+                            // P1 FIX (atomic): Use fuzzy matching to find the window_id BEFORE
+                            // constructing stream_data, so we can do index lookup + insertion
+                            // under a single lock. If insertion fails, skip the stream entirely.
                             let window_id = {
                                 let Some(window_ids_map) = service.window_ids
                                     .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
@@ -3497,7 +3491,7 @@ let stream_idx = {
                                     }
                                 } else {
                                     // Title matching failed — leave unbound.
-                                    // Binding to any unbound window caused cross-app frame mixing.
+                                    // Phase 1b will bind it later when the title stabilizes.
                                     None
                                 }
                             };
@@ -3517,13 +3511,19 @@ let stream_idx = {
                                 node_id,
                             });
 
-                            {
-                                if let Some(mut frames) = service_frames
+                            // P1 FIX (atomic): Calculate index and insert under a single lock.
+                            // If the lock fails, skip this stream entirely — don't bind or spawn.
+                            let stream_idx = {
+                                let Some(mut frames) = service_frames
                                     .try_lock_for(std::time::Duration::from_millis(PipewireCaptureService::LOCK_TIMEOUT_MS))
-                                {
-                                    frames.push(stream_data.clone());
-                                }
-                            }
+                                else {
+                                    drop(quit_rx);
+                                    continue;
+                                };
+                                let idx = frames.len();
+                                frames.push(stream_data.clone());
+                                idx
+                            };
 
                             if let Some(wid) = window_id {
                                 service.bind_window_to_stream(wid, stream_idx, &captured_title);

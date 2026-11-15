@@ -731,28 +731,25 @@ pub fn draw_window_list_popup(
                             nid
                         ));
 
-                        // Check if the PipeWire frame has actually changed since the last texture
-                        // upload. If the generation is the same, skip the expensive frame fetch,
-                        // RGBA conversion, and GPU texture upload — just reuse the cached texture.
-                        generation_changed = if let Some(stream_idx) = hovered_stream_idx {
-                            if let Some(gen) = pipewire_capture
-                                .and_then(|service| service.get_stream_generation(stream_idx))
-                            {
-                                // P2 FIX: Only use generation tracking when node_id is available.
-                                // Without a valid node_id, we can't safely track generations.
-                                if let Some(nid) = node_id {
-                                    let last_gen = popup.last_texture_generation.get(&nid).copied().unwrap_or(0);
-                                    gen != last_gen
-                                } else {
-                                    // node_id unavailable — assume changed to avoid stale texture
-                                    true
-                                }
+                        // P2 FIX (generation sync): Read generation before frame retrieval.
+                        // After the upload, read it again. Only acknowledge if both values
+                        // match — otherwise PipeWire advanced the generation between our
+                        // frame fetch and acknowledgment, and we'd skip the newer frame.
+                        let gen_before = hovered_stream_idx
+                            .and_then(|idx| pipewire_capture
+                                .and_then(|service| service.get_stream_generation(idx)));
+
+                        generation_changed = if let Some(gen) = gen_before {
+                            if let Some(nid) = node_id {
+                                let last_gen = popup.last_texture_generation.get(&nid).copied().unwrap_or(0);
+                                gen != last_gen
                             } else {
-                                // Generation unavailable — assume changed to avoid stale texture
+                                // node_id unavailable — assume changed to avoid stale texture
                                 true
                             }
                         } else {
-                            false
+                            // Generation unavailable — assume changed to avoid stale texture
+                            true
                         };
 
                         let texture_id = if !has_valid_stream {
@@ -831,22 +828,29 @@ pub fn draw_window_list_popup(
                             // Reuse the existing cached texture — frame hasn't changed.
                             cache_key.as_ref().and_then(|ck| renderer.cached_texture(ck))
                         };
-                        // P0 FIX: Only acknowledge the generation after a successful upload.
-                        // If the texture upload failed (e.g., lock contention), don't consume
-                        // the generation — the next frame will retry. Also, don't commit
-                        // last_content_hash when capture is pending, so the next render
-                        // doesn't skip due to matching content hash.
+                        // P0 + P2 FIX: Only acknowledge the generation after a successful upload
+                        // AND when the generation hasn't advanced between our pre-read and post-read.
+                        // If PipeWire wrote a new frame between our fetch and acknowledgment,
+                        // don't consume the generation — the next frame will retry with the
+                        // newer frame. Also, don't commit last_content_hash when capture is pending.
                         if generation_changed {
                             let uploaded = texture_id.is_some();
                             if uploaded {
                                 texture_uploaded = true;
                                 if let Some(nid) = node_id {
                                     if let Some(stream_idx) = hovered_stream_idx {
-                                        if let Some(gen) = pipewire_capture
-                                            .and_then(|service| service.get_stream_generation(stream_idx))
-                                        {
-                                            popup.last_texture_generation.insert(nid, gen);
+                                        // P2 FIX (generation sync): Read generation after upload.
+                                        // Only acknowledge if it matches gen_before — otherwise
+                                        // PipeWire advanced and we'd skip the newer frame.
+                                        let gen_after = pipewire_capture
+                                            .and_then(|service| service.get_stream_generation(stream_idx));
+                                        if gen_before == gen_after {
+                                            if let Some(gen) = gen_after {
+                                                popup.last_texture_generation.insert(nid, gen);
+                                            }
                                         }
+                                        // If gen_before != gen_after, leave unacknowledged so
+                                        // the next frame retries with the newer generation.
                                     }
                                 }
                             }
