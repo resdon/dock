@@ -955,7 +955,18 @@ impl PipewireCaptureService {
             frames[idx].clone()
         };
 
+        // FIX: Read generation BEFORE copying the raw frame. After copying, read it again.
+        // Only proceed when both values match — otherwise PipeWire wrote a new frame
+        // between our pre-read and copy, and we'd cache old pixels with a new generation.
+        let gen_before = stream.generation.load(std::sync::atomic::Ordering::Acquire);
         let frame_data = stream.frame.try_lock().map(|guard| (*guard).clone())?;
+        let gen_after_copy = stream.generation.load(std::sync::atomic::Ordering::Acquire);
+        if gen_before != gen_after_copy {
+            // PipeWire advanced the generation while we were copying the frame.
+            // The frame_data we have may be stale — skip this frame to avoid
+            // caching old pixels with a new generation tag.
+            return None;
+        }
 
         match frame_data {
             Some((w, h, fmt, bytes)) => {
@@ -971,7 +982,7 @@ impl PipewireCaptureService {
                     max_scale
                 };
 
-                let current_gen = stream.generation.load(std::sync::atomic::Ordering::Acquire);
+                let current_gen = gen_after_copy;
                 {
                     let cache = match stream.cached_rgba.try_lock() {
                         Some(g) => g,
@@ -3040,9 +3051,9 @@ pub async fn start_monitor_inner(
         let current_stream_count = existing_titles.len();
 
         // --- Phase 2: Add new streams for windows that don't have one yet ---
-        // Use count-based matching: if a Portal title appears N times but only M streams
-        // exist with that title (M < N), we need to capture N - M more.
-        // Strip portal hashes before comparing so "dock (hash1)" matches "dock (hash2)".
+        // Track which specific chooser positions already have streams, rather than
+        // relying on total counts. This prevents selecting wrong portal indices when
+        // multiple windows share the same title.
         let mut to_capture: Vec<usize> = Vec::new();
         {
             // Count existing streams per title (hash-stripped)
@@ -3053,34 +3064,32 @@ pub async fn start_monitor_inner(
                 *stream_title_counts.entry(clean).or_insert(0) += 1;
             }
 
-            // Count portal windows per title (hash-stripped)
-            let mut portal_title_counts: std::collections::HashMap<String, usize> =
-                std::collections::HashMap::new();
-            for ct in &chooser_titles {
-                let clean = PipewireCaptureService::strip_portal_hash(ct);
-                *portal_title_counts.entry(clean).or_insert(0) += 1;
-            }
-
-            // Track how many streams we already have per title (for incremental matching)
-            let mut matched_so_far: std::collections::HashMap<String, usize> =
+            // For each title, track how many chooser positions are already covered
+            // by existing streams. The first N chooser positions with a given title
+            // are covered if there are N existing streams with that title.
+            let mut covered_per_title: std::collections::HashMap<String, usize> =
                 std::collections::HashMap::new();
 
             for (i, title) in chooser_titles.iter().enumerate() {
                 let clean_title = PipewireCaptureService::strip_portal_hash(title);
                 let streams_with_title = *stream_title_counts.get(&clean_title).unwrap_or(&0);
-                let portal_with_title = *portal_title_counts.get(&clean_title).unwrap_or(&0);
-                let already_matched = *matched_so_far.get(&clean_title).unwrap_or(&0);
+                let already_covered = *covered_per_title.get(&clean_title).unwrap_or(&0);
 
-                // Total streams we should have for this title = portal count
-                // Already have = streams_with_title (existing) + already_matched (from this loop)
-                let total_have = streams_with_title + already_matched;
-                if total_have < portal_with_title {
-                    // Need to capture this one
+                // This chooser position is covered if we have more existing streams
+                // than the number of same-title positions we've seen so far.
+                // E.g., if there are 2 existing "dock" streams and this is the 1st
+                // "dock" chooser position (already_covered=0), it's covered.
+                // If this is the 3rd "dock" chooser position (already_covered=2),
+                // it's NOT covered because we only have 2 streams.
+                if already_covered < streams_with_title {
+                    // This position is already covered by an existing stream
+                    *covered_per_title.entry(clean_title).or_insert(0) += 1;
+                } else {
+                    // This position needs a new stream
                     if to_capture.len() >= max_windows - current_stream_count {
                         break;
                     }
                     to_capture.push(i);
-                    *matched_so_far.entry(clean_title).or_insert(0) += 1;
                 }
             }
         }
